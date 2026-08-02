@@ -13,7 +13,7 @@ What’s included
 Requires: requests, laspy, rasterio, shapely, pyproj, numpy, matplotlib
 """
 
-import os, re, math, zipfile
+import os, re, math, shutil, warnings, zipfile
 from pathlib import Path
 from urllib.parse import urlparse
 from concurrent.futures import ThreadPoolExecutor
@@ -21,7 +21,7 @@ from concurrent.futures import ThreadPoolExecutor
 import requests
 import numpy as np
 import rasterio
-from rasterio.merge import merge
+import rasterio.merge as _rio_merge
 from rasterio.windows import Window, from_bounds
 from rasterio.transform import from_origin
 from rasterio.mask import mask as rio_mask
@@ -267,12 +267,163 @@ def normalize_crs(crs_like):
 
 
 # =========================
+# nDSM evidence band schema
+# =========================
+# Bands 2-6 of the nDSM raster, in order. Band 1 is the nDSM height and keeps
+# its pre-existing meaning exactly; these five are the per-pixel LiDAR
+# statistics that app/backend/ndsm_refine.py's load_ndsm_evidence() pools onto
+# the model grid. Tokyo LAS carries no vegetation or building classification --
+# roofs and crowns share class 1 -- so the only thing that can separate them
+# downstream is physical evidence, and this is where it enters the pipeline.
+#
+# WHY COUNTS AND SUMS, NEVER RATIOS. Counts and sums are *additive*: adding them
+# over whichever 0.5 m pixels happen to fall under a model cell reproduces
+# exactly the statistic that would have been computed from the underlying points
+# directly, at any cell size and with no resampling error --
+#
+#     mrf       = sum(n_multi) / sum(n_all)
+#     roughness = sqrt(sum(sum_z2)/n - (sum(sum_z)/n)^2),  n = sum(n_nonground)
+#
+# Ratios stored per pixel would only be *averageable*, which is wrong whenever
+# pixel point counts differ, and at the measured 4.7-21.3 returns per *occupied*
+# 0.5 m pixel a per-pixel ratio is a handful of Bernoulli trials -- statistically
+# meaningless at native resolution even before the pooling error. The whole
+# design rests on this property; see pool_evidence() in ndsm_refine.py, which is
+# the consumer.
+#
+# HOW MUCH SIGNAL THERE IS VARIES ENORMOUSLY BY SHEET, and a city-wide rebuild
+# must expect that. Measured over 21 sheets in two independent samples:
+#
+#     multi-return fraction     5.1% - 80.2%   (median ~37%)
+#     class 1 (unclassified)      47% -   83%
+#     class 2 (ground)            22% -   50%
+#     class 3 (low vegetation)   0.3% -  4.7%
+#     returns per occupied px    4.7  - 21.3
+#
+# The low end is not a curiosity. On a sheet where only 5% of returns are
+# multi-return, no pooled cell can reach ndsm_refine's seeded ``mrf_hi = 0.35``,
+# so the canopy verdict is simply dead there and every tree cell falls to
+# *ambiguous* -- the conservative bucket, which is the right failure, but it
+# means the evidence bands buy nothing on that ward. Calibration (Task 8) has to
+# be per-ward or explicitly robust to this, and a single city-wide threshold
+# tuned on a strong sheet will silently do nothing on a weak one.
+#
+# All six bands share one dtype (float32) and one nodata value. That is not a
+# preference: GDAL's GTiff driver cannot create a dataset with per-band data
+# types, and rasterio exposes a single ``src.nodata`` -- which the reader uses --
+# so uint16 count bands are not representable alongside float32 height bands in
+# the single file the reader opens. Counts are exact in float32 well past any
+# per-pixel return count (2^24), so nothing is lost.
+EVIDENCE_BAND_NAMES = ("n_all", "n_multi", "n_nonground", "sum_z", "sum_z2")
+
+#: Band count of the evidence nDSM. Must equal ndsm_refine.EVIDENCE_BANDS; the
+#: reader treats ``src.count < 6`` as degraded mode (height only).
+NDSM_BAND_COUNT = 1 + len(EVIDENCE_BAND_NAMES)
+
+
+def _nearest_fill(arr):
+    """Nearest-neighbour fill of NaN gaps in a 2-D array.
+
+    Returns ``None`` when every value is NaN -- there is nothing to fill from,
+    and returning an all-NaN array would silently poison every derived height.
+    """
+    valid = np.isfinite(arr)
+    if not valid.any():
+        return None
+    if valid.all():
+        return arr
+    from scipy.ndimage import distance_transform_edt
+
+    # return_indices gives, for each cell, the index of the nearest True cell of
+    # ``valid`` -- i.e. the nearest pixel that actually has a ground height.
+    idx = distance_transform_edt(~valid, return_distances=False, return_indices=True)
+    return arr[tuple(idx)]
+
+
+def _evidence_arrays(idx_flat, height, width, z, cls, n_returns, dtm_arr,
+                     dtm_classes, nodata):
+    """Per-pixel evidence bands for one tile, in EVIDENCE_BAND_NAMES order.
+
+    Every point is placed by ``np.bincount`` on its pixel index; there is no
+    Python loop over points, because tiles run to millions of them.
+
+    The per-point height is ``z - dtm[pixel]`` against the tile's *nearest-
+    filled* ground raster. The fill matters: ground returns are sparse under
+    canopy and absent under roofs, so the raw DTM has holes exactly where the
+    interesting points are, and an unfilled lookup would drop their heights.
+
+    Ground returns are counted in ``n_all`` and ``n_multi`` but excluded from
+    ``n_nonground``/``sum_z``/``sum_z2``. That is deliberate and is what makes
+    the multi-return fraction physical: a pulse that reaches the ground through
+    a crown echoes several times, so its ground echo *is* a multi-return point
+    and belongs in both halves of the ratio, while its height above ground
+    (~0 m) says nothing about the crown.
+
+    "Non-ground" is the complement of *dtm_classes*, not membership of
+    *dsm_classes*, and the difference is deliberate rather than an oversight.
+    ``n_nonground``/``sum_z``/``sum_z2`` describe the returns that came off
+    something above the terrain, so any class that is not ground belongs there
+    -- including classes the DSM ignores. The DSM's ``(1, 3)`` is a *max-height*
+    surface and excludes noise and water on purpose; the evidence is a
+    *population* statistic and excluding an unexpected class from it would
+    understate the point count rather than protect anything.
+
+    On Tokyo LAS the two definitions coincide: only classes 1, 2 and 3 occur
+    (measured on 21 sheets), so ``~isin(cls, (2,))`` and ``isin(cls, (1, 3))``
+    select the same points. They would diverge on data carrying, say, class 5,
+    which is why ``test_nonground_is_the_complement_of_ground_not_the_dsm_set``
+    pins the choice instead of leaving it to be discovered.
+    """
+    n_pixels = int(height) * int(width)
+    bands = np.full((len(EVIDENCE_BAND_NAMES), n_pixels), 0.0, dtype=np.float64)
+
+    n_all = np.bincount(idx_flat, minlength=n_pixels)
+    bands[0] = n_all
+
+    multi = np.asarray(n_returns, dtype=np.int64) > 1
+    if multi.any():
+        bands[1] = np.bincount(idx_flat[multi], minlength=n_pixels)
+
+    nonground = ~np.isin(cls, dtm_classes)
+    if nonground.any():
+        ng_idx = idx_flat[nonground]
+        bands[2] = np.bincount(ng_idx, minlength=n_pixels)
+
+        ground = _nearest_fill(dtm_arr)
+        if ground is None:
+            # No class-2 point anywhere on the tile, so no height is definable.
+            # Leave the sums at zero and let n_nonground stand: the nDSM band is
+            # nodata across the whole tile too, so the co-occurrence rule in
+            # build_ndsm() drops these pixels before anything can read them.
+            print("  Warning: tile has no ground returns; evidence heights are 0")
+        else:
+            h = z[nonground].astype(np.float64) - ground.ravel()[ng_idx]
+            bands[3] = np.bincount(ng_idx, weights=h, minlength=n_pixels)
+            bands[4] = np.bincount(ng_idx, weights=h * h, minlength=n_pixels)
+
+    # A pixel with no returns has no evidence -- not zero evidence. Marked
+    # nodata across all five bands together, so the bands stay mutually
+    # consistent from the very first raster written.
+    bands[:, n_all == 0] = float(nodata)
+    return bands.reshape(len(EVIDENCE_BAND_NAMES), int(height), int(width)
+                         ).astype(np.float32, copy=False)
+
+
+# =========================
 # LAS → DSM / DTM (fast)
 # =========================
-def process_las_to_raster(las_path, resolution=0.5, dsm_classes=(1, 3), dtm_classes=(2,)):
+def process_las_to_raster(las_path, resolution=0.5, dsm_classes=(1, 3), dtm_classes=(2,),
+                          with_evidence=False):
     """
     Build DSM (max Z) and DTM (min Z) on a regular grid aligned to LAS extents.
     Returns dicts: {'array','transform','bounds','nodata'}
+
+    With ``with_evidence=True`` a third raster is returned on the same grid,
+    holding the five bands of :data:`EVIDENCE_BAND_NAMES` stacked as
+    ``(5, height, width)``. The DSM and DTM are computed by the identical code
+    either way and are bit-identical to the pre-evidence function -- the flag
+    only adds output. The arity of the return value depends on the flag so that
+    existing two-value callers keep working untouched.
     """
     if laspy is None:
         raise ImportError("laspy is required for LAS file reading")
@@ -324,25 +475,145 @@ def process_las_to_raster(las_path, resolution=0.5, dsm_classes=(1, 3), dtm_clas
         }
         dsm = dict(array=dsm_arr.copy(), **base)
         dtm = dict(array=dtm_arr.copy(), **base)
-        return dsm, dtm
+        if not with_evidence:
+            return dsm, dtm
+
+        # The evidence sits in its OWN try, outside the DSM/DTM one. Adding
+        # bands must not be able to cost a sheet its height data: with a single
+        # shared handler, any failure in here would return (None, None, None)
+        # and drop the tile from the DSM and DTM merges as well -- coverage the
+        # pre-evidence pipeline would have produced. The caller sees a shorter
+        # evidence list than DSM list and is expected to treat that as fatal
+        # (see process_las_files and the callers' count check), so this degrades
+        # loudly one level up rather than silently here.
+        try:
+            try:
+                n_returns = np.asarray(las.number_of_returns)
+            except Exception as exc:
+                # Refusing rather than substituting zeros: an all-single-return
+                # reading makes the multi-return fraction 0 everywhere, which is
+                # the maximally roof-like value, and the classifier would suppress
+                # every tree it was built to keep.
+                raise ValueError(
+                    f"{las_path} has no 'number_of_returns' dimension, so the "
+                    f"multi-return evidence cannot be measured: {exc}"
+                )
+
+            evidence = dict(
+                array=_evidence_arrays(
+                    idx_flat, height, width, z, cls, n_returns, dtm_arr,
+                    dtm_classes, base['nodata'],
+                ),
+                **base,
+            )
+        except Exception as exc:
+            print(f"Error building evidence bands for {las_path}: {exc}")
+            return dsm, dtm, None
+        return dsm, dtm, evidence
 
     except Exception as e:
         print(f"Error processing LAS file {las_path}: {e}")
-        return None, None
+        return (None, None, None) if with_evidence else (None, None)
+
+#: GTiff creation options for every raster this module writes.
+#:
+#: The pre-Task-7b writers emitted uncompressed, untiled GeoTIFFs. At city scale
+#: that is not a tidiness question, it is a hard stop: 5,669 five-band evidence
+#: tiles come to ~51 GB uncompressed, the merged evidence raster to 85 GB and the
+#: merged nDSM to 102 GB, against ~102 GB free on the rebuild machine's C: drive.
+#: Deflate with the floating-point predictor takes the measured evidence tile
+#: from 9.2 MB to well under half that, and it is *lossless* -- the bit-identity
+#: guard compares decoded arrays, not files, so compression cannot move a value
+#: even in principle.
+#:
+#: ``tiled`` matters for reads, not writes: the merged rasters are consumed
+#: window-by-window by :func:`build_ndsm`, and a striped TIFF makes every window
+#: read pull whole scanlines the full width of the raster.
+#:
+#: ``BIGTIFF="IF_SAFER"`` rather than ``"YES"``: past 4 GB a classic TIFF's
+#: 32-bit directory offsets overflow, and the merged rasters are twenty times
+#: that, but per-sheet tiles are a few megabytes and stay classic TIFFs that any
+#: reader can open.
+GTIFF_CREATION_OPTS = {
+    "compress": "deflate",
+    "predictor": 3,          # floating-point predictor; see creation_opts()
+    "tiled": True,
+    "blockxsize": 512,
+    "blockysize": 512,
+    "BIGTIFF": "IF_SAFER",
+}
+
+
+def creation_opts(dtype):
+    """:data:`GTIFF_CREATION_OPTS` with a predictor *dtype* actually allows.
+
+    ``PREDICTOR=3`` is the floating-point predictor and GDAL refuses it outright
+    on anything else -- ``RasterioIOError: PREDICTOR=3 is only supported with
+    Float32 or Float64``, not a warning. Everything this module writes today is
+    float32, but :func:`merge_geotiffs` takes its output dtype from whatever it
+    is handed, so hard-coding 3 would turn "merge some integer rasters" from
+    working into failing. Integers get ``PREDICTOR=2``, the horizontal
+    differencing one, which is the right choice for them anyway.
+    """
+    opts = dict(GTIFF_CREATION_OPTS)
+    if not np.issubdtype(np.dtype(dtype), np.floating):
+        opts["predictor"] = 2
+    return opts
+
+#: Rows of the merged grid held in memory at once by :func:`merge_geotiffs`.
+#:
+#: 512 to line up with ``GTIFF_CREATION_OPTS['blockysize']``, so a stripe write
+#: covers whole block rows and GDAL never has to read a partially written block
+#: back. At the live raster's 64,464-pixel width one five-band stripe is 660 MB;
+#: the array it replaces was 85 GB.
+MERGE_STRIPE_ROWS = 512
+
+
+def copy_raster_file(src_path, dst_path):
+    """Copy a raster file without decoding it.
+
+    ``precompute_las_cache``'s no-AOI branch used to do ``src.read()`` and write
+    the array back out under the same profile -- a 102 GB read on a 63.7 GB
+    machine to reproduce a file that was already correct on disk. A byte copy is
+    both cheaper and a strictly stronger guarantee: it preserves the profile, the
+    block layout and every pixel exactly, with no decode/encode round trip to get
+    wrong.
+    """
+    if os.path.abspath(src_path) == os.path.abspath(dst_path):
+        return dst_path
+    shutil.copyfile(src_path, dst_path)
+    return dst_path
+
 
 def save_raster(raster_data, output_path, crs):
+    """Write a raster dict to GeoTIFF.
+
+    A 2-D ``array`` writes one band exactly as before; a 3-D ``(bands, h, w)``
+    array writes that many bands. Multi-band is how the evidence tile is
+    persisted: all its bands share one dtype and one nodata value, which is what
+    a GTiff can express and what the runtime reader assumes.
+
+    Written compressed and tiled (:data:`GTIFF_CREATION_OPTS`). Values are
+    unaffected -- deflate is lossless -- but 5,669 five-band tiles are ~51 GB
+    uncompressed and the rebuild machine does not have that.
+    """
     array = raster_data['array'].astype(np.float32, copy=False)
+    if array.ndim == 2:
+        array = array[np.newaxis, ...]
+    elif array.ndim != 3:
+        raise ValueError(f"raster array must be 2-D or 3-D, got {array.ndim}-D")
     transform = raster_data['transform']
     nodata = float(raster_data.get('nodata', -9999.0))
 
     profile = {
         'driver': 'GTiff',
-        'height': array.shape[0],
-        'width':  array.shape[1],
-        'count':  1,
+        'height': array.shape[1],
+        'width':  array.shape[2],
+        'count':  array.shape[0],
         'dtype':  rasterio.float32,
         'transform': transform,
         'nodata': nodata,
+        **creation_opts(rasterio.float32),
     }
     crs_obj = normalize_crs(crs)
     if crs_obj is not None:
@@ -350,18 +621,40 @@ def save_raster(raster_data, output_path, crs):
 
     array = np.where(np.isnan(array), nodata, array).astype(np.float32, copy=False)
     with rasterio.open(output_path, 'w', **profile) as dst:
-        dst.write(array, 1)
+        dst.write(array)
     print(f"Saved raster to {output_path}")
     return True
 
-def process_las_files(las_files, dsm_output_dir, dtm_output_dir, resolution, target_crs):
+def process_las_files(las_files, dsm_output_dir, dtm_output_dir, resolution, target_crs,
+                      evidence_output_dir=None):
+    """Rasterize each LAS to per-tile DSM/DTM GeoTIFFs.
+
+    Pass *evidence_output_dir* to also write the five-band evidence tile beside
+    each DSM/DTM; the return value then gains a third list. Omitting it
+    reproduces the pre-evidence behaviour byte for byte, which is what the
+    comparison runs in Task 7/8 need.
+
+    **Callers must check ``len(ev_files) == len(dsm_files)``.** A sheet that
+    rasterises but whose evidence does not is not a partial success: build_ndsm's
+    co-occurrence rule turns that sheet into a nodata *hole in band 1*, so the
+    rebuilt COG silently loses coverage the single-band one had. This function
+    reports the shortfall but does not raise -- it does not know whether the
+    caller is building a COG or probing one tile -- so it is the pipeline
+    drivers that treat it as fatal.
+    """
     os.makedirs(dsm_output_dir, exist_ok=True)
     os.makedirs(dtm_output_dir, exist_ok=True)
+    with_evidence = evidence_output_dir is not None
+    if with_evidence:
+        os.makedirs(evidence_output_dir, exist_ok=True)
 
-    dsm_files, dtm_files = [], []
+    dsm_files, dtm_files, ev_files = [], [], []
     for i, las_path in enumerate(las_files):
         print(f"Processing file {i+1}/{len(las_files)}: {os.path.basename(las_path)}")
-        dsm, dtm = process_las_to_raster(las_path, resolution=resolution)
+        result = process_las_to_raster(las_path, resolution=resolution,
+                                       with_evidence=with_evidence)
+        dsm, dtm = result[0], result[1]
+        evidence = result[2] if with_evidence else None
         if dsm is None or dtm is None:
             continue
         base = os.path.splitext(os.path.basename(las_path))[0]
@@ -371,21 +664,322 @@ def process_las_files(las_files, dsm_output_dir, dtm_output_dir, resolution, tar
             dsm_files.append(dsm_path)
         if save_raster(dtm, dtm_path, target_crs):
             dtm_files.append(dtm_path)
+        if evidence is not None:
+            ev_path = os.path.join(evidence_output_dir, f"{base}_evidence.tif")
+            if save_raster(evidence, ev_path, target_crs):
+                ev_files.append(ev_path)
     print(f"Created {len(dsm_files)} DSM GeoTIFFs and {len(dtm_files)} DTM GeoTIFFs")
+    if with_evidence:
+        print(f"Created {len(ev_files)} evidence GeoTIFFs "
+              f"({len(EVIDENCE_BAND_NAMES)} bands each)")
+        if len(ev_files) != len(dsm_files):
+            warnings.warn(
+                f"{len(dsm_files) - len(ev_files)} sheet(s) produced a DSM but "
+                "no evidence raster; every pixel of those sheets will be nodata "
+                "in the six-band nDSM, losing coverage the single-band raster "
+                "had. Do not build a COG from this.",
+                UserWarning,
+                stacklevel=2,
+            )
+        return dsm_files, dtm_files, ev_files
     return dsm_files, dtm_files
+
+
+def require_complete_evidence(dsm_files, ev_files):
+    """Raise unless every sheet that produced a height also produced evidence.
+
+    Not "did any evidence survive" -- that guard passes while coverage silently
+    disappears. :func:`build_ndsm` makes a pixel nodata in *band 1* wherever the
+    evidence is missing, so a sheet with a DSM and no evidence contributes a
+    nodata hole to the rebuilt COG: strictly less ground covered than the
+    single-band raster it replaces, with every log line still reading "nDSM
+    ready". The only safe responses are to fix the sheet or to build the
+    single-band raster deliberately, so this raises rather than warns.
+
+    One implementation shared by both pipeline drivers, so the two cannot drift.
+    """
+    if len(ev_files) != len(dsm_files):
+        raise RuntimeError(
+            f"{len(dsm_files)} DSM sheets but only {len(ev_files)} evidence "
+            "sheets; the missing sheets would become nodata holes in band 1 of "
+            "the six-band nDSM, losing coverage the single-band raster had. Fix "
+            "the failing sheets or build without evidence deliberately."
+        )
 
 
 # =========================
 # Merge & nDSM
 # =========================
-def merge_geotiffs(input_files, output_path, target_crs, nodata_value=-9999.0, res=None):
+#: Fraction of the smaller tile that two footprints must share before
+#: :func:`warn_if_inputs_overlap` calls it an overlap.
+#:
+#: Not zero, and not a bare ``intersects`` test. Tokyo's survey sheets abut, and
+#: each tile's raster extent is its point extent rounded *up* to a whole pixel,
+#: so neighbouring sheets routinely share a sliver up to one pixel wide -- on a
+#: ~700 px tile that is ~0.14%. A check that fired on every adjacent pair would
+#: emit thousands of warnings per rebuild, and a warning nobody can read is a
+#: warning nobody will act on. One percent is two orders of magnitude above the
+#: sliver and two below a genuinely duplicated sheet.
+OVERLAP_WARN_FRAC = 0.01
+
+
+def warn_if_inputs_overlap(input_files, target_crs, min_overlap_frac=OVERLAP_WARN_FRAC,
+                           label="tiles"):
+    """Check the non-overlap assumption that ``method="first"`` rests on.
+
+    ``merge`` resolves a contested pixel by taking the first dataset that has
+    data there. That is only well-defined -- and only band-consistent between
+    the DSM, DTM and evidence merges, which are three separate merges over the
+    same sheets -- if no two sheets cover the same ground. The survey sheets
+    *should* be disjoint, but "should" is exactly the kind of assumption that
+    quietly stops holding, so it is measured rather than assumed.
+
+    Warns (never raises): an overlap makes the merge arbitrary, not wrong, and
+    aborting a multi-hour rebuild over it would be worse than reporting it.
+
+    Implemented as a numpy sweep over axis-aligned bounds rather than with
+    ``shapely.STRtree``. The tree was the obvious choice and the wrong one: its
+    ``query`` returns *indices* in shapely 2 and *geometries* in shapely 1.8, so
+    the index arithmetic would have raised partway through a multi-hour rebuild
+    on an older environment -- a failure mode with no test that could catch it
+    here, since the pinned version is 2.x. Sheet footprints are rectangles in a
+    projected CRS, so no geometry engine is needed for this at all.
+
+    Returns the list of ``(file_a, file_b, fraction)`` offenders, empty when the
+    assumption holds.
+    """
+    files = list(input_files)
+    if len(files) < 2:
+        return []
+
+    from rasterio.warp import transform_bounds
+
+    tcrs = normalize_crs(target_crs)
+    bounds = []
+    for fp in files:
+        try:
+            with rasterio.open(fp) as src:
+                b = src.bounds
+                if src.crs is not None and tcrs is not None and src.crs != tcrs:
+                    b = transform_bounds(src.crs, tcrs, *b)
+                bounds.append((float(b[0]), float(b[1]), float(b[2]), float(b[3])))
+        except Exception as exc:
+            print(f"Warning: could not read bounds of {fp} for overlap check: {exc}")
+            bounds.append(None)
+
+    keep = [i for i, b in enumerate(bounds)
+            if b is not None and b[2] > b[0] and b[3] > b[1]]
+    if len(keep) < 2:
+        return []
+    idx = np.asarray(keep)
+    box = np.asarray([bounds[i] for i in keep], dtype=np.float64)
+    x0, y0, x1, y1 = box[:, 0], box[:, 1], box[:, 2], box[:, 3]
+    area = (x1 - x0) * (y1 - y0)
+
+    # Sweep in x: sorted by left edge, tile i can only meet tiles whose left
+    # edge lies before i's right edge, which for a sheet grid is a handful.
+    order = np.argsort(x0, kind="stable")
+    sx0 = x0[order]
+    offenders = []
+    for pos in range(order.size - 1):
+        i = order[pos]
+        stop = int(np.searchsorted(sx0, x1[i], side="right"))
+        if stop <= pos + 1:
+            continue
+        cand = order[pos + 1:stop]
+        w = np.minimum(x1[i], x1[cand]) - np.maximum(x0[i], x0[cand])
+        h = np.minimum(y1[i], y1[cand]) - np.maximum(y0[i], y0[cand])
+        shared = np.maximum(w, 0.0) * np.maximum(h, 0.0)
+        smaller = np.minimum(area[i], area[cand])
+        with np.errstate(invalid="ignore", divide="ignore"):
+            frac = np.where(smaller > 0.0, shared / np.maximum(smaller, 1e-30), 0.0)
+        # Strictly positive shared *area*: two sheets that merely touch along an
+        # edge share a line, and merge() never has to choose between them.
+        hit = (shared > 0.0) & (frac >= float(min_overlap_frac))
+        for k, f in zip(cand[hit], frac[hit]):
+            offenders.append((files[int(idx[i])], files[int(idx[k])], float(f)))
+
+    if offenders:
+        offenders.sort(key=lambda t: -t[2])
+        worst = offenders[0]
+        warnings.warn(
+            f"{len(offenders)} pair(s) of {label} overlap by at least "
+            f"{100 * float(min_overlap_frac):.1f}% of the smaller footprint; "
+            f"merge(method='first') will pick between them arbitrarily. Worst: "
+            f"{os.path.basename(worst[0])} / {os.path.basename(worst[1])} "
+            f"({100 * worst[2]:.1f}%)",
+            UserWarning,
+            stacklevel=2,
+        )
+    return offenders
+
+
+#: ``rasterio.merge``'s own "first available pixel wins" compositor.
+#:
+#: Taken from the library rather than reimplemented so that the streamed merge
+#: below cannot drift from the dense one it has to stay bit-identical to.
+_COPY_FIRST = _rio_merge.MERGE_METHODS["first"]
+
+
+def _merge_paste_plan(src, output_transform, dst_bounds):
+    """Where *src* lands in the merged grid, using ``rasterio.merge``'s arithmetic.
+
+    Lifted line for line from ``rasterio.merge.merge`` (1.3.x) so the streamed
+    merge places every source exactly where the dense merge placed it: the same
+    intersection, the same ``round_lengths`` then ``round_offsets`` on the
+    destination window, the same source window. Returns ``None`` for a source
+    that does not intersect the grid at all.
+
+    In a full-extent merge the destination bounds are the union of the source
+    bounds, so the intersection is always the source's own footprint and no
+    source is ever clipped. That is what makes streaming safe here and is why
+    this is *not* the same trick as chunking a merge by output tile, which does
+    clip sources and does move values at chunk seams.
+    """
+    src_w, src_s, src_e, src_n = src.bounds
+    dst_w, dst_s, dst_e, dst_n = dst_bounds
+
+    int_w = src_w if src_w > dst_w else dst_w
+    int_s = src_s if src_s > dst_s else dst_s
+    int_e = src_e if src_e < dst_e else dst_e
+    int_n = src_n if src_n < dst_n else dst_n
+    if int_w >= int_e or int_s >= int_n:
+        return None
+
+    src_window = from_bounds(int_w, int_s, int_e, int_n, src.transform)
+    dst_window = from_bounds(int_w, int_s, int_e, int_n, output_transform)
+    return src_window.round_lengths(), dst_window.round_lengths().round_offsets()
+
+
+def _read_paste_rows(src, src_window, dst_window, row0, row1, n_cols, resampling):
+    """Rows ``[row0, row1)`` of what the dense merge would have read from *src*.
+
+    The dense merge reads the whole source at once
+    (``src.read(out_shape=..., window=src_window)``) and pastes it. For a source
+    that needs no rescaling -- every input here is a ``WarpedVRT`` forced to the
+    merge resolution, so that is the normal case -- reading a row sub-window is
+    the identical operation on identical pixels, and it is what keeps a single
+    source from costing the merge its own full size in RAM. That matters more
+    than it sounds: the *intermediates* of a batched merge are near-full-extent
+    rasters, so the dense path could hold 85 GB of destination and tens of GB of
+    one source simultaneously.
+
+    Anything that would rescale falls back to the dense read, which is exactly
+    the old behaviour: correctness first, memory second.
+    """
+    rescales = (src_window.height != dst_window.height
+                or src_window.width != dst_window.width)
+    off_grid = src_window.row_off != 0 or src_window.col_off != 0
+    if rescales or off_grid:
+        temp = src.read(out_shape=(src.count, dst_window.height, dst_window.width),
+                        window=src_window, boundless=False, masked=True,
+                        resampling=resampling)
+        temp = temp[:, row0:row1, :]
+    else:
+        temp = src.read(window=Window(0, row0, src_window.width, row1 - row0),
+                        boundless=False, masked=True, resampling=resampling)
+    return temp[:, :, :n_cols]
+
+
+def _merge_streaming(sources, dst, output_transform, output_height, output_width,
+                     dst_bounds, nodataval, resampling, stripe_rows):
+    """Composite *sources* into the open dataset *dst*, one row stripe at a time.
+
+    Peak memory is one stripe of the merged grid plus the rows of one source that
+    the stripe touches, instead of the whole merged array. ``method="first"``
+    survives because the source order is preserved within every stripe and a
+    pixel belongs to exactly one stripe, so no compositing decision spans a
+    stripe boundary.
+    """
+    count = sources[0].count
+    dtype = sources[0].dtypes[0]
+
+    plans = []
+    for idx, src in enumerate(sources):
+        plan = _merge_paste_plan(src, output_transform, dst_bounds)
+        if plan is not None:
+            plans.append((idx, src, plan[0], plan[1]))
+
+    # One buffer for the whole merge, reused stripe by stripe.
+    #
+    # Flat, then reshaped per stripe, rather than a 3-D array sliced on its row
+    # axis: the final stripe is shorter than the rest, and ``buf3d[:, :h, :]`` is
+    # not C-contiguous, so ``dst.write`` would silently copy it. Both mistakes
+    # were measured on real sheets -- allocating inside the loop cost 167 MB
+    # against an 80 MB stripe (the previous stripe stays alive until the rebind),
+    # and the non-contiguous last stripe still cost 158 MB.
+    buffer = np.empty(count * min(stripe_rows, output_height) * output_width,
+                      dtype=dtype)
+
+    for top in range(0, output_height, stripe_rows):
+        bottom = min(top + stripe_rows, output_height)
+        rows = bottom - top
+        dest = buffer[:count * rows * output_width].reshape(count, rows, output_width)
+        dest.fill(nodataval)
+
+        for idx, src, src_window, dst_window in plans:
+            # max(0, ...) mirrors the dense merge, which clamps the paste origin
+            # but keeps the full paste height/width.
+            roff = max(0, dst_window.row_off)
+            coff = max(0, dst_window.col_off)
+            row_end = min(roff + dst_window.height, output_height)
+            col_end = min(coff + dst_window.width, output_width)
+            r0 = max(roff, top)
+            r1 = min(row_end, bottom)
+            if r1 <= r0 or col_end <= coff:
+                continue
+
+            region = dest[:, r0 - top:r1 - top, coff:col_end]
+            temp = _read_paste_rows(src, src_window, dst_window, r0 - roff,
+                                    r1 - roff, col_end - coff, resampling)
+
+            if math.isnan(nodataval):
+                region_mask = np.isnan(region)
+            elif np.issubdtype(region.dtype, np.floating):
+                region_mask = np.isclose(region, nodataval)
+            else:
+                region_mask = region == nodataval
+
+            _COPY_FIRST(region, temp, region_mask, np.ma.getmask(temp),
+                        index=idx, roff=roff, coff=coff)
+
+        dst.write(dest, window=Window(0, top, output_width, bottom - top))
+
+
+def merge_geotiffs(input_files, output_path, target_crs, nodata_value=-9999.0, res=None,
+                   check_overlap=True):
     """
     Merge multiple GeoTIFFs into one, pre-warping each to target_crs so we
     don’t rely on merge(dst_crs=...), which isn’t available in older rasterio.
+
+    *check_overlap* verifies the disjoint-sheet assumption behind
+    ``method="first"``; see :func:`warn_if_inputs_overlap`. Turn it off when the
+    inputs are known to interleave, as the intermediate products of
+    :func:`merge_geotiffs_batched` do.
+
+    **Streams to disk.** ``rasterio.merge.merge`` builds the entire merged array
+    before writing it. At city scale that array is 17.0 GB for the DSM or DTM and
+    85.0 GB for the five evidence bands, on a machine with 63.7 GB, so the
+    evidence merge simply could not run. This composites one
+    :data:`MERGE_STRIPE_ROWS`-row stripe at a time into an already-open dataset;
+    :func:`_merge_paste_plan` reproduces the library's placement arithmetic
+    exactly, so the result is bit-identical to what the dense merge produced.
+
+    ``merge(dst_path=...)`` is *not* the mechanism, despite accepting the
+    argument: in rasterio 1.3.11 -- the version in ``voxcityapp2``, the only
+    environment that has ``laspy`` and therefore the only one a rebuild can run
+    in -- ``dst_path`` still allocates the whole array and then writes it
+    (``merge.py:297``). Measured: 79.2 MB peak against a 78.7 MB dense array.
+    rasterio 1.4+ does stream it, but by a chunking scheme that clips sources at
+    chunk boundaries and so is not bit-identical to the 1.3 output that produced
+    the live COG.
     """
     if not input_files:
         print("No GeoTIFF files to merge")
         return None
+
+    if check_overlap:
+        warn_if_inputs_overlap(input_files, target_crs)
 
     # Open and wrap as VRTs in target_crs
     warped = []
@@ -426,22 +1020,39 @@ def merge_geotiffs(input_files, output_path, target_crs, nodata_value=-9999.0, r
 
         print(f"Target CRS: {tcrs}")
         print("Merging files...")
-        # No dst_crs here — all inputs are already warped VRTs
-        merged, transform = merge(warped, nodata=nodata_value, method="first")
+        # No dst_crs here — all inputs are already warped VRTs.
+        #
+        # Output grid: the union of the source footprints at the merge
+        # resolution, computed the way rasterio.merge computes it (min/max of the
+        # bounds, round() on the pixel counts, from_origin on the north-west
+        # corner) so the transform and shape match the dense merge exactly.
+        merge_res = warped[0].res
+        xs, ys = [], []
+        for vrt in warped:
+            left, bottom, right, top = vrt.bounds
+            xs.extend([left, right])
+            ys.extend([bottom, top])
+        dst_w, dst_s, dst_e, dst_n = min(xs), min(ys), max(xs), max(ys)
+        output_width = int(round((dst_e - dst_w) / merge_res[0]))
+        output_height = int(round((dst_n - dst_s) / merge_res[1]))
+        transform = from_origin(dst_w, dst_n, merge_res[0], merge_res[1])
 
         meta = {
             "driver": "GTiff",
-            "height": merged.shape[1],
-            "width": merged.shape[2],
-            "count": merged.shape[0],
-            "dtype": merged.dtype,
+            "height": output_height,
+            "width": output_width,
+            "count": warped[0].count,
+            "dtype": warped[0].dtypes[0],
             "crs": tcrs,
             "transform": transform,
-            "nodata": nodata_value
+            "nodata": nodata_value,
+            **creation_opts(warped[0].dtypes[0]),
         }
         print(f"Writing merged file to {output_path}")
         with rasterio.open(output_path, "w", **meta) as dst:
-            dst.write(merged)
+            _merge_streaming(warped, dst, transform, output_height, output_width,
+                             (dst_w, dst_s, dst_e, dst_n), nodata_value,
+                             Resampling.nearest, int(MERGE_STRIPE_ROWS))
         print("Merge completed successfully")
         return output_path
 
@@ -461,20 +1072,32 @@ def merge_geotiffs_batched(
     res=None,
     batch_size=250,
     tmp_dir=None,
+    check_overlap=True,
 ):
     """Merge many GeoTIFFs in batches to reduce peak memory.
 
     - Chunks inputs into groups of batch_size and merges each group to a temp file
     - Recursively merges the intermediate files until a single output remains
     - Uses the same reprojection logic as merge_geotiffs
+
+    The overlap check runs once over the *whole* input list rather than per
+    chunk, and is disabled for the individual merges. Per chunk it would miss
+    every pair split across a chunk boundary; on the intermediates it would fire
+    on every rebuild, since a chunk is an arbitrary slice of the file list and
+    the resulting bounding boxes interleave by construction even though their
+    data does not.
     """
     files = list(input_files)
     if not files:
         print("No GeoTIFF files to merge")
         return None
 
+    if check_overlap:
+        warn_if_inputs_overlap(files, target_crs)
+
     if len(files) <= int(batch_size):
-        return merge_geotiffs(files, output_path, target_crs, nodata_value=nodata_value, res=res)
+        return merge_geotiffs(files, output_path, target_crs, nodata_value=nodata_value,
+                              res=res, check_overlap=False)
 
     base_dir = tmp_dir or os.path.join(os.path.dirname(output_path) or ".", "_merge_tmp")
     os.makedirs(base_dir, exist_ok=True)
@@ -485,7 +1108,8 @@ def merge_geotiffs_batched(
             chunk = files[i:i+int(batch_size)]
             tmp_out = os.path.join(base_dir, f"chunk_{i//int(batch_size):04d}.tif")
             print(f"Merging batch {i//int(batch_size)+1}/{int(math.ceil(len(files)/float(batch_size)))} → {tmp_out}")
-            merged_path = merge_geotiffs(chunk, tmp_out, target_crs, nodata_value=nodata_value, res=res)
+            merged_path = merge_geotiffs(chunk, tmp_out, target_crs, nodata_value=nodata_value,
+                                         res=res, check_overlap=False)
             if merged_path is None:
                 continue
             intermediates.append(merged_path)
@@ -496,7 +1120,8 @@ def merge_geotiffs_batched(
 
         # Final merge of intermediates
         print(f"Merging {len(intermediates)} intermediate files into final output ...")
-        final_path = merge_geotiffs(intermediates, output_path, target_crs, nodata_value=nodata_value, res=res)
+        final_path = merge_geotiffs(intermediates, output_path, target_crs,
+                                    nodata_value=nodata_value, res=res, check_overlap=False)
         print("Batched merge completed successfully")
         return final_path
     finally:
@@ -509,42 +1134,105 @@ def merge_geotiffs_batched(
                 pass
         # Do not remove the tmp directory automatically; it might be shared
 
-def build_ndsm(dsm_path, dtm_path, out_path, nodata_value=-9999.0):
+def build_ndsm(dsm_path, dtm_path, out_path, nodata_value=-9999.0, evidence_path=None):
     """Compute nDSM = DSM - DTM in streaming windows to avoid large RAM usage.
 
     Writes directly to disk using tiled BigTIFF with compression.
+
+    With *evidence_path* -- the merged five-band raster from
+    :func:`process_las_files` -- the output carries the full
+    :data:`NDSM_BAND_COUNT` band schema: band 1 unchanged, bands 2-6 the
+    evidence in :data:`EVIDENCE_BAND_NAMES` order. Without it, one band is
+    written exactly as before, which is the comparison baseline Task 7/8 need.
+
+    **Nodata co-occurs across all six bands.** A pixel is either data everywhere
+    or nodata everywhere, and this is the only place that can be guaranteed:
+    the height's validity comes from the DSM/DTM pair and the evidence's from
+    the point counts, and the two are independently sparse. ``load_ndsm_evidence``
+    maps band-1 nodata to NaN and evidence nodata to 0.0, which are consistent
+    readings of the *same* pixel state only if that state is shared. Measured on
+    the inconsistent case: a pixel with no ground reference and 160 returns
+    reads back as a NaN height beside ``n_all=160, roughness=1.0`` -- confident
+    evidence about a cell that has no height, which is precisely the input that
+    makes the classifier assert a verdict it has no basis for.
+
+    The masking runs both ways, but only one way ever bites in practice. A pixel
+    with no returns has no DSM and no DTM point either, so evidence-nodata is a
+    subset of height-nodata; the traffic is the other direction, dropping
+    evidence at pixels the DSM/DTM pair could not give a height. Measured on
+    real Chuo-ku sheets that is ~40% of returns -- and it is *not* the returns
+    the classifier needs: the multi-return fraction among the dropped points is
+    lower (0.31 / 0.12 on two sample tiles) than among the kept ones
+    (0.39 / 0.22), because a pixel that holds both a ground echo and a canopy
+    echo is by definition a pixel a pulse penetrated. The rule keeps the
+    penetrating pixels and discards the opaque ones.
     """
+    write_evidence = evidence_path is not None
     with rasterio.open(dsm_path) as dsm, rasterio.open(dtm_path) as dtm:
         if dsm.crs != dtm.crs or dsm.transform != dtm.transform or dsm.shape != dtm.shape:
             raise ValueError("DSM and DTM are not perfectly aligned.")
 
-        meta = dsm.meta.copy()
-        meta.update({
-            "count": 1,
-            "dtype": rasterio.float32,
-            "nodata": nodata_value,
-            # Use tiling and compression to keep IO efficient and file sizes reasonable
-            "tiled": True,
-            "blockxsize": 512,
-            "blockysize": 512,
-            "compress": "deflate",
-            "predictor": 3,
-        })
+        evidence = rasterio.open(evidence_path) if write_evidence else None
+        try:
+            if evidence is not None:
+                # Alignment is checked, not assumed: the three merges run
+                # independently, and a half-pixel drift would silently pair each
+                # cell's height with its neighbour's returns.
+                if (evidence.crs != dsm.crs or evidence.transform != dsm.transform
+                        or evidence.shape != dsm.shape):
+                    raise ValueError("Evidence raster is not aligned with the DSM/DTM.")
+                if evidence.count != len(EVIDENCE_BAND_NAMES):
+                    raise ValueError(
+                        f"Evidence raster has {evidence.count} bands, expected "
+                        f"{len(EVIDENCE_BAND_NAMES)} ({', '.join(EVIDENCE_BAND_NAMES)})"
+                    )
 
-        # Enable BigTIFF to support very large rasters
-        with rasterio.open(out_path, 'w', BIGTIFF='YES', **meta) as dst:
-            for _, window in dst.block_windows(1):
-                # Read masked arrays so nodata is already masked
-                d = dsm.read(1, window=window, masked=True).astype(np.float32, copy=False)
-                g = dtm.read(1, window=window, masked=True).astype(np.float32, copy=False)
+            meta = dsm.meta.copy()
+            meta.update({
+                "count": NDSM_BAND_COUNT if write_evidence else 1,
+                "dtype": rasterio.float32,
+                "nodata": nodata_value,
+                # Use tiling and compression to keep IO efficient and file sizes reasonable
+                "tiled": True,
+                "blockxsize": 512,
+                "blockysize": 512,
+                "compress": "deflate",
+                "predictor": 3,
+            })
 
-                # Subtract; mask propagates automatically
-                nd = d - g
-                out = nd.filled(nodata_value).astype(np.float32, copy=False)
+            # Enable BigTIFF to support very large rasters
+            with rasterio.open(out_path, 'w', BIGTIFF='YES', **meta) as dst:
+                for _, window in dst.block_windows(1):
+                    # Read masked arrays so nodata is already masked
+                    d = dsm.read(1, window=window, masked=True).astype(np.float32, copy=False)
+                    g = dtm.read(1, window=window, masked=True).astype(np.float32, copy=False)
 
-                dst.write(out, 1, window=window)
+                    # Subtract; mask propagates automatically
+                    nd = d - g
 
-    print(f"Created initial normalized DSM (nDSM): {out_path}")
+                    if evidence is None:
+                        out = nd.filled(nodata_value).astype(np.float32, copy=False)
+                        dst.write(out, 1, window=window)
+                        continue
+
+                    ev = evidence.read(window=window, masked=True).astype(np.float32, copy=False)
+                    valid = ~np.ma.getmaskarray(nd)
+                    valid &= ~np.ma.getmaskarray(ev).any(axis=0)
+
+                    out = np.full((NDSM_BAND_COUNT,) + nd.shape, nodata_value,
+                                  dtype=np.float32)
+                    out[0][valid] = np.ma.getdata(nd)[valid]
+                    out[1:, valid] = np.ma.getdata(ev)[:, valid]
+                    dst.write(out, window=window)
+        finally:
+            if evidence is not None:
+                evidence.close()
+
+    if write_evidence:
+        print(f"Created {NDSM_BAND_COUNT}-band nDSM (height + "
+              f"{', '.join(EVIDENCE_BAND_NAMES)}): {out_path}")
+    else:
+        print(f"Created initial normalized DSM (nDSM): {out_path}")
     return out_path
 
 
@@ -744,10 +1432,15 @@ def visualize_height_grid(
 # Orchestrator
 # =========================
 def get_ndsm_geotiff_from_tokyo_dsm(rectangle_vertices, las_dir="data/tokyo_las", output_dir='output', geotiff_name='ndsm.tif',
-                                    resolution=0.5, crop_pad_m=2.0, use_polygon_mask=False):
+                                    resolution=0.5, crop_pad_m=2.0, use_polygon_mask=False,
+                                    with_evidence=True):
     """
     Full pipeline: tiles -> LAS -> DSM/DTM -> merge (to target CRS) -> nDSM -> CRS-aware crop.
     Returns path to cropped nDSM GeoTIFF.
+
+    *with_evidence* (default on) produces the six-band raster the runtime
+    classifier reads. ``with_evidence=False`` restores the single-band writer
+    verbatim, for comparison runs against the raster currently in production.
     """
     # base_url = "https://gic-tokyo.s3.ap-northeast-1.amazonaws.com/2024/dig/Vectortile/23ku/lp/{z}/{x}/{y}.pbf"
 
@@ -759,12 +1452,16 @@ def get_ndsm_geotiff_from_tokyo_dsm(rectangle_vertices, las_dir="data/tokyo_las"
     os.makedirs(output_dir, exist_ok=True)
     dsm_dir         = f"{output_dir}/dsm_geotiffs"
     dtm_dir         = f"{output_dir}/dtm_geotiffs"
+    ev_dir          = f"{output_dir}/evidence_geotiffs"
     merged_dsm_file = f"{output_dir}/merged_dsm.tif"
     merged_dtm_file = f"{output_dir}/merged_dtm.tif"
+    merged_ev_file  = f"{output_dir}/merged_evidence.tif"
     merged_ndsm     = f"{output_dir}/merged_ndsm.tif"
     final_ndsm      = f"{output_dir}/{geotiff_name}"
     os.makedirs(dsm_dir, exist_ok=True)
     os.makedirs(dtm_dir, exist_ok=True)
+    if with_evidence:
+        os.makedirs(ev_dir, exist_ok=True)
 
     # # Step 1: Tiles
     # print("Step 1: Downloading LAS data tiles...")
@@ -790,7 +1487,15 @@ def get_ndsm_geotiff_from_tokyo_dsm(rectangle_vertices, las_dir="data/tokyo_las"
 
     # Step 4: LAS→DSM/DTM (write with target_crs)
     print("\nStep 4: Processing LAS files to create DSM and DTM GeoTIFFs...")
-    dsm_list, dtm_list = process_las_files(las_files, dsm_dir, dtm_dir, resolution, target_crs)
+    if with_evidence:
+        dsm_list, dtm_list, ev_list = process_las_files(
+            las_files, dsm_dir, dtm_dir, resolution, target_crs,
+            evidence_output_dir=ev_dir,
+        )
+        require_complete_evidence(dsm_list, ev_list)
+    else:
+        dsm_list, dtm_list = process_las_files(las_files, dsm_dir, dtm_dir, resolution, target_crs)
+        ev_list = []
 
     # Step 5 & 6: Merge (reproject to target_crs)
     print("\nStep 5: Merging DSM GeoTIFFs...")
@@ -799,10 +1504,16 @@ def get_ndsm_geotiff_from_tokyo_dsm(rectangle_vertices, las_dir="data/tokyo_las"
     print("\nStep 6: Merging DTM GeoTIFFs...")
     merged_dtm_path = merge_geotiffs(dtm_list, merged_dtm_file, target_crs) if dtm_list else None
 
+    merged_ev_path = None
+    if ev_list:
+        print("\nStep 6b: Merging evidence GeoTIFFs...")
+        merged_ev_path = merge_geotiffs(ev_list, merged_ev_file, target_crs)
+
     # Step 7: nDSM
     print("\nStep 7: Creating normalized Digital Surface Model (nDSM)...")
     if merged_dsm_path and merged_dtm_path:
-        build_ndsm(merged_dsm_path, merged_dtm_path, merged_ndsm)
+        build_ndsm(merged_dsm_path, merged_dtm_path, merged_ndsm,
+                   evidence_path=merged_ev_path)
     else:
         raise RuntimeError("Both DSM and DTM are required to create nDSM")
 

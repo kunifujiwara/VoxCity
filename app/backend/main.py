@@ -97,6 +97,7 @@ from .session_io import (
 from .share import create_share, share_zip_path
 from .surface_zone_edges import build_surface_zone_edge_payloads
 from .surface_zones import stats_for_surface_zone, _surface_meta_from_cached_mesh, attach_surface_face_meta
+from .ndsm_pipeline import is_lod2_model, refine_canopy_with_ndsm
 from .zoning import (
     building_ids_in_zone,
     grid_xy_to_lonlat,
@@ -221,24 +222,6 @@ def _is_japan(rectangle_vertices: List[List[float]]) -> bool:
     return 122.0 <= center_lon <= 154.0 and 24.0 <= center_lat <= 46.5
 
 
-def _is_lod2_model(voxcity_obj) -> bool:
-    """True if this model's voxels came from LOD2 mesh voxelization.
-
-    Such a grid holds true roof/wall geometry and cannot be reconstructed from
-    the 2.5-D component grids (heights/min-heights/ids), so any
-    ``regenerate_voxels()`` call would silently replace it with extruded
-    footprints — i.e. downgrade it to LOD1. Callers that would regenerate must
-    check this first.
-    """
-    extras = getattr(voxcity_obj, "extras", None)
-    if not isinstance(extras, dict):
-        return False
-    try:
-        return int(extras.get("building_lod") or 1) >= 2
-    except (TypeError, ValueError):
-        return False
-
-
 def _load_citygml_cache(rectangle_vertices):
     """Load cached CityGML buildings from GeoParquet/FlatGeobuf."""
     try:
@@ -303,356 +286,6 @@ def _load_citygml_cache(rectangle_vertices):
         return (gdf, t_gdf)
     except Exception:
         return None
-
-
-# ---------------------------------------------------------------------------
-# nDSM canopy refinement helpers (pure numpy, no external dependencies)
-# ---------------------------------------------------------------------------
-
-def _load_ndsm_grid(rectangle_vertices, meshsize: float):
-    """Load nDSM values for the VoxCity grid from the cached COG GeoTIFF.
-
-    Values are sampled at the actual VoxCity grid cell centers, so rotated
-    target rectangles stay aligned with the model grid. Returns the nDSM 2-D
-    numpy array, or None if the file is unavailable.
-    """
-    if not os.path.exists(NDSM_COG_PATH):
-        return None
-    import rasterio
-    from pyproj import Transformer
-    from voxcity.geoprocessor.raster.core import compute_cell_center_coords
-
-    cell_centers = compute_cell_center_coords(rectangle_vertices, meshsize)
-    if cell_centers is None:
-        raise ValueError("Unable to compute grid cell centers for nDSM sampling")
-
-    center_lons = cell_centers["lons"]
-    center_lats = cell_centers["lats"]
-    target_shape = cell_centers["grid_size"]
-
-    with rasterio.open(NDSM_COG_PATH) as src:
-        if src.crs is None:
-            raise ValueError("nDSM COG has no CRS")
-        if src.crs.to_epsg() != 4326:
-            to_src = Transformer.from_crs("EPSG:4326", src.crs, always_xy=True)
-            sample_x, sample_y = to_src.transform(center_lons.ravel(), center_lats.ravel())
-        else:
-            sample_x, sample_y = center_lons.ravel(), center_lats.ravel()
-
-        samples = np.ma.array([
-            value[0] for value in src.sample(zip(sample_x, sample_y), masked=True)
-        ], dtype=float)
-        arr = np.ma.filled(samples, np.nan).reshape(target_shape)
-        if src.nodata is not None:
-            arr = np.where(arr == float(src.nodata), np.nan, arr)
-        return arr
-
-
-def _align_ndsm_to_grid(ndsm_grid: np.ndarray, target_shape: tuple) -> np.ndarray:
-    """Nearest-neighbor resize nDSM to match target grid shape."""
-    if ndsm_grid.shape == target_shape:
-        return ndsm_grid
-    H, W = ndsm_grid.shape
-    Hn, Wn = target_shape
-    r_idx = np.clip(np.round(np.linspace(0, H - 1, Hn)).astype(int), 0, H - 1)
-    c_idx = np.clip(np.round(np.linspace(0, W - 1, Wn)).astype(int), 0, W - 1)
-    return ndsm_grid[np.ix_(r_idx, c_idx)]
-
-
-def _build_canopy_from_ndsm(
-    ndsm_grid: np.ndarray,
-    land_cover_grid: np.ndarray,
-    tree_id: int,
-) -> np.ndarray:
-    """Extract canopy heights at tree cells; NaN elsewhere. Clamp negatives to 0."""
-    canopy = np.full(ndsm_grid.shape, np.nan, dtype=float)
-    tree_mask = land_cover_grid == tree_id
-    ndsm = np.where(np.isnan(ndsm_grid), np.nan, np.maximum(ndsm_grid.astype(float), 0.0))
-    valid = tree_mask & ~np.isnan(ndsm)
-    canopy[valid] = ndsm[valid]
-    return canopy
-
-
-def _max_filter_2d(values: np.ndarray, radius: int = 1) -> np.ndarray:
-    H, W = values.shape
-    pad = int(radius)
-    padded = np.pad(values, pad, mode="constant", constant_values=0.0)
-    filtered = np.zeros((H, W), dtype=float)
-    width = 2 * pad + 1
-    for dr in range(width):
-        for dc in range(width):
-            np.maximum(filtered, padded[dr:dr + H, dc:dc + W], out=filtered)
-    return filtered
-
-
-def _count_filter_2d(mask: np.ndarray, radius: int = 1) -> np.ndarray:
-    H, W = mask.shape
-    pad = int(radius)
-    padded = np.pad(mask.astype(int), pad, mode="constant", constant_values=0)
-    counts = np.zeros((H, W), dtype=int)
-    width = 2 * pad + 1
-    for dr in range(width):
-        for dc in range(width):
-            counts += padded[dr:dr + H, dc:dc + W]
-    return counts
-
-
-def _local_tree_median(canopy: np.ndarray, valid_tree_mask: np.ndarray, radius: int = 1) -> np.ndarray:
-    H, W = canopy.shape
-    med = np.full((H, W), np.nan, dtype=float)
-    for r in range(H):
-        r0 = max(0, r - radius)
-        r1 = min(H, r + radius + 1)
-        for c in range(W):
-            if not valid_tree_mask[r, c]:
-                continue
-            c0 = max(0, c - radius)
-            c1 = min(W, c + radius + 1)
-            local = canopy[r0:r1, c0:c1]
-            local_mask = valid_tree_mask[r0:r1, c0:c1]
-            local_values = local[local_mask]
-            if local_values.size:
-                med[r, c] = float(np.median(local_values))
-    return med
-
-
-def _sanitize_ndsm_canopy(
-    canopy: np.ndarray,
-    building_heights: np.ndarray,
-    tree_mask: np.ndarray,
-    replacement_m: float = 10.0,
-    min_tree_height_m: float = 2.0,
-    max_tree_height_m: float = 35.0,
-    building_leakage_tolerance_m: float = 5.0,
-    local_outlier_margin_m: float = 12.0,
-    min_local_tree_cells: int = 4,
-    high_isolated_tree_m: float = 20.0,
-) -> np.ndarray:
-    """Apply nDSM canopy quality checks before voxel regeneration."""
-    can = canopy.astype(float, copy=True)
-    valid_tree = tree_mask & np.isfinite(can)
-
-    too_low = valid_tree & (can < float(min_tree_height_m))
-    if np.any(too_low):
-        can[too_low] = float(replacement_m)
-
-    too_high = valid_tree & (can > float(max_tree_height_m))
-    if np.any(too_high):
-        can[too_high] = float(max_tree_height_m)
-
-    valid_tree = tree_mask & np.isfinite(can)
-    nearby_bld_h = _max_filter_2d(np.asarray(building_heights, dtype=float), radius=1)
-    building_leakage = (
-        valid_tree
-        & (nearby_bld_h > 0)
-        & (np.abs(can - nearby_bld_h) <= float(building_leakage_tolerance_m))
-    )
-
-    local_counts = _count_filter_2d(valid_tree, radius=1)
-    local_median = _local_tree_median(can, valid_tree, radius=1)
-    local_outlier = (
-        valid_tree
-        & (local_counts >= int(min_local_tree_cells))
-        & np.isfinite(local_median)
-        & (can > local_median + float(local_outlier_margin_m))
-    )
-
-    isolated_high_near_building = (
-        valid_tree
-        & (nearby_bld_h > 0)
-        & (local_counts <= 2)
-        & (can >= float(high_isolated_tree_m))
-    )
-
-    suspicious = building_leakage | local_outlier | isolated_high_near_building
-    n_replaced = int(np.count_nonzero(suspicious))
-    if n_replaced:
-        can[suspicious] = float(replacement_m)
-        print(f"[nDSM] Replaced {n_replaced} suspicious tree-height cells")
-    return can
-
-
-def _fix_building_leakage(
-    canopy: np.ndarray,
-    building_heights: np.ndarray,
-    tree_mask: np.ndarray,
-    tolerance_m: float = 5.0,
-    replacement_m: float = 10.0,
-) -> np.ndarray:
-    """Fix nDSM leakage where tree cells pick up neighboring building roof heights.
-
-    For each tree cell adjacent to a building, compare its canopy value against
-    the maximum building height in a 3×3 neighborhood.  If they match within
-    *tolerance_m*, the nDSM value is assumed to be building-roof leakage and is
-    replaced with *replacement_m* (static tree height).
-    """
-    can = canopy.astype(float, copy=True)
-    nearby_bld_h = _max_filter_2d(np.asarray(building_heights, dtype=float), radius=1)
-    suspect = (
-        tree_mask
-        & np.isfinite(can)
-        & (nearby_bld_h > 0)
-        & (np.abs(can - nearby_bld_h) <= tolerance_m)
-    )
-    n_fixed = int(np.count_nonzero(suspect))
-    if n_fixed:
-        can[suspect] = replacement_m
-        print(f"[nDSM] Fixed {n_fixed} tree cells with building-height leakage")
-    return can
-
-
-def _resolve_tree_id(name_to_id: dict):
-    """Land-cover index of the tree class, or ``None`` when the source has none.
-
-    Explicitly ``is not None``, and no numeric fallback. The chain this
-    replaces —
-    ``name_to_id.get("Tree") or name_to_id.get("Trees") or ... or 4`` —
-    treated index **0** as missing. ESA WorldCover has ``Trees`` at index 0, so
-    that source fell through the whole chain to the hard-coded ``4``, which in
-    ESA WorldCover is ``Built-up``: nDSM canopy heights were written onto the
-    building cells while every real tree cell was left bare. (Every other
-    source escaped only by accident — Urbanwatch 3, OpenEarthMapJapan 4,
-    ESRI 10m 2, Dynamic World V1 1, Standard/OSM 5.)
-
-    Guessing an index that belongs to some other source's class list is worse
-    than doing nothing, so a source with no tree class returns ``None`` and the
-    caller skips refinement.
-    """
-    for label in ("Tree", "Trees", "Tree Canopy"):
-        tree_id = name_to_id.get(label)
-        if tree_id is not None:
-            return tree_id
-    return None
-
-
-def _refine_canopy_with_ndsm(
-    voxcity_obj,
-    rectangle_vertices,
-    meshsize: float,
-    land_cover_source: str,
-    static_tree_height: float = 10.0,
-) -> bool:
-    """Refine canopy heights using the cached nDSM COG, in place.
-
-    The refined canopy is pushed into the voxel grid two different ways: LOD1
-    grids are regenerated from the revised component grids, LOD2 grids get a
-    canopy-only overlay that preserves their mesh geometry. Returns False when
-    refinement could not be applied (the caller logs it; it is never fatal).
-    """
-    land_cover_grid = voxcity_obj.land_cover.classes
-    lc_classes = get_land_cover_classes(land_cover_source)
-    name_to_id = {name: i for i, name in enumerate(lc_classes.values())}
-    tree_id = _resolve_tree_id(name_to_id)
-    if tree_id is None:
-        # Checked before anything is loaded or mutated: there is no honest
-        # canopy to build without a tree class, and inventing an index would
-        # write crowns onto whatever class happened to sit there.
-        print(
-            f"[nDSM] Land cover source {land_cover_source!r} has no tree class "
-            "— skipping canopy refinement"
-        )
-        return False
-
-    ndsm_grid = _load_ndsm_grid(rectangle_vertices, meshsize)
-    if ndsm_grid is None:
-        print("[nDSM] No nDSM COG cache found — skipping canopy refinement")
-        return False
-
-    # An LOD2 grid is mesh-voxelized: it holds true roof/wall geometry that the
-    # 2.5-D component grids cannot describe, so regenerate_voxels() — which
-    # rebuilds from those grids — would replace it with extruded footprints
-    # (measured on Chuo-ku: roof slope 0.1512 -> 0.0965, building voxels
-    # 26,088 -> 21,623). voxcitygml.reapply_canopy overlays the canopy onto the
-    # existing grid instead, clearing and rewriting only canopy voxels.
-    #
-    # Resolved up front, before anything is mutated: an older voxcitygml has no
-    # such entrypoint, and bailing out after the component grids were rewritten
-    # would leave them describing crowns the voxel grid does not contain.
-    is_lod2 = _is_lod2_model(voxcity_obj)
-    reapply_canopy = None
-    if is_lod2:
-        try:
-            from voxcitygml import reapply_canopy
-        except ImportError as exc:
-            # Deliberately no regenerate_voxels() fallback: that rebuild is
-            # precisely what the missing entrypoint exists to avoid. Refinement
-            # is optional, so degrade to a no-op and let the caller report it.
-            print(
-                "[nDSM] Skipping canopy refinement: this voxcitygml has no "
-                "reapply_canopy(), and rebuilding the voxel grid would flatten "
-                f"the LOD2 roof/wall geometry into extruded footprints ({exc}). "
-                "Upgrade voxcitygml to use nDSM canopy in LOD2 mode."
-            )
-            return False
-
-    # Align to land cover grid shape
-    ndsm_aligned = _align_ndsm_to_grid(ndsm_grid, land_cover_grid.shape)
-    print(f"[nDSM] Grid loaded: nDSM {ndsm_grid.shape} → aligned {ndsm_aligned.shape}")
-
-    # Build canopy from nDSM (tree cells only)
-    canopy = _build_canopy_from_ndsm(ndsm_aligned, land_cover_grid, tree_id)
-
-    # Fill missing tree cells with static height
-    tree_mask = land_cover_grid == tree_id
-    missing = tree_mask & np.isnan(canopy)
-    if np.any(missing):
-        canopy[missing] = float(static_tree_height)
-
-    # Fix suspicious nDSM values: roof leakage, spikes, and implausible heights.
-    canopy = _sanitize_ndsm_canopy(
-        canopy,
-        building_heights=voxcity_obj.buildings.heights,
-        tree_mask=tree_mask,
-        replacement_m=float(static_tree_height),
-    )
-
-    # NaN → 0
-    canopy = np.nan_to_num(canopy, nan=0.0)
-
-    # Compute canopy bottom from trunk height ratio
-    trunk_ratio = 11.76 / 19.98
-    canopy_bottom = np.minimum(canopy * trunk_ratio, canopy)
-
-    # Branch on the binding, not on is_lod2: the two are equivalent only
-    # because the probe above returns early when the import fails, and a future
-    # non-returning path there would turn this into a call on None.
-    if reapply_canopy is not None:
-        # LOD2: overlay the canopy onto the existing grid. reapply_canopy owns
-        # the whole update — it writes canopy_top/canopy_bottom into
-        # tree_canopy itself, in place where the existing array can take them
-        # (which keeps any extras alias current for free) and re-pointing the
-        # alias explicitly when it has to rebind. So this path deliberately
-        # mutates *nothing* beforehand. It raises ValueError on a missing
-        # extras['voxel_min_z'], on a canopy_bottom that does not match
-        # canopy_top, or on a mesh_vegetation_mask that does not match the
-        # voxel grid; the caller's handler is non-fatal, so pre-writing the
-        # component grids would leave them describing crowns the voxel grid
-        # never received, with only a server log to say so.
-        #
-        # Pass the already-derived bottom rather than the trunk ratio.
-        # voxcitygml's default ratio happens to equal ours today, so both would
-        # produce the same array — passing the bottom keeps that a coincidence
-        # this code does not depend on.
-        #
-        # Handed over at component-grid resolution, deliberately not resampled
-        # to the voxel grid's shape: reapply_canopy resamples a mismatched
-        # canopy itself (as it already does for the DEM) but *stores* what the
-        # caller passed, so a voxel-resolution array would leave tree_canopy.top
-        # out of step with land_cover, dem and buildings and break a later
-        # update_voxcity. Resampling is the package's job, not a fallback.
-        reapply_canopy(voxcity_obj, canopy, canopy_bottom=canopy_bottom)
-    else:
-        # LOD1: the voxels *are* extruded footprints, so revise the 2.5-D
-        # component grids and rebuild the grid from them.
-        voxcity_obj.tree_canopy.top[:] = canopy
-        if voxcity_obj.tree_canopy.bottom is not None:
-            voxcity_obj.tree_canopy.bottom[:] = canopy_bottom
-        else:
-            voxcity_obj.tree_canopy.bottom = canopy_bottom
-        regenerate_voxels(voxcity_obj, land_cover_source=land_cover_source, inplace=True)
-
-    print(f"[nDSM] Canopy refinement applied — tree cells: {int(np.count_nonzero(canopy > 0))}")
-    return True
 
 
 def _clear_sim_caches() -> None:
@@ -1100,8 +733,9 @@ def _voxcitygml_reapply_state() -> Tuple[bool, str]:
     nDSM canopy refinement, so it must not take an otherwise working mode down
     with it.
 
-    This is for *reporting* — ``_refine_canopy_with_ndsm`` imports the function
-    itself and that import, not this probe, is what decides at run time.
+    This is for *reporting* — ``ndsm_pipeline.refine_canopy_with_ndsm`` imports
+    the function itself and that import, not this probe, is what decides at run
+    time.
 
     Cached like its sibling because /api/health is polled by the UI. Call
     ``.cache_clear()`` when the environment changes underneath the process.
@@ -1549,15 +1183,16 @@ async def generate_model(req: GenerateRequest):
         }
         if all(_ndsm_conditions.values()):
             try:
-                applied = _refine_canopy_with_ndsm(
+                applied = refine_canopy_with_ndsm(
                     voxcity_result,
                     rectangle_vertices,
                     meshsize=req.meshsize,
                     land_cover_source=effective_lc,
+                    cog_path=NDSM_COG_PATH,
                     static_tree_height=req.static_tree_height,
                 )
                 if not applied:
-                    print("[nDSM] _refine_canopy_with_ndsm returned False (see above for reason)")
+                    print("[nDSM] refine_canopy_with_ndsm returned False (see above for reason)")
             except Exception as ndsm_err:
                 # "Failed" and "skipped" have different remedies, and the
                 # message alone cannot tell them apart — a TypeError from
@@ -3606,7 +3241,7 @@ async def apply_edits(payload: dict):
         # regenerate_voxels(), which rebuilds the voxel grid from the 2.5-D
         # component grids and would silently flatten LOD2 roof/wall geometry
         # into extruded boxes. Fail loudly instead of degrading the model.
-        if _is_lod2_model(vc):
+        if is_lod2_model(vc):
             raise HTTPException(
                 status_code=400,
                 detail="Editing is not supported for PLATEAU LOD2 models yet: "

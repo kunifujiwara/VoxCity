@@ -6,8 +6,24 @@ Precompute LAS-derived rasters for fast reuse:
  - Optional crop to AOI
 
 Usage examples:
-  python app/precompute_las_cache.py --las-dir app/data/tokyo_las \
-      --output-dir app/data/temp --aoi 139.70 35.63 139.78 35.69 --resolution 0.5 --cog
+  # Run as a module from the repository root. `python app/preprocessing/
+  # precompute_las_cache.py` cannot work: this file imports `.tokyo_las`
+  # relatively, which requires the package context that -m supplies.
+  python -m app.preprocessing.precompute_las_cache --las-dir app/data/tokyo_las \
+      --output-dir app/data/temp --aoi 139.70 35.63 139.78 35.69 \
+      --resolution 0.5 --cog
+
+  # Single ward, single-band raster for a like-for-like comparison run:
+  python -m app.preprocessing.precompute_las_cache --las-dir app/data/tokyo_las \
+      --output-dir app/data/temp_v1 --aoi 139.75 35.67 139.762 35.68 --no-evidence
+
+  # Whole city, all 5,669 survey sheets. --output-dir MUST be on a volume with
+  # ~210 GB free. Measured budget for the no-AOI run at 0.5 m: the six products
+  # coexist at 206 GB of compressed intermediates at the COG stage (the tiles
+  # 41 GB, the three merged rasters 57 GB, merged_ndsm/ndsm/ndsm_cog 109 GB).
+  # Peak RAM is ~3 GB: the merge streams (see tokyo_las.merge_geotiffs).
+  python -m app.preprocessing.precompute_las_cache --las-dir D:/03_Data/tokyo_las \
+      --output-dir D:/03_Data/ndsm_rebuild --resolution 0.5 --cog --no-write-parquet
 """
 
 import os
@@ -31,6 +47,8 @@ from .tokyo_las import (
     merge_geotiffs_batched,
     build_ndsm,
     crop_geotiff_by_vertices_exact,
+    require_complete_evidence,
+    copy_raster_file,
 )
 
 app = typer.Typer(add_completion=False, help="Precompute LAS-derived caches (DSM/DTM/nDSM)")
@@ -160,6 +178,14 @@ def main(
     parquet_include_nodata: bool = typer.Option(False, help="Include nodata pixels in full Parquet export"),
     merge_batch_size: int = typer.Option(300, help="Batch size for merging GeoTIFFs to limit memory (<= number of tiles)"),
     merge_tmp_dir: Optional[Path] = typer.Option(None, help="Temporary directory for intermediate merges"),
+    evidence: bool = typer.Option(
+        True,
+        help=(
+            "Write the 6-band evidence nDSM (height + n_all, n_multi, n_nonground, "
+            "sum_z, sum_z2) that the runtime classifier reads. --no-evidence "
+            "reproduces the single-band raster for comparison runs."
+        ),
+    ),
 ):
     _ensure_dir(output_dir)
 
@@ -184,11 +210,15 @@ def main(
     # Layout
     dsm_dir         = output_dir / "dsm_geotiffs"
     dtm_dir         = output_dir / "dtm_geotiffs"
+    ev_dir          = output_dir / "evidence_geotiffs"
     merged_dsm_file = output_dir / "merged_dsm.tif"
     merged_dtm_file = output_dir / "merged_dtm.tif"
+    merged_ev_file  = output_dir / "merged_evidence.tif"
     merged_ndsm     = output_dir / "merged_ndsm.tif"
     final_ndsm      = output_dir / "ndsm.tif"
     _ensure_dir(dsm_dir); _ensure_dir(dtm_dir)
+    if evidence:
+        _ensure_dir(ev_dir)
 
     # Gather LAS files and optionally filter by AOI
     las_files = find_las_files(str(las_dir))
@@ -201,23 +231,47 @@ def main(
             typer.echo("No LAS files intersect AOI")
             raise typer.Exit(code=1)
 
-    # Per-file DSM/DTM
-    dsm_list, dtm_list = process_las_files(las_files, str(dsm_dir), str(dtm_dir), resolution, target_crs)
+    # Per-file DSM/DTM (+ per-file evidence bands)
+    if evidence:
+        dsm_list, dtm_list, ev_list = process_las_files(
+            las_files, str(dsm_dir), str(dtm_dir), resolution, target_crs,
+            evidence_output_dir=str(ev_dir),
+        )
+        try:
+            require_complete_evidence(dsm_list, ev_list)
+        except RuntimeError as exc:
+            typer.echo(f"{exc} Rerun with --no-evidence to build deliberately.",
+                       err=True)
+            raise typer.Exit(code=1)
+    else:
+        dsm_list, dtm_list = process_las_files(las_files, str(dsm_dir), str(dtm_dir), resolution, target_crs)
+        ev_list = []
 
     # Merge
     # Use batched merge to handle thousands of tiles
+    tmp = str(merge_tmp_dir) if merge_tmp_dir else None
     merged_dsm_path = merge_geotiffs_batched(
-        dsm_list, str(merged_dsm_file), target_crs, batch_size=merge_batch_size, tmp_dir=str(merge_tmp_dir) if merge_tmp_dir else None
+        dsm_list, str(merged_dsm_file), target_crs, batch_size=merge_batch_size, tmp_dir=tmp
     ) if dsm_list else None
     merged_dtm_path = merge_geotiffs_batched(
-        dtm_list, str(merged_dtm_file), target_crs, batch_size=merge_batch_size, tmp_dir=str(merge_tmp_dir) if merge_tmp_dir else None
+        dtm_list, str(merged_dtm_file), target_crs, batch_size=merge_batch_size, tmp_dir=tmp
     ) if dtm_list else None
+    merged_ev_path = merge_geotiffs_batched(
+        ev_list, str(merged_ev_file), target_crs, batch_size=merge_batch_size, tmp_dir=tmp
+    ) if ev_list else None
     if not (merged_dsm_path and merged_dtm_path):
         typer.echo("Missing merged DSM/DTM; cannot create nDSM")
         raise typer.Exit(code=1)
+    if evidence and not merged_ev_path:
+        # Silently falling back to a single-band raster would produce a COG the
+        # runtime reads in degraded mode -- the exact failure this rebuild exists
+        # to end -- while every log line still says "nDSM ready".
+        typer.echo("Evidence bands were requested but no evidence raster was merged")
+        raise typer.Exit(code=1)
 
     # nDSM
-    build_ndsm(str(merged_dsm_file), str(merged_dtm_file), str(merged_ndsm))
+    build_ndsm(str(merged_dsm_file), str(merged_dtm_file), str(merged_ndsm),
+               evidence_path=merged_ev_path)
 
     # Optional crop to AOI
     if rectangle_vertices:
@@ -225,12 +279,13 @@ def main(
             str(merged_ndsm), str(final_ndsm), rectangle_vertices, pad_m=crop_pad_m, use_mask=use_mask
         )
     else:
-        # Save uncropped as final
-        with rasterio.open(str(merged_ndsm)) as src:
-            profile = src.profile.copy()
-            data = src.read()
-        with rasterio.open(str(final_ndsm), 'w', **profile) as dst:
-            dst.write(data)
+        # Save uncropped as final.
+        #
+        # A byte copy, not a decode-and-rewrite. The whole-city nDSM is
+        # 65,900 x 64,464 x 6 bands of float32 = 102 GB, and reading it into an
+        # array on a 63.7 GB machine cannot succeed -- to produce a file that is
+        # already, byte for byte, the one on disk.
+        copy_raster_file(str(merged_ndsm), str(final_ndsm))
 
     # Optional COG conversion of final nDSM
     if cog:
