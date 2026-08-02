@@ -11,6 +11,7 @@ import importlib
 _SUBMODULES = {
     "draw", "utils", "network", "mesh", "raster", "conversion", "io",
     "heights", "selection", "overlap", "merge_utils", "surface_meta",
+    "geojson",
 }
 
 # Convenience re-exports: attribute name -> defining submodule
@@ -28,6 +29,10 @@ _ATTR_TO_MODULE = {
     "get_buildings_in_drawn_polygon": ".selection",
     "process_building_footprints_by_overlap": ".overlap",
     "merge_gdfs_with_id_conflict_resolution": ".merge_utils",
+    "build_building_geojson": ".geojson",
+    "build_canopy_geojson": ".geojson",
+    "build_lc_geojson": ".geojson",
+    "get_lc_source_colors": ".geojson",
     "attach_surface_face_meta": ".surface_meta",
     "compute_face_areas": ".surface_meta",
     "surface_zone_mask": ".surface_meta",
