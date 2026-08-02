@@ -613,7 +613,7 @@ class TestInputs:
         reorders that source the fixture stops modelling it, and the regression
         test would be asserting about nothing while staying green.
         """
-        from voxcity.utils.lc import get_land_cover_classes
+        from voxcity.utils import get_land_cover_classes
 
         names = list(get_land_cover_classes("ESA WorldCover").values())
         assert names.index("Trees") == 0

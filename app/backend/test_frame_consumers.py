@@ -51,9 +51,9 @@ from fastapi.testclient import TestClient
 
 from backend.main import app, import_obj_store
 from backend.state import app_state
-from voxcity.geoprocessor.draw._common import compute_grid_geometry
+from voxcity.geoprocessor.raster import compute_grid_geometry
 from voxcity.utils.orientation import check_axes
-from voxcity.utils.projector import GridProjector
+from voxcity.utils import GridProjector
 
 pytest.importorskip("voxcitygml", reason="the seam under test lives in voxcitygml")
 
@@ -485,8 +485,8 @@ def _direct_irradiance(city, azimuth_deg):
     the same ``compute_sun_direction`` call, so nothing frame-related is
     skipped by going straight in.
     """
-    from voxcity.simulator_gpu.solar.integration.caching import clear_all_caches
-    from voxcity.simulator_gpu.solar.integration.ground import (
+    from voxcity.simulator_gpu.solar import (
+        clear_all_caches,
         get_direct_solar_irradiance_map,
     )
 

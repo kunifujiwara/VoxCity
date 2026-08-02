@@ -489,7 +489,7 @@ def load_ndsm_evidence(
     import rasterio
     from rasterio.windows import Window, from_bounds, intersect, intersection
     from pyproj import Transformer
-    from voxcity.geoprocessor.raster.core import compute_grid_geometry
+    from voxcity.geoprocessor.raster import compute_grid_geometry
 
     if not cog_path or not os.path.exists(cog_path):
         return None

@@ -28,12 +28,12 @@ def client(monkeypatch, tmp_path):
     monkeypatch.setattr(voxcity_io, "load_voxcity", fake_load, raising=False)
 
     monkeypatch.setattr(
-        "voxcity.simulator_gpu.visibility.integration.clear_visibility_cache",
+        "voxcity.simulator_gpu.visibility.clear_visibility_cache",
         lambda: None,
         raising=False,
     )
     monkeypatch.setattr(
-        "voxcity.simulator_gpu.solar.integration.caching.clear_all_caches",
+        "voxcity.simulator_gpu.solar.clear_all_caches",
         lambda: None,
         raising=False,
     )

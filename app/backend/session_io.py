@@ -400,12 +400,12 @@ def _parse_sim_results(sim_dir: Path) -> Optional[Dict[str, Any]]:
 def apply_session_to_state(parsed: ParsedSession, state) -> Dict[str, Any]:
     """Replace *state* atomically and return a summary for the frontend."""
     try:
-        from voxcity.simulator_gpu.visibility.integration import clear_visibility_cache
+        from voxcity.simulator_gpu.visibility import clear_visibility_cache
         clear_visibility_cache()
     except Exception:
         pass
     try:
-        from voxcity.simulator_gpu.solar.integration.caching import (
+        from voxcity.simulator_gpu.solar import (
             clear_all_caches as clear_all_solar_caches,
         )
         clear_all_solar_caches()

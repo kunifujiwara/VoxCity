@@ -238,12 +238,12 @@ def test_apply_session_restores_state_atomically(tmp_path: Path, monkeypatch) ->
         cleared["solar"] = True
 
     monkeypatch.setattr(
-        "voxcity.simulator_gpu.visibility.integration.clear_visibility_cache",
+        "voxcity.simulator_gpu.visibility.clear_visibility_cache",
         fake_clear_visibility,
         raising=False,
     )
     monkeypatch.setattr(
-        "voxcity.simulator_gpu.solar.integration.caching.clear_all_caches",
+        "voxcity.simulator_gpu.solar.clear_all_caches",
         fake_clear_solar,
         raising=False,
     )

@@ -7,7 +7,7 @@ import numpy as np
 from matplotlib.path import Path as MplPath
 
 from .models import ZoneStat
-from voxcity.utils.projector import GridProjector
+from voxcity.utils import GridProjector
 
 
 def polygon_lonlat_to_cells(

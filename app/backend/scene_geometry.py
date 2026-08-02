@@ -24,7 +24,7 @@ import numpy as np
 from matplotlib import colormaps as mcm
 import matplotlib.colors as mcolors
 
-from voxcity.visualizer.palette import get_voxel_color_map
+from voxcity.visualizer import get_voxel_color_map
 
 from .models import MeshChunk, OverlayGeometryResponse, SceneGeometryResponse, SurfaceFaceMeta
 

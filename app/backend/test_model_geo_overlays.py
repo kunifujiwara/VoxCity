@@ -25,8 +25,9 @@ from fastapi.testclient import TestClient
 from backend.main import app
 from backend.state import app_state
 from tests.importer.conftest import make_flat_voxcity
-from voxcity.geoprocessor.draw._common import build_canopy_geojson, compute_grid_geometry
-from voxcity.utils.lc import get_land_cover_classes
+from voxcity.geoprocessor.geojson import build_canopy_geojson
+from voxcity.geoprocessor.raster import compute_grid_geometry
+from voxcity.utils import get_land_cover_classes
 
 NX = NY = 20
 MESHSIZE = 1.0

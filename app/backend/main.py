@@ -111,8 +111,13 @@ from .zoning import (
 # ---------------------------------------------------------------------------
 # VoxCity imports (validated against current package)
 # ---------------------------------------------------------------------------
-from voxcity.generator import get_voxcity, get_voxcity_CityGML, Voxelizer, auto_select_data_sources
-from voxcity.generator.update import regenerate_voxels
+from voxcity.generator import (
+    Voxelizer,
+    auto_select_data_sources,
+    get_voxcity,
+    get_voxcity_CityGML,
+    regenerate_voxels,
+)
 from voxcity.models import (
     BuildingGrid,
     CanopyGrid,
@@ -144,11 +149,10 @@ except ImportError:
     get_view_index = None  # type: ignore[assignment]
     mark_building_by_id = None  # type: ignore[assignment]
 
-from voxcity.exporter.cityles import export_cityles
-from voxcity.exporter.obj import export_obj
+from voxcity.exporter import export_cityles, export_obj
 from voxcity.geoprocessor.mesh import create_voxel_mesh, BUILDING_SURFACE_CLASSES
 from voxcity.visualizer import visualize_voxcity_plotly
-from voxcity.utils.lc import get_land_cover_classes
+from voxcity.utils import get_land_cover_classes
 
 # Ensure Taichi is initialized early (before any simulation calls).
 # This must happen at module-import time so that reloaded worker
@@ -164,7 +168,7 @@ except ImportError:
 
 # Attempt to initialize Google Earth Engine for background users.
 try:
-    from voxcity.downloader.gee import initialize_earth_engine
+    from voxcity.downloader import initialize_earth_engine
 
     _gee_project = os.environ.get("GEE_PROJECT") or os.environ.get("GOOGLE_CLOUD_PROJECT")
     if _gee_project:
@@ -567,8 +571,8 @@ def _build_sim_overlay_traces(
 def _reset_taichi_and_caches():
     """Reset all Taichi fields and GPU caches so a new model can be simulated."""
     import taichi as ti
-    from voxcity.simulator_gpu.visibility.integration import clear_visibility_cache
-    from voxcity.simulator_gpu.solar.integration.caching import clear_all_caches as clear_all_solar_caches
+    from voxcity.simulator_gpu.visibility import clear_visibility_cache
+    from voxcity.simulator_gpu.solar import clear_all_caches as clear_all_solar_caches
 
     # Clear domain / radiation model caches (does not touch ti runtime)
     clear_visibility_cache()
@@ -1962,7 +1966,7 @@ async def export_obj_endpoint(req: ExportObjRequest):
 
         if req.export_netcdf:
             try:
-                from voxcity.exporter.netcdf import save_voxel_netcdf
+                from voxcity.exporter import save_voxel_netcdf
 
                 nc_dir = os.path.join(BASE_OUTPUT_DIR, "netcdf")
                 os.makedirs(nc_dir, exist_ok=True)
@@ -2313,8 +2317,8 @@ def _require_model() -> None:
 
 def _anchor_lonlat_to_cell(lon: float, lat: float) -> tuple[int, int]:
     """Project a lon/lat anchor to an (i, j) grid cell using the model grid geom."""
-    from voxcity.geoprocessor.draw._common import compute_grid_geometry
-    from voxcity.utils.projector import GridProjector
+    from voxcity.geoprocessor.raster import compute_grid_geometry
+    from voxcity.utils import GridProjector
 
     rect = app_state.rectangle_vertices
     if rect is None and app_state.voxcity is not None and isinstance(app_state.voxcity.extras, dict):
@@ -2439,7 +2443,7 @@ def _apply_add_building(
                 poly = None
 
         if poly is None:
-            from voxcity.geoprocessor.draw._common import compute_grid_geometry
+            from voxcity.geoprocessor.raster import compute_grid_geometry
             rect = app_state.rectangle_vertices
             if rect is None and isinstance(vc.extras, dict):
                 rect = vc.extras.get("rectangle_vertices")
@@ -2700,7 +2704,7 @@ def _source_lc_class_names(source: str | None) -> list[str]:
 
 def _standard_to_source_lc_index(class_index: int, source: str | None) -> int | None:
     """Translate the standard 1-based ``LAND_COVER_CLASSES`` index → per-source 0-based index."""
-    from voxcity.utils.classes import LAND_COVER_CLASSES
+    from voxcity.utils import LAND_COVER_CLASSES
 
     name = LAND_COVER_CLASSES.get(int(class_index))
     if name is None:
@@ -2746,8 +2750,8 @@ def _render_edit_preview(vc, title: str = "Edit Model") -> str:
 @app.get("/api/land-cover/classes")
 async def land_cover_classes():
     """Return the editable land cover class palette for the editor."""
-    from voxcity.utils.classes import LAND_COVER_CLASSES
-    from voxcity.geoprocessor.draw._common import get_lc_source_colors
+    from voxcity.utils import LAND_COVER_CLASSES
+    from voxcity.geoprocessor.geojson import get_lc_source_colors
 
     palette = {
         1:  "#c2b280",  # Bareland
@@ -2798,12 +2802,12 @@ async def model_geo():
     """Return geo-anchored overlays + grid geometry for the basemap editor."""
     _require_model()
     try:
-        from voxcity.geoprocessor.draw._common import (
+        from voxcity.geoprocessor.geojson import (
             build_building_geojson,
             build_canopy_geojson,
             build_lc_geojson,
-            compute_grid_geometry,
         )
+        from voxcity.geoprocessor.raster import compute_grid_geometry
 
         vc = app_state.voxcity
         rect = app_state.rectangle_vertices
@@ -2902,7 +2906,7 @@ async def model_anchor_ground(lon: float, lat: float):
 
 def _grid_geom_for_zoning() -> dict:
     """Build the same grid_geom dict that /api/model/geo returns."""
-    from voxcity.geoprocessor.draw._common import compute_grid_geometry
+    from voxcity.geoprocessor.raster import compute_grid_geometry
     rect = app_state.rectangle_vertices
     if rect is None:
         vc = app_state.voxcity
@@ -3694,7 +3698,7 @@ async def import_dxf_commit(req: ImportDxfCommitRequest):
     _require_model()
     import uuid
     from voxcity.importer.transform import build_placement_transform
-    from voxcity.geoprocessor.draw._common import compute_grid_geometry
+    from voxcity.geoprocessor.raster import compute_grid_geometry
 
     parsed = import_dxf_store.get(req.import_id)
     if parsed is None:
