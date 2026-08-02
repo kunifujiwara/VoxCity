@@ -6,8 +6,8 @@ drawn by ``voxcity.geoprocessor.geojson``, the ``GridProjector`` lookups behind
 ``/api/model/anchor_ground``, and the OBJ-import placement all assume that the
 grid's row index walks the ``vertex[0]`` end of ``side_1`` toward ``vertex[1]``.
 Until now that claim was pinned only through the app's own test suite
-(``app/backend/test_frame_consumers.py``, ``test_model_geo_overlays.py``),
-which a library-only checkout cannot run.
+(``backend/test_frame_consumers.py``, ``test_model_geo_overlays.py``, now in
+the VoxCityApp repository), which a library-only checkout cannot run.
 
 The claims, stated once:
 

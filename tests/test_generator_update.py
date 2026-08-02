@@ -347,7 +347,7 @@ class TestRegenerateVoxelsIsAFunctionOfTheComponentGrids(TestVoxCityFixtures):
     survive. That is precisely why the app's nDSM pipeline routes LOD2
     (mesh-voxelized CityGML) models around this function and through
     ``voxcitygml.reapply_canopy`` instead
-    (``app/backend/test_ndsm_lod2_geometry.py`` pins the routing with the real
+    (VoxCityApp's ``backend/test_ndsm_lod2_geometry.py`` pins the routing with the real
     dataset; ``reapply_canopy``'s preservation is pinned in VoxCityGML's own
     ``tests/test_reapply_canopy.py``). This class pins the library half with a
     synthetic fixture: a stepped, LOD2-style roof stamped into the voxels of a

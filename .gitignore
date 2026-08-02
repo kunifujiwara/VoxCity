@@ -16,8 +16,6 @@ downloads/
 eggs/
 .eggs/
 lib/
-!app/frontend/src/lib/
-!app/frontend/src/lib/**
 lib64/
 parts/
 sdist/
@@ -26,7 +24,6 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-app/data/
 reference/
 !docs/reference/
 output/
@@ -121,14 +118,11 @@ ENV/
 # Local demo outputs
 demo/
 
-# Frontend dependencies & build artifacts
-app/frontend/node_modules/
-app/frontend/dist/
-app/frontend/package-lock.json
+# Leftovers from the pre-split app/ tree (the app moved to the VoxCityApp
+# repository). app/data (~33 GB, untracked, did not move with the split) is
+# pending relocation; the rest is orphaned build/output junk.
+/app/
 
-# App output / temp files
-app/output/
-app/cache/
 .superpowers/
 
 # Root-level download/experiment cache

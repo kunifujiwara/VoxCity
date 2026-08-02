@@ -40,7 +40,8 @@ def polygon_lonlat_to_cells(
 
     Equivalent to ``np.argwhere(mask_from_lonlat_ring(...))`` returned as
     a list of Python tuples. Provided for parity with the helper that has
-    historically lived in app/backend/zoning.py; new code should prefer
+    historically lived in the app's ``backend/zoning.py`` (now in the
+    VoxCityApp repository); new code should prefer
     ``mask_from_lonlat_ring``.
     """
     mask = mask_from_lonlat_ring(ring, grid_geom)

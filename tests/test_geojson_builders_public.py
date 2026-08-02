@@ -3,9 +3,10 @@
 ``build_canopy_geojson`` and ``build_lc_geojson`` draw row 0 of their grid onto
 the ``vertex[0]`` edge of the rectangle — for the app's ``[SW, NW, NE, SE]``
 convention, the south edge. The app's ``/api/model/geo`` overlays consume the
-builders exactly as stored (``app/backend/test_model_geo_overlays.py`` pins the
-endpoint side); this module pins the builders themselves, in the library's own
-suite, so a library-only checkout keeps the guard after any repository split.
+builders exactly as stored (VoxCityApp's ``backend/test_model_geo_overlays.py``
+pins the endpoint side); this module pins the builders themselves, in the
+library's own suite, so a library-only checkout keeps the guard now that the
+app lives in its own repository.
 
 Contracts pinned here:
 

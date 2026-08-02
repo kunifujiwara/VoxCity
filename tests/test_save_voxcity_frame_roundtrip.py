@@ -5,8 +5,8 @@ it writes. ``check_axes`` verifies only that the attribute is present and
 well-formed — earlier in this project it passed happily on a file whose voxel
 grid was stored the other way up, because an attribute check cannot see the
 data. The claim that actually matters, and that the app's session save/load
-depends on (``app/backend/test_frame_consumers.py`` pins it through the
-FastAPI session path), is pinned here library-side:
+depends on (VoxCityApp's ``backend/test_frame_consumers.py`` pins it through
+the FastAPI session path), is pinned here library-side:
 
     map a known feature's lon/lat through ``GridProjector.from_h5`` and the
     saved arrays must hold that feature at exactly that cell — and not at the
