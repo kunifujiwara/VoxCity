@@ -78,8 +78,11 @@ only through app tests, now runnable from a library-only checkout:
 | `app/backend/test_model_geo_overlays.py` | GeoJSON builder orientation and `build_lc_geojson` property contract | `tests/test_geojson_builders_public.py` |
 | `app/backend/test_session_io.py`, `test_session_save_load.py` | H5 save/load preserves the grid frame (content, not just attributes) | `tests/test_save_voxcity_frame_roundtrip.py` |
 | `app/backend/test_ndsm_pipeline.py`, `test_ndsm_lod2_geometry.py`, `test_generate_lod2.py` | `regenerate_voxels` depends only on the component grids (safe to route LOD2 around it) | `tests/test_generator_update.py` |
-| `app/backend/test_ndsm_pipeline.py` (LOD2 canopy) | `reapply_canopy` adds trees without touching other classes / preserves mesh-vegetation columns / is idempotent and path-independent / honours the z-datum and terrain | `VoxCityGML/tests/test_reapply_canopy.py:366,393,434,543` (delegated to voxcitygml's own suite) |
-| `app/backend/test_ndsm_lod2_geometry.py` (frame alignment) | land cover and voxels share a frame (tree land cover aligns with TREE voxels, not flipped) | `VoxCityGML/tests/test_frame_contract.py:127-173` |
+| `app/backend/test_ndsm_pipeline.py` (LOD2 canopy) | `reapply_canopy` adds trees without touching other classes / preserves mesh-vegetation columns / is idempotent and path-independent / honours the z-datum and terrain | `VoxCityGML/tests/test_reapply_canopy.py` — `test_reapply_canopy_adds_trees_without_touching_other_classes`, `..._preserves_mesh_vegetation_columns`, `..._is_idempotent_and_path_independent`, `..._honours_the_z_datum_and_terrain` (delegated to voxcitygml's own suite) |
+| `app/backend/test_ndsm_lod2_geometry.py` (frame alignment) | land cover and voxels share a frame (tree land cover aligns with TREE voxels, not flipped) | `VoxCityGML/tests/test_frame_contract.py` — `test_land_cover_and_voxels_share_a_frame` |
+
+> Cross-repo references are by **function name, not line number**: line numbers in
+> another repository drift silently and nothing in this repo's CI would notice.
 
 ## 5. What a split still requires — the checklist
 
