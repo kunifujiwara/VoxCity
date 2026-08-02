@@ -14,7 +14,10 @@ polygon     : Building display and polygon vertex extraction.
 edit_building : Interactive building height/footprint editor.
 edit_tree     : Interactive tree canopy editor.
 edit_landcover: Interactive land-cover class editor.
-_common       : Shared helpers, constants, GeoJSON builders (internal).
+_common       : Shared helpers and constants (internal — do not import from
+                outside this package; the GeoJSON builders and land-cover
+                palette live in ``voxcity.geoprocessor.geojson``, the stable
+                public surface for non-interactive consumers).
 """
 
 # Rectangle utilities

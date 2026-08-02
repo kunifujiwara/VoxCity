@@ -1,4 +1,16 @@
-"""Regression tests for voxcity.geoprocessor.draw._common helpers."""
+"""Regression tests for the draw GeoJSON helpers.
+
+``build_building_geojson`` now lives in the public ``voxcity.geoprocessor.geojson``
+and is imported from there: it is the one promoted builder whose only coverage is
+in this file, and reaching it through ``draw._common``'s backward-compatible
+re-import would pin it to the private path the app was just moved off (see
+``docs/app-library-boundary.md``). Importing the public module also keeps this
+file off ``draw``'s ipyleaflet import (~1.5 s) for code that is pure
+numpy/shapely.
+
+``geo_to_cell`` stays private — it is draw-internal, unused by the app, and
+deliberately not part of the promoted surface.
+"""
 import geopandas as gpd
 import numpy as np
 import pytest
@@ -6,7 +18,8 @@ from shapely.geometry import MultiPolygon, Polygon
 
 from voxcity.geoprocessor.raster.core import compute_grid_geometry
 from voxcity.utils.projector import GridProjector
-from voxcity.geoprocessor.draw._common import build_building_geojson, geo_to_cell
+from voxcity.geoprocessor.geojson import build_building_geojson
+from voxcity.geoprocessor.draw._common import geo_to_cell
 
 
 # Axis-aligned ~4 km × 4 km rectangle in Tokyo, vertex order SW/NW/NE/SE.

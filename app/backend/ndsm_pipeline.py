@@ -21,8 +21,8 @@ from typing import Optional, Sequence
 
 import numpy as np
 
-from voxcity.generator.update import regenerate_voxels
-from voxcity.utils.lc import get_land_cover_classes
+from voxcity.generator import regenerate_voxels
+from voxcity.utils import get_land_cover_classes
 
 from .ndsm_refine import (
     DEFAULT_PARAMS,

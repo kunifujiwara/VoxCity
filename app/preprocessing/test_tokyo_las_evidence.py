@@ -769,10 +769,14 @@ def _stub_grid_geometry(monkeypatch, path, n_rows, n_cols):
 
     core = types.ModuleType("voxcity.geoprocessor.raster.core")
     core.compute_grid_geometry = compute_grid_geometry
+    raster = types.ModuleType("voxcity.geoprocessor.raster")
+    # The package __init__ re-exports compute_grid_geometry (the public path
+    # ndsm_refine imports); mirror that on the stub.
+    raster.compute_grid_geometry = compute_grid_geometry
     for name, mod in (
         ("voxcity", types.ModuleType("voxcity")),
         ("voxcity.geoprocessor", types.ModuleType("voxcity.geoprocessor")),
-        ("voxcity.geoprocessor.raster", types.ModuleType("voxcity.geoprocessor.raster")),
+        ("voxcity.geoprocessor.raster", raster),
         ("voxcity.geoprocessor.raster.core", core),
     ):
         monkeypatch.setitem(sys.modules, name, mod)

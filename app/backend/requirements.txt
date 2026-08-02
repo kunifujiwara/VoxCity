@@ -1,3 +1,15 @@
+# The backend imports voxcity only through public names, and the names it
+# needs first exist at 1.6.0: the voxcity.geoprocessor.geojson module (the
+# GeoJSON builders + get_lc_source_colors, promoted out of the ipyleaflet-heavy
+# draw package) and the package-level re-exports the app switched to
+# (compute_grid_geometry / compute_cell_center_coords in geoprocessor.raster,
+# generator/downloader/visualizer/utils/exporter re-exports). Against an older
+# voxcity the app fails at import time -- and a split-out app installing from
+# PyPI would otherwise silently resolve a private-import-era build. Today the
+# app runs from this repo checkout (PYTHONPATH), so this line is a declaration
+# of the floor, not how voxcity is installed.
+voxcity>=1.6.0
+
 fastapi>=0.104.0
 uvicorn[standard]>=0.24.0
 python-multipart>=0.0.6

@@ -47,7 +47,7 @@ from backend.ndsm_refine import (
     local_tree_median,
     refine_from_evidence,
 )
-from voxcity.geoprocessor.raster.core import compute_cell_center_coords
+from voxcity.geoprocessor.raster import compute_cell_center_coords
 
 
 # ---------------------------------------------------------------------------
