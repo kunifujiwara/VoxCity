@@ -1,17 +1,23 @@
 # App / library boundary
 
-Record of the seam between `app/` (FastAPI backend + Vite frontend) and the
-`voxcity` library, prepared so that splitting `app/` into its own repository is
-mechanical. Current state: the app consumes voxcity **only through public
-names** (guarded, see section 3), and `app/backend/requirements.txt` declares
+Record of the seam between the app (FastAPI backend + Vite frontend) and the
+`voxcity` library. The app consumes voxcity **only through public names**
+(guarded, see section 3), and its `backend/requirements.txt` declares
 `voxcity>=1.6.0` — the first version carrying every name the app imports.
-This document records the surface, the guards, and what a split still
-requires. **The split itself has not been performed.**
 
-Regenerate section 1 from the tree, never from memory:
+**The split was performed on 2026-08-02.** The app now lives in the
+**VoxCityApp repository** (local path:
+`C:\Users\kunih\OneDrive\00_Codes\python\VoxCityApp`, split with full history —
+346 commits). All suites are green there: 536 passed / 0 failed, with no
+`PYTHONPATH` needed. `app/` and `tests/app/` have been removed from this
+repository. App paths below (`app/backend/...`) refer to files that now live
+in VoxCityApp (`backend/...`).
+
+Regenerate section 1 from the VoxCityApp tree, never from memory:
 
 ```bash
-git grep -h "^\s*from voxcity\|^\s*import voxcity" -- 'app/backend/*.py' 'app/preprocessing/*.py' | sed 's/^\s*//' | sort -u
+# run inside the VoxCityApp checkout
+git grep -h "^\s*from voxcity\|^\s*import voxcity" -- 'backend/*.py' 'preprocessing/*.py' | sed 's/^\s*//' | sort -u
 ```
 
 ## 1. Public surface the app consumes
@@ -54,9 +60,10 @@ it and shrink this table.
 
 ## 3. Guards
 
-**Boundary guard** — `app/backend/test_api_boundary.py`: grep-based; fails on
-any `voxcity...._private` module import or `_name` from-import anywhere under
-`app/` (`.py` files and `.ipynb` code cells; `archive/` and `node_modules/`
+**Boundary guard** — `backend/test_api_boundary.py`, **now in the VoxCityApp
+repository** (it moved with the app): grep-based; fails on any
+`voxcity...._private` module import or `_name` from-import anywhere in the app
+tree (`.py` files and `.ipynb` code cells; `archive/` and `node_modules/`
 excluded). This is what keeps section 1 public and section 2 the *only* deep
 surface.
 
@@ -84,35 +91,40 @@ only through app tests, now runnable from a library-only checkout:
 > Cross-repo references are by **function name, not line number**: line numbers in
 > another repository drift silently and nothing in this repo's CI would notice.
 
-## 5. What a split still requires — the checklist
+## 5. The split checklist — done vs. still open
 
-1. **Publish voxcity ≥ 1.6.0** (with `voxcity.geoprocessor.geojson` and the
-   `raster.__all__` additions) to PyPI or an index the app can install from.
-   The floor in `app/backend/requirements.txt` is meaningless until an
-   installable release exists at or above it.
-2. **Switch the app to the released install** — replace the
+Split executed 2026-08-02. Status of each item:
+
+1. **OPEN — Publish voxcity ≥ 1.6.0** (with `voxcity.geoprocessor.geojson` and
+   the `raster.__all__` additions) to PyPI or an index the app can install
+   from. The floor in VoxCityApp's `backend/requirements.txt` is meaningless
+   until an installable release exists at or above it.
+2. **OPEN — Switch the app to the released install** — replace the
    `PYTHONPATH=<checkout>` launch with `pip install voxcity>=1.6.0`, and add
-   app CI that runs `app/backend` against the *released* voxcity, not the
-   sibling checkout.
-3. **Resolve the two reverse-direction entanglements** (library → app, found
-   in Task 2; re-verified 2026-08-02):
-   - `tests/app/` — **10 test files, every one of them imports
-     `app.backend.*`** (`test_building_surfaces_endpoint`,
-     `test_edit_building_height`, `test_ground_roofs_flag`,
-     `test_rectangle_from_dimensions`, `test_scene_geometry`,
-     `test_scene_geometry_highlight`, `test_surface_zone_edges`,
-     `test_surface_zone_edges_endpoint`, `test_surface_zones`, `test_zones`;
-     plus an empty `__init__.py`). The **library's** suite breaks the moment
-     `app/` leaves. They must move to the app repo or be dropped.
-   - `app/backend/test_model_geo_overlays.py:27` imports
-     `tests.importer.conftest` (`make_flat_voxcity`) — an app test reaching
-     into the library's test tree. Duplicate the fixture into `app/backend`
-     or promote it to a shipped helper before the split.
-4. **Move `app/` and its three suites**: the backend pytest suite
-   (`app/backend/test_*.py`), the `tests/app/` suite (currently in the
-   library's test tree — see item 3), and the frontend vitest suite
-   (`app/frontend/src/**/*.test.*`).
-5. **Version-skew hazard on this machine**: conda envs here have resolved
+   app CI that runs the backend suite against the *released* voxcity, not the
+   sibling checkout. Also still open: **create the GitHub remote for
+   VoxCityApp and push** — the new repo is local-only so far.
+3. **DONE — the reverse-direction entanglements are resolved** (library → app,
+   found in Task 2):
+   - `tests/app/` — the 10 test files (all importing `app.backend.*`) moved to
+     VoxCityApp with imports rewritten; the library's suite no longer collects
+     them.
+   - The `test_model_geo_overlays.py` reach-in to `tests.importer.conftest`
+     (`make_flat_voxcity`) was localized in VoxCityApp — the fixture now lives
+     in the app repo's own conftest.
+   - A **fourth** cross-tree import was found during the split:
+     `tests/app/test_ground_roofs_flag.py` imported
+     `tests/simulator/_roof_helpers` from the library's test tree. Also
+     localized in VoxCityApp. (`tests/importer/conftest.py` and
+     `tests/simulator/_roof_helpers.py` remain in this repo — library tests
+     still use them; only the app's reach-in was the problem.)
+4. **DONE — `app/` and its three suites moved**: the backend pytest suite,
+   the former `tests/app/` suite, and the frontend vitest suite are all in
+   VoxCityApp, green there (536 passed / 0 failed). **Caveat:** the app's
+   `data/` directory was untracked and therefore did **not** move with the
+   git history — VoxCityApp's dataset-gated tests skip until the data is
+   moved or pointed at via `VOXCITY_DATA_DIR`.
+5. **Still relevant — version-skew hazard on this machine**: conda envs here have resolved
    stale site-packages copies over the intended checkout before (the
    voxcitygml 1.1.8 incident — an installed old build shadowed the checkout
    and silently mirrored the model; voxcitygml's own `voxcity>=1.3.2` floor in
