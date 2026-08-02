@@ -395,6 +395,44 @@ class TestSkipPathsLeaveTheModelAlone:
         _assert_unchanged(vc, snap)
 
 
+    def test_a_source_with_no_tree_class_is_a_no_op(self, env, monkeypatch,
+                                                    capsys):
+        """A source with no tree class must skip, not guess an index.
+
+        The land cover here is a *treeless* source whose index 4 is "Grassland",
+        and the grid's southern half is index 4 -- so the guess this replaces
+        (``_TREE_ID_FALLBACK = 4``, the id of "Tree" in OpenEarthMapJapan and
+        nowhere else) writes nDSM crowns straight onto grassland and trips
+        ``_assert_unchanged``. That is the same shape of damage the ESA
+        WorldCover case did on buildings, reached from the other direction.
+
+        The ``is False`` and ``"regenerate" not in env`` halves are load-bearing
+        on their own: ``land_cover_grid == None`` is an all-False mask, so an
+        unguarded ``None`` produces a zero canopy, writes it back over the zeros
+        already there, rebuilds the voxels and returns ``True`` -- a no-op that
+        reports success and that a bitwise comparison alone would not catch.
+        """
+        monkeypatch.setattr(pipeline, "get_land_cover_classes",
+                            lambda source: {"bareland": "Bareland",
+                                            "water": "Water",
+                                            "built_up": "Built-up",
+                                            "road": "Road",
+                                            "grassland": "Grassland",
+                                            "snow": "Snow"})
+        lc = np.zeros(SHAPE, dtype=np.int16)
+        lc[SHAPE[0] // 2:, :] = 4          # "Grassland" -- the guessed id
+        vc = _Model(building_lod=1, land_cover=lc)
+        snap = _snapshot(vc)
+
+        assert _refine(vc) is False
+        assert "regenerate" not in env
+        assert "reapply" not in env
+        _assert_unchanged(vc, snap)
+        assert "no tree class" in capsys.readouterr().out, (
+            "an optional refinement that skips must say why; this is the only "
+            "report the caller gets")
+
+
 class TestCanopyValues:
     def test_tree_cells_without_a_height_get_the_static_height(self, env):
         """No nDSM height and no credible neighbour to borrow from: the tree
@@ -568,6 +606,19 @@ class TestInputs:
             "silently substituting a different height is how this went "
             "unnoticed in the first place")
 
+    def test_esa_worldcover_really_puts_trees_at_zero_and_builtup_at_four(self):
+        """Pin the premise against the real source, not just the fixture below.
+
+        The next test hand-writes ESA WorldCover's ordering. If voxcity ever
+        reorders that source the fixture stops modelling it, and the regression
+        test would be asserting about nothing while staying green.
+        """
+        from voxcity.utils.lc import get_land_cover_classes
+
+        names = list(get_land_cover_classes("ESA WorldCover").values())
+        assert names.index("Trees") == 0
+        assert names.index("Built-up") == 4
+
     def test_a_tree_class_at_index_zero_is_not_lost(self, env, monkeypatch):
         """ESA WorldCover really does put 'Trees' at index 0. Resolving the id
         with a truthiness chain sends that source to the fallback id 4, which is
@@ -616,6 +667,57 @@ class TestInputs:
         assert np.all(vc.tree_canopy.top[tree] == 24.0), (
             "the buildings were flipped into the tree rows: every tree was "
             "treated as roof leakage and replaced")
+
+
+class TestResolveTreeId:
+    """The resolver on its own, over a source's ordered class names.
+
+    The id *is* the position in that ordered list, which is what makes index 0
+    a real answer rather than a missing one -- and what made the chain this
+    replaced (``get("Tree") or get("Trees") or ... or 4``) send ESA WorldCover,
+    whose tree class is index 0, to a hard-coded 4 that is ``Built-up`` there.
+
+    The integration consequences are pinned above and in
+    ``TestSkipPathsLeaveTheModelAlone``; these cases pin the resolver's own
+    contract, including the two halves that are invisible from a single
+    land-cover source: the preference order between the three accepted names,
+    and returning ``None`` rather than guessing.
+    """
+
+    @staticmethod
+    def _classes(*names):
+        """A ``get_land_cover_classes()`` return value listing *names* in order.
+
+        The real function is keyed by RGB colour and the resolver reads only
+        ``.values()``, so the keys are placeholders. The *order* is the whole
+        content of these fixtures.
+        """
+        return {(i, i, i): name for i, name in enumerate(names)}
+
+    @pytest.mark.parametrize("names, expected", [
+        # Each accepted name, alone, at index 0.
+        (["Tree"], 0),
+        (["Trees"], 0),
+        (["Tree Canopy"], 0),
+        # ... and away from index 0, so the cases above are not passing by
+        # agreeing with a hard-coded zero.
+        (["Bareland", "Water", "Tree"], 2),
+        # Preference order is over the *names*, not their positions: "Tree" is
+        # checked first and wins from further down the list than "Trees".
+        (["a", "b", "c", "Trees", "d", "Tree"], 5),
+        # Index 0 is a real answer -- it must win over a later accepted name
+        # rather than read as "missing, keep looking".
+        (["Trees", "a", "b", "c", "d", "e", "f", "Tree Canopy"], 0),
+        # No tree class -> no guess. The second list is six classes long, so a
+        # fallback of 4 would return "Grassland": an in-range, plausible-looking
+        # id, which is exactly how the guess did its damage unnoticed.
+        (["Bareland"], None),
+        (["Bareland", "Water", "Built-up", "Road", "Grassland", "Snow"], None),
+    ])
+    def test_resolve_tree_id(self, monkeypatch, names, expected):
+        monkeypatch.setattr(pipeline, "get_land_cover_classes",
+                            lambda source: self._classes(*names))
+        assert pipeline._resolve_tree_id("any source") == expected
 
 
 class TestTheCrossRepoContract:

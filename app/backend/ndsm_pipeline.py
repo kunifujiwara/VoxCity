@@ -41,9 +41,6 @@ TRUNK_HEIGHT_RATIO = 11.76 / 19.98
 
 #: Land-cover class names that mean "tree", in preference order.
 _TREE_CLASS_NAMES = ("Tree", "Trees", "Tree Canopy")
-#: Used when none of the above appears in the source's class list. A guess, and
-#: the id of "Tree" in OpenEarthMapJapan and nothing else.
-_TREE_ID_FALLBACK = 4
 
 
 def is_lod2_model(voxcity_obj) -> bool:
@@ -68,8 +65,11 @@ def is_lod2_model(voxcity_obj) -> bool:
         return False
 
 
-def _resolve_tree_id(land_cover_source: str) -> int:
+def _resolve_tree_id(land_cover_source: str) -> Optional[int]:
     """Class id of the tree class in *land_cover_source*'s class list.
+
+    ``None`` when the source has no tree class at all -- see below; callers must
+    treat that as "skip", never as an id.
 
     The id is the class's *position* in the source's ordered class names, which
     is how the land-cover grid encodes it.
@@ -79,6 +79,15 @@ def _resolve_tree_id(land_cover_source: str) -> int:
     or ... or 4``) therefore sends that source to the fallback, and index 4 there
     is "Built-up" -- the canopy would be written onto the buildings. Hence the
     explicit ``is not None``.
+
+    There is deliberately no numeric fallback for a source that matches none of
+    the names. Such a guess is an index into *some other source's* class list --
+    the one it used to return, 4, is "Tree" in OpenEarthMapJapan and nothing
+    else -- so on any source that does not happen to agree it names whatever
+    class sits at that position and the canopy is built on that. That is the
+    second half of the same bug, and it fails the same way: silently, in-range,
+    with healthy-looking counts. No tree class means no honest canopy, so this
+    says so and lets the caller skip.
     """
     names = list(get_land_cover_classes(land_cover_source).values())
     index = {name: i for i, name in enumerate(names)}
@@ -86,7 +95,7 @@ def _resolve_tree_id(land_cover_source: str) -> int:
         found = index.get(name)
         if found is not None:
             return int(found)
-    return _TREE_ID_FALLBACK
+    return None
 
 
 def _canopy_bottom(canopy: np.ndarray) -> np.ndarray:
@@ -113,10 +122,11 @@ def refine_canopy_with_ndsm(
 ) -> bool:
     """Refine canopy heights from the nDSM, in place. False when skipped.
 
-    Returns ``False`` -- model untouched -- when the COG is missing or does not
-    overlap the target, when the evidence grid does not match the model grid, or
-    when an LOD2 model meets a voxcitygml without ``reapply_canopy``. None of
-    those is fatal; the caller logs and carries on with static tree heights.
+    Returns ``False`` -- model untouched -- when *land_cover_source* has no tree
+    class, when the COG is missing or does not overlap the target, when the
+    evidence grid does not match the model grid, or when an LOD2 model meets a
+    voxcitygml without ``reapply_canopy``. None of those is fatal; the caller
+    logs and carries on with static tree heights.
 
     Args:
         voxcity_obj: the model to refine, mutated in place.
@@ -135,6 +145,23 @@ def refine_canopy_with_ndsm(
     params = DEFAULT_PARAMS if params is None else params
     land_cover_grid = voxcity_obj.land_cover.classes
     tree_id = _resolve_tree_id(land_cover_source)
+    if tree_id is None:
+        # First guard in the function, above the COG read and every write: with
+        # no tree class there is nothing to refine, and inventing an id would
+        # build crowns on whatever class happened to sit at it.
+        #
+        # It has to be an explicit guard rather than a value that falls through.
+        # ``land_cover_grid == None`` is an all-False mask, so a None id would
+        # not raise -- it would classify nothing, write a zero canopy back over
+        # the zeros already there, rebuild the voxel grid and return True. A
+        # skip that reports success is the one outcome this module exists to
+        # avoid.
+        print(
+            f"[nDSM] Land cover source {land_cover_source!r} has no tree class "
+            f"{_TREE_CLASS_NAMES} — skipping canopy refinement rather than "
+            "guessing a class id"
+        )
+        return False
 
     # static_tree_height comes from the request body. Below the classifier's
     # minimum it is unsatisfiable -- classify_and_refine raises rather than

@@ -870,8 +870,10 @@ with tab2:
                                 # It is only correct here because this archived
                                 # script is OpenEarthMapJapan-only, where 'Tree'
                                 # happens to be index 4 as well.
-                                # The live resolver is backend.main._resolve_tree_id
-                                # (explicit `is not None`, no numeric fallback).
+                                # The live resolver is
+                                # backend.ndsm_pipeline._resolve_tree_id
+                                # (explicit `is not None`, no numeric fallback;
+                                # returns None and the caller skips).
                                 _lc_classes = get_land_cover_classes(land_cover_source)
                                 _name_to_id = {name: i for i, name in enumerate(_lc_classes.values())}
                                 tree_id = (
