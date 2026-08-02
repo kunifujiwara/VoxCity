@@ -15,6 +15,7 @@ from ..models import (
     PipelineConfig,
 )
 
+from ..geoprocessor.utils import compute_rotation_angle, normalize_rectangle_vertices
 from .grids import (
     get_land_cover_grid,
     get_building_height_grid,
@@ -101,6 +102,33 @@ class VoxCityPipeline:
     def _meta(self) -> GridMetadata:
         return GridMetadata(crs=self.crs, bounds=self._bounds(), meshsize=self.meshsize)
 
+    def _rotation_angle(self):
+        """The AOI's clockwise rotation, derived exactly as ``save_voxcity`` does.
+
+        ``compute_rotation_angle`` is the single producer of
+        ``extras['rotation_angle']``, and every solar path reads that key with a
+        default of 0 — which silently rotates shadows over a rotated AOI by the
+        AOI's own angle. Vertices are normalized to [SW, NW, NE, SE] first, the
+        same way ``save_results_h5`` does before deriving the angle it writes,
+        so the in-memory model and the file it would save to agree (that
+        function raises when they disagree by more than a tolerance).
+        """
+        rect = self.rectangle_vertices
+        if rect is None:
+            return 0
+        try:
+            rect = normalize_rectangle_vertices(rect, warn=False)
+        except (ValueError, TypeError, IndexError) as exc:
+            # Not normalizable (wrong vertex count, out-of-range coordinates).
+            # Fall back to the raw v0->v1 bearing rather than making assembly
+            # fail on input it used to accept — but say so, because such a
+            # rectangle will also fail to save.
+            get_logger(__name__).warning(
+                "Could not normalize rectangle_vertices for rotation_angle (%s); "
+                "using the raw v0->v1 bearing. Saving this model will fail.", exc,
+            )
+        return compute_rotation_angle(rect)
+
     def assemble_voxcity(
         self,
         voxcity_grid: np.ndarray,
@@ -128,9 +156,12 @@ class VoxCityPipeline:
                             meta=meta)
         _extras = {
             "rectangle_vertices": self.rectangle_vertices,
+            "rotation_angle": self._rotation_angle(),
             "canopy_top": canopy.top,
             "canopy_bottom": canopy.bottom,
         }
+        # Merged after the defaults, so an explicitly supplied rotation_angle
+        # still wins (unchanged precedence).
         if extras:
             _extras.update(extras)
         return VoxCity(voxels=voxels, buildings=buildings, land_cover=land, dem=dem, tree_canopy=canopy, extras=_extras)

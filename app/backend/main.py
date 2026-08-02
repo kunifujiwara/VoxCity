@@ -501,6 +501,30 @@ def _fix_building_leakage(
     return can
 
 
+def _resolve_tree_id(name_to_id: dict):
+    """Land-cover index of the tree class, or ``None`` when the source has none.
+
+    Explicitly ``is not None``, and no numeric fallback. The chain this
+    replaces —
+    ``name_to_id.get("Tree") or name_to_id.get("Trees") or ... or 4`` —
+    treated index **0** as missing. ESA WorldCover has ``Trees`` at index 0, so
+    that source fell through the whole chain to the hard-coded ``4``, which in
+    ESA WorldCover is ``Built-up``: nDSM canopy heights were written onto the
+    building cells while every real tree cell was left bare. (Every other
+    source escaped only by accident — Urbanwatch 3, OpenEarthMapJapan 4,
+    ESRI 10m 2, Dynamic World V1 1, Standard/OSM 5.)
+
+    Guessing an index that belongs to some other source's class list is worse
+    than doing nothing, so a source with no tree class returns ``None`` and the
+    caller skips refinement.
+    """
+    for label in ("Tree", "Trees", "Tree Canopy"):
+        tree_id = name_to_id.get(label)
+        if tree_id is not None:
+            return tree_id
+    return None
+
+
 def _refine_canopy_with_ndsm(
     voxcity_obj,
     rectangle_vertices,
@@ -518,7 +542,16 @@ def _refine_canopy_with_ndsm(
     land_cover_grid = voxcity_obj.land_cover.classes
     lc_classes = get_land_cover_classes(land_cover_source)
     name_to_id = {name: i for i, name in enumerate(lc_classes.values())}
-    tree_id = name_to_id.get("Tree") or name_to_id.get("Trees") or name_to_id.get("Tree Canopy") or 4
+    tree_id = _resolve_tree_id(name_to_id)
+    if tree_id is None:
+        # Checked before anything is loaded or mutated: there is no honest
+        # canopy to build without a tree class, and inventing an index would
+        # write crowns onto whatever class happened to sit there.
+        print(
+            f"[nDSM] Land cover source {land_cover_source!r} has no tree class "
+            "— skipping canopy refinement"
+        )
+        return False
 
     ndsm_grid = _load_ndsm_grid(rectangle_vertices, meshsize)
     if ndsm_grid is None:

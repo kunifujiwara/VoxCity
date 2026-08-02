@@ -1257,6 +1257,17 @@ with tab2:
                                 _dbg_nc = bool(st.session_state.get('debug_ndsm_canopy', False))
 
                                 # Resolve tree class id for OEMJ
+                                #
+                                # SUPERSEDED AND UNSAFE — do not copy this chain.
+                                # `or` treats index 0 as missing. ESA WorldCover has
+                                # 'Trees' at index 0, so it falls through to the
+                                # hard-coded 4 — which in ESA WorldCover is
+                                # 'Built-up', writing canopy heights onto buildings.
+                                # It is only correct here because this archived
+                                # script is OpenEarthMapJapan-only, where 'Tree'
+                                # happens to be index 4 as well.
+                                # The live resolver is backend.main._resolve_tree_id
+                                # (explicit `is not None`, no numeric fallback).
                                 _lc_classes = get_land_cover_classes(land_cover_source)
                                 _name_to_id = {name: i for i, name in enumerate(_lc_classes.values())}
                                 tree_id = (
