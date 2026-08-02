@@ -339,6 +339,126 @@ class TestRegenerateVoxels(TestVoxCityFixtures):
         assert isinstance(result, VoxCity)
 
 
+class TestRegenerateVoxelsIsAFunctionOfTheComponentGrids(TestVoxCityFixtures):
+    """The rebuild claim the app's LOD2 routing stands on.
+
+    ``regenerate_voxels`` rebuilds the voxel grid from the 2.5-D component
+    grids alone — whatever detail the *existing* voxel grid carried does not
+    survive. That is precisely why the app's nDSM pipeline routes LOD2
+    (mesh-voxelized CityGML) models around this function and through
+    ``voxcitygml.reapply_canopy`` instead
+    (``app/backend/test_ndsm_lod2_geometry.py`` pins the routing with the real
+    dataset; ``reapply_canopy``'s preservation is pinned in VoxCityGML's own
+    ``tests/test_reapply_canopy.py``). This class pins the library half with a
+    synthetic fixture: a stepped, LOD2-style roof stamped into the voxels of a
+    model whose height grid says "flat 20 m block" must come back as a flat
+    extrusion, identical to what an empty prior grid produces.
+    """
+
+    BUILDING_CODE = -3
+    # The fixture's first footprint: rows 2..4, cols 2..4, heights grid 20 m.
+    FOOT = (slice(2, 4), slice(2, 4))
+    #: metres of building per footprint column in the stepped "LOD2" roof —
+    #: deliberately all different, and none equal to the 20 m the height grid
+    #: declares, so surviving detail cannot masquerade as the rebuilt slab.
+    STEPS = {(2, 2): 19, (2, 3): 14, (3, 2): 9, (3, 3): 4}
+
+    def _column_heights(self, classes):
+        """Building-voxel count per column, meshsize 1 → metres."""
+        return (np.asarray(classes) == self.BUILDING_CODE).sum(axis=2)
+
+    def _with_stepped_roof(self, city):
+        """Overwrite the fixture's voxels with a mesh-style stepped roof."""
+        vox = np.zeros((10, 10, 50), dtype=np.int8)
+        vox[:, :, 0] = -1  # ground
+        for (i, j), h in self.STEPS.items():
+            vox[i, j, 1:1 + h] = self.BUILDING_CODE
+        city.voxels = VoxelGrid(classes=vox, meta=city.voxels.meta)
+        return city
+
+    def test_the_fixture_roof_is_genuinely_stepped(self, sample_voxcity):
+        """Guard: four distinct column heights, or 'the steps are gone' below
+        would be vacuous."""
+        city = self._with_stepped_roof(sample_voxcity)
+        cols = self._column_heights(city.voxels.classes)
+        assert sorted(cols[self.FOOT].ravel().tolist()) == sorted(self.STEPS.values())
+        assert len(set(self.STEPS.values())) == 4
+
+    def test_regenerate_replaces_the_stepped_roof_with_a_flat_extrusion(self, sample_voxcity):
+        city = self._with_stepped_roof(sample_voxcity)
+
+        result = regenerate_voxels(city)
+
+        cols = self._column_heights(result.voxels.classes)
+        heights_of_building_columns = sorted(set(cols[cols > 0].ravel().tolist()))
+        # Two flat blocks — 20 m and 30 m from the *height grids* — and not a
+        # single one of the stepped 4/9/14/19 m columns.
+        assert heights_of_building_columns == [20, 30], (
+            f"building columns are {heights_of_building_columns} m tall; the "
+            "component grids describe flat 20 m and 30 m extrusions, so any "
+            "other value means detail from the prior voxel grid leaked "
+            "through the rebuild — or the rebuild never happened")
+
+    def test_the_result_is_identical_whatever_the_prior_voxel_grid_held(self):
+        """The function-of-the-grids claim, asserted bit-exactly."""
+        import copy
+
+        base = _build_sample_city()
+        stepped = self._with_stepped_roof(copy.deepcopy(base))
+        empty = copy.deepcopy(base)
+        empty.voxels = VoxelGrid(
+            classes=np.zeros((10, 10, 50), dtype=np.int8), meta=base.voxels.meta
+        )
+
+        out_stepped = regenerate_voxels(stepped)
+        out_empty = regenerate_voxels(empty)
+
+        assert np.array_equal(
+            np.asarray(out_stepped.voxels.classes),
+            np.asarray(out_empty.voxels.classes),
+        ), (
+            "regenerate_voxels produced different voxels for the same "
+            "component grids — the prior voxel grid leaked into the rebuild"
+        )
+
+
+def _build_sample_city():
+    """Module-level twin of the ``sample_voxcity`` fixture, for tests that
+    need two independent copies without fixture plumbing."""
+    meta = GridMetadata(crs="EPSG:4326", bounds=(139.7, 35.6, 139.71, 35.61), meshsize=1.0)
+    shape = (10, 10)
+    heights = np.zeros(shape, dtype=np.float64)
+    heights[2:4, 2:4] = 20.0
+    heights[6:8, 6:8] = 30.0
+    min_heights = np.empty(shape, dtype=object)
+    for i in range(shape[0]):
+        for j in range(shape[1]):
+            min_heights[i, j] = [(0.0, heights[i, j])] if heights[i, j] > 0 else []
+    ids = np.zeros(shape, dtype=np.int32)
+    ids[2:4, 2:4] = 1
+    ids[6:8, 6:8] = 2
+    classes = np.ones(shape, dtype=np.int8) * 5
+    classes[2:4, 2:4] = 13
+    classes[6:8, 6:8] = 13
+    top = np.zeros(shape, dtype=np.float32)
+    top[4:6, 4:6] = 15.0
+    bottom = np.zeros(shape, dtype=np.float32)
+    bottom[4:6, 4:6] = 5.0
+    return VoxCity(
+        voxels=VoxelGrid(classes=np.zeros((10, 10, 50), dtype=np.int8), meta=meta),
+        buildings=BuildingGrid(heights=heights, min_heights=min_heights, ids=ids, meta=meta),
+        land_cover=LandCoverGrid(classes=classes, meta=meta),
+        dem=DemGrid(elevation=np.zeros(shape, dtype=np.float32), meta=meta),
+        tree_canopy=CanopyGrid(top=top, bottom=bottom, meta=meta),
+        extras={
+            "rectangle_vertices": [
+                (139.7, 35.6), (139.7, 35.61), (139.71, 35.61), (139.71, 35.6)
+            ],
+            "land_cover_source": "OpenStreetMap",
+        },
+    )
+
+
 class TestExtrasHandling(TestVoxCityFixtures):
     """Tests for extras dictionary handling."""
     
