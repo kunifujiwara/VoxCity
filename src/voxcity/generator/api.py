@@ -704,7 +704,39 @@ def get_voxcity(rectangle_vertices, meshsize, building_source=None, land_cover_s
     return city
 
 
-def get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_source, meshsize, url_citygml=None, citygml_path=None, **kwargs):
+def _resolve_citygml_dem_grid(dem_source, terrain_gdf, land_cover_grid,
+                              rectangle_vertices, meshsize, output_dir,
+                              kwargs):
+    """DEM grid for the CityGML path, routed by ``dem_source``.
+
+    ``None`` / ``"CityGML Terrain"`` / ``"GeoDataFrame"`` — interpolate the
+    CityGML terrain GeoDataFrame (existing behaviour).  ``"Flat"`` — zeros.
+    Anything else — a named source fetched via ``get_dem_grid`` (so
+    ``dem_interpolation`` and cache kwargs flow through unchanged).
+    """
+    if dem_source in (None, "CityGML Terrain", "GeoDataFrame"):
+        from ..visualizer.grids import visualize_numerical_grid
+        _logger.info("Creating Digital Elevation Model (DEM) grid")
+        dem_grid = create_dem_grid_from_gdf_polygon(
+            terrain_gdf, meshsize, rectangle_vertices)
+        if kwargs.get("gridvis", True):
+            visualize_numerical_grid(
+                dem_grid, meshsize, title='Digital Elevation Model',
+                cmap='terrain', label='Elevation (m)')
+        return dem_grid
+    if str(dem_source).strip().lower() == "flat":
+        return np.zeros_like(land_cover_grid, dtype=float)
+    # Local (not module-level) import intentionally: keeps ``get_dem_grid``
+    # patchable via ``monkeypatch.setattr(grids_mod, "get_dem_grid", ...)``
+    # in tests. A module-level `from .grids import get_dem_grid` would bind
+    # the original function into this module's namespace at import time,
+    # and patching ``grids_mod.get_dem_grid`` afterwards would not affect it.
+    from .grids import get_dem_grid
+    return get_dem_grid(rectangle_vertices, meshsize, dem_source,
+                        output_dir, **kwargs)
+
+
+def get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_source, meshsize, url_citygml=None, citygml_path=None, dem_source=None, **kwargs):
     from ..downloader.gee import (
         get_roi,
         save_geotiff_open_buildings_temporal,
@@ -883,14 +915,12 @@ def get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_sou
     canopy_bottom_height_grid[mask_b] = canopy_bottom_height_grid_comp[mask_b]
     canopy_bottom_height_grid = np.minimum(canopy_bottom_height_grid, canopy_height_grid)
 
-    if kwargs.pop('flat_dem', None):
-        dem_grid = np.zeros_like(land_cover_grid)
-    else:
-        _logger.info("Creating Digital Elevation Model (DEM) grid")
-        dem_grid = create_dem_grid_from_gdf_polygon(terrain_gdf, meshsize, rectangle_vertices)
-        grid_vis = kwargs.get("gridvis", True)
-        if grid_vis:
-            visualize_numerical_grid(dem_grid, meshsize, title='Digital Elevation Model', cmap='terrain', label='Elevation (m)')
+    # flat_dem=True predates dem_source and remains equivalent to "Flat".
+    if kwargs.pop('flat_dem', None) and dem_source is None:
+        dem_source = "Flat"
+    dem_grid = _resolve_citygml_dem_grid(
+        dem_source, terrain_gdf, land_cover_grid,
+        rectangle_vertices, meshsize, output_dir, kwargs)
 
     min_canopy_height = kwargs.get("min_canopy_height")
     if min_canopy_height is not None:
