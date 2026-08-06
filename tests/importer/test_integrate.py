@@ -157,33 +157,79 @@ def test_stamped_metadata_survives_regenerate_voxels():
 def test_ground_datum_matches_voxelizer_on_sloped_dem():
     """On a sloped DEM the voxelizer flattens each building's footprint to that
     building's mean DEM via process_grid. stamp_buildings must measure its spans
-    against that same flattened datum, not the raw per-cell DEM."""
-    from voxcity.geoprocessor.raster import process_grid
+    against that same flattened datum, not the raw per-cell DEM -- verified here
+    by an actual round-trip through the real voxelizer, not by recomputing the
+    expected value with the implementation's own process_grid call (which would
+    be blind to drift in the datum's definition)."""
+    from voxcity.generator.update import regenerate_voxels
 
-    vc = make_flat_voxcity(nx=12, ny=12, nz=24, meshsize=1.0)
+    vc = make_flat_voxcity(nx=12, ny=12, nz=30, meshsize=1.0)
     for i in range(12):
         vc.dem.elevation[i, :] = 10.0 + i  # sloped, min = 10.0
 
-    # One building straddling two DEM steps.
+    # One building straddling two DEM steps: the raw per-cell DEM gives the two
+    # columns different ground levels, the voxelizer's footprint-mean gives them
+    # the same one. Only the latter round-trips.
     occ = {"b1": np.array(
-        [[4, 5, k] for k in range(5, 9)] + [[5, 5, k] for k in range(5, 9)],
+        [[4, 5, k] for k in range(6, 10)] + [[5, 5, k] for k in range(6, 10)],
         dtype=np.int64,
     )}
     out = stamp_buildings(vc, occ)
 
-    dem0 = np.asarray(out.dem.elevation, dtype=float)
-    eff = process_grid(out.buildings.ids, dem0 - dem0.min())
-    for i, j in [(4, 5), (5, 5)]:
-        ground = int(eff[i, j] / 1.0 + 0.5) + 1
-        assert out.buildings.min_heights[i, j] == [[float(5 - ground), float(9 - ground)]]
+    before = {c: _building_ks(out.voxels.classes, *c) for c in [(4, 5), (5, 5)]}
+    assert before[(4, 5)] and before[(5, 5)]  # non-vacuous: something was actually stamped
+
+    regenerate_voxels(out, inplace=True)
+    assert {c: _building_ks(out.voxels.classes, *c) for c in [(4, 5), (5, 5)]} == before
 
 
 def test_flat_zero_dem_metadata_unchanged():
     """Guard on the no-op case: with a flat zero DEM the correction is
-    identically zero, so heights/min_heights must keep their existing values."""
+    identically zero, so the values match the raw-DEM computation."""
     vc = make_flat_voxcity(nx=10, ny=10, nz=8, meshsize=1.0)
     occ = {"b1": np.array([[2, 3, 1], [2, 3, 2], [2, 3, 3]], dtype=np.int64)}
     out = stamp_buildings(vc, occ)
     # ground_level = int(0/1 + 0.5) + 1 = 1; spans are k - 1.
     assert out.buildings.min_heights[2, 3] == [[0.0, 3.0]]
     assert out.buildings.heights[2, 3] == 3.0
+
+
+def test_sequential_stamps_first_building_still_round_trips():
+    """The ground datum is derived from the cumulative ids_grid as of each call,
+    so a second, unrelated stamp_buildings call must not disturb the first
+    building's already-written metadata. Uses a non-zero DEM so the datum
+    correction is actually exercised."""
+    from voxcity.generator.update import regenerate_voxels
+
+    vc = make_flat_voxcity(nx=14, ny=14, nz=20, meshsize=1.0)
+    vc.dem.elevation[:] = 10.0  # non-zero DEM minimum
+
+    occ1 = {"b1": np.array([[3, 3, k] for k in range(1, 5)], dtype=np.int64)}
+    out = stamp_buildings(vc, occ1)
+
+    occ2 = {"b2": np.array([[9, 9, k] for k in range(1, 6)], dtype=np.int64)}
+    out = stamp_buildings(out, occ2)
+
+    before = _building_ks(out.voxels.classes, 3, 3)
+    assert before  # non-vacuous
+
+    regenerate_voxels(out, inplace=True)
+    assert _building_ks(out.voxels.classes, 3, 3) == before
+
+
+def test_non_float_dem_dtype_matches_float_equivalent():
+    """np.asarray(..., dtype=float) is the only thing preventing integer
+    truncation of the ground level when the DEM's own dtype is integral. An
+    int32 DEM must produce the same min_heights as its float equivalent."""
+    vc_int = make_flat_voxcity(nx=10, ny=10, nz=12, meshsize=1.0)
+    vc_int.dem.elevation = np.full((10, 10), 5, dtype=np.int32)
+
+    vc_float = make_flat_voxcity(nx=10, ny=10, nz=12, meshsize=1.0)
+    vc_float.dem.elevation[:] = 5.0
+
+    occ = {"b1": np.array([[2, 3, 6], [2, 3, 7], [2, 3, 8]], dtype=np.int64)}
+    out_int = stamp_buildings(vc_int, occ)
+    out_float = stamp_buildings(vc_float, occ)
+
+    assert out_int.buildings.min_heights[2, 3] == out_float.buildings.min_heights[2, 3]
+    assert out_int.buildings.heights[2, 3] == out_float.buildings.heights[2, 3]

@@ -41,6 +41,12 @@ def stamp_buildings(voxcity, occupied_by_name, building_value=BUILDING_CODE,
     The datum MUST match generator/voxelizer.py's, since regenerate_voxels()
     rebuilds these columns from the metadata written here. Getting it wrong made
     imported buildings shift vertically on the first edit.
+
+    The datum is global: process_grid subtracts the min over the *whole* grid, so
+    it depends on the full ids_grid as of this call, not just this building's
+    footprint. A later edit that changes which cell holds the DEM minimum will
+    re-datum the scene and shift previously imported buildings. Re-derive this
+    metadata if that happens.
     """
     classes = voxcity.voxels.classes
     nx, ny, nz = classes.shape
@@ -68,7 +74,7 @@ def stamp_buildings(voxcity, occupied_by_name, building_value=BUILDING_CODE,
     # so cross-group collisions inside a single stamp_buildings invocation
     # can be detected and logged instead of silently overwriting ids_grid.
     column_owner = {}
-    # Pass-1 output, consumed by pass 2: [(bid, {(i, j): [absolute k, ...]}), ...]
+    # Pass-1 output, consumed by pass 2: [{(i, j): [absolute k, ...]}, ...]
     pending = []
 
     # --- Pass 1: voxel classes + building ids ---
@@ -111,29 +117,35 @@ def stamp_buildings(voxcity, occupied_by_name, building_value=BUILDING_CODE,
             column_owner[(i, j)] = (name, bid)
             ids_grid[i, j] = bid
 
-        pending.append((bid, cols))
+        pending.append(cols)
 
-    # --- Effective ground datum, mirroring generator/voxelizer.py exactly:
-    #     dem_grid = process_grid(building_id_grid, dem - dem.min())
-    #     ground_level = int(dem_grid[i, j] / voxel_size + 0.5) + 1
-    #     Computed here (after pass 1) because process_grid averages the DEM per
-    #     building id and therefore needs the ids just assigned above.
-    dem0 = np.asarray(voxcity.dem.elevation, dtype=float)
-    eff_dem = process_grid(ids_grid, dem0 - dem0.min())
+    if pending:
+        # --- Effective ground datum, mirroring generator/voxelizer.py exactly:
+        #     dem_grid = process_grid(building_id_grid, dem - dem.min())
+        #     ground_level = int(dem_grid[i, j] / voxel_size + 0.5) + 1
+        #     Computed here (after pass 1) because process_grid averages the DEM per
+        #     building id and therefore needs the ids just assigned above.
+        dem_m = np.asarray(voxcity.dem.elevation, dtype=float)
+        if not np.isfinite(dem_m).all():
+            raise ValueError(
+                "DEM contains non-finite values; cannot derive a ground datum "
+                "matching generator/voxelizer.py. Clean the DEM before importing."
+            )
+        ground_dem = process_grid(ids_grid, dem_m - dem_m.min())
 
-    # --- Pass 2: heights / min_heights, measured above the effective ground ---
-    for _bid, cols in pending:
-        for (i, j), ks in cols.items():
-            spans = _spans_from_ks(ks)
-            top_k = max(s[1] for s in spans)  # exclusive end
-            ground_level = int(eff_dem[i, j] / meshsize + 0.5) + 1
-            heights_grid[i, j] = max(float(heights_grid[i, j]), (top_k - ground_level) * meshsize)
-            cell = min_heights[i, j]
-            if not isinstance(cell, list):
-                cell = []
-            for a, b in spans:
-                cell.append([(a - ground_level) * meshsize, (b - ground_level) * meshsize])
-            min_heights[i, j] = cell
+        # --- Pass 2: heights / min_heights, measured above the effective ground ---
+        for cols in pending:
+            for (i, j), ks in cols.items():
+                spans = _spans_from_ks(ks)
+                top_k = max(s[1] for s in spans)  # exclusive end
+                ground_level = int(ground_dem[i, j] / meshsize + 0.5) + 1
+                heights_grid[i, j] = max(float(heights_grid[i, j]), (top_k - ground_level) * meshsize)
+                cell = min_heights[i, j]
+                if not isinstance(cell, list):
+                    cell = []
+                for a, b in spans:
+                    cell.append([(a - ground_level) * meshsize, (b - ground_level) * meshsize])
+                min_heights[i, j] = cell
 
     if collisions:
         _logger.info("Imported buildings overwrote %d existing non-air voxel(s).", collisions)
