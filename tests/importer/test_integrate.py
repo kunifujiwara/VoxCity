@@ -126,3 +126,128 @@ def test_out_of_bounds_group_skipped_without_consuming_id(caplog, propagate_voxc
     assert id_map["good"] == expected_next_id
     assert int(out.buildings.ids[3, 3]) == expected_next_id
     assert "bad" in caplog.text
+
+
+def _building_ks(classes, i, j):
+    """Voxel k indices occupied by a building in column (i, j)."""
+    return np.flatnonzero(classes[i, j, :] == BUILDING_CODE).tolist()
+
+
+def test_stamped_metadata_survives_regenerate_voxels():
+    """stamp_buildings must derive heights/min_heights against the SAME ground
+    datum the voxelizer uses, so that stamping and then regenerating the voxel
+    grid is a fixed point. With a uniform non-zero DEM the old code was off by
+    dem_min/meshsize cells, which made the imported building sink (or vanish)
+    on the first edit."""
+    from voxcity.generator.update import regenerate_voxels
+
+    vc = make_flat_voxcity(nx=12, ny=12, nz=20, meshsize=1.0)
+    vc.dem.elevation[:] = 10.0  # non-zero DEM minimum
+
+    occ = {"b1": np.array([[4, 5, k] for k in range(1, 5)], dtype=np.int64)}
+    out = stamp_buildings(vc, occ)
+
+    before = _building_ks(out.voxels.classes, 4, 5)
+    assert before == [1, 2, 3, 4]
+
+    regenerate_voxels(out, inplace=True)
+    assert _building_ks(out.voxels.classes, 4, 5) == before
+
+
+def test_ground_datum_matches_voxelizer_on_sloped_dem():
+    """On a sloped DEM the voxelizer flattens each building's footprint to that
+    building's mean DEM via process_grid. stamp_buildings must measure its spans
+    against that same flattened datum, not the raw per-cell DEM -- verified here
+    by an actual round-trip through the real voxelizer, not by recomputing the
+    expected value with the implementation's own process_grid call (which would
+    be blind to drift in the datum's definition)."""
+    from voxcity.generator.update import regenerate_voxels
+
+    vc = make_flat_voxcity(nx=12, ny=12, nz=30, meshsize=1.0)
+    for i in range(12):
+        vc.dem.elevation[i, :] = 10.0 + i  # sloped, min = 10.0
+
+    # One building straddling two DEM steps: the raw per-cell DEM gives the two
+    # columns different ground levels, the voxelizer's footprint-mean gives them
+    # the same one. Only the latter round-trips.
+    occ = {"b1": np.array(
+        [[4, 5, k] for k in range(6, 10)] + [[5, 5, k] for k in range(6, 10)],
+        dtype=np.int64,
+    )}
+    out = stamp_buildings(vc, occ)
+
+    before = {c: _building_ks(out.voxels.classes, *c) for c in [(4, 5), (5, 5)]}
+    assert before[(4, 5)] and before[(5, 5)]  # non-vacuous: something was actually stamped
+
+    regenerate_voxels(out, inplace=True)
+    assert {c: _building_ks(out.voxels.classes, *c) for c in [(4, 5), (5, 5)]} == before
+
+
+def test_flat_zero_dem_metadata_unchanged():
+    """Guard on the no-op case: with a flat zero DEM the correction is
+    identically zero, so the values match the raw-DEM computation."""
+    vc = make_flat_voxcity(nx=10, ny=10, nz=8, meshsize=1.0)
+    occ = {"b1": np.array([[2, 3, 1], [2, 3, 2], [2, 3, 3]], dtype=np.int64)}
+    out = stamp_buildings(vc, occ)
+    # ground_level = int(0/1 + 0.5) + 1 = 1; spans are k - 1.
+    assert out.buildings.min_heights[2, 3] == [[0.0, 3.0]]
+    assert out.buildings.heights[2, 3] == 3.0
+
+
+def test_sequential_stamps_first_building_still_round_trips():
+    """The ground datum is derived from the cumulative ids_grid as of each call,
+    so a second, unrelated stamp_buildings call must not disturb the first
+    building's already-written metadata. Uses a non-zero DEM so the datum
+    correction is actually exercised."""
+    from voxcity.generator.update import regenerate_voxels
+
+    vc = make_flat_voxcity(nx=14, ny=14, nz=20, meshsize=1.0)
+    vc.dem.elevation[:] = 10.0  # non-zero DEM minimum
+
+    occ1 = {"b1": np.array([[3, 3, k] for k in range(1, 5)], dtype=np.int64)}
+    out = stamp_buildings(vc, occ1)
+
+    occ2 = {"b2": np.array([[9, 9, k] for k in range(1, 6)], dtype=np.int64)}
+    out = stamp_buildings(out, occ2)
+
+    before = _building_ks(out.voxels.classes, 3, 3)
+    assert before  # non-vacuous
+
+    regenerate_voxels(out, inplace=True)
+    assert _building_ks(out.voxels.classes, 3, 3) == before
+
+
+def test_non_float_dem_dtype_matches_float_equivalent():
+    """np.asarray(..., dtype=float) is the only thing preventing integer
+    truncation of the ground level when the DEM's own dtype is integral.
+
+    A *uniform* int DEM would not exercise this at all: dem - dem.min() is zero
+    regardless of dtype. The truncation only bites when a building's footprint
+    straddles two DEM steps, because process_grid then writes that footprint's
+    fractional mean back into the grid -- and an int grid floors it. Here the
+    footprint spans dem 5 and 6, so the mean is 0.5 above the global min:
+    float keeps ground_level = int(0.5 + 0.5) + 1 = 2, an int grid truncates the
+    mean to 0 and yields 1, shifting the building a whole voxel.
+    """
+    def _model(dtype):
+        vc = make_flat_voxcity(nx=10, ny=10, nz=16, meshsize=1.0)
+        dem = np.full((10, 10), 5, dtype=dtype)
+        dem[3, :] = 6
+        vc.dem.elevation = dem
+        return vc
+
+    # Footprint straddles the 5/6 DEM step -> footprint mean is fractional.
+    occ = {"b1": np.array(
+        [[2, 3, k] for k in range(6, 9)] + [[3, 3, k] for k in range(6, 9)],
+        dtype=np.int64,
+    )}
+    out_int = stamp_buildings(_model(np.int32), occ)
+    out_float = stamp_buildings(_model(float), occ)
+
+    # Non-vacuous: the float path must land on the fractional-mean datum, i.e.
+    # ground_level 2, not the truncated 1.
+    assert out_float.buildings.min_heights[2, 3] == [[4.0, 7.0]]
+
+    for i, j in [(2, 3), (3, 3)]:
+        assert out_int.buildings.min_heights[i, j] == out_float.buildings.min_heights[i, j]
+        assert out_int.buildings.heights[i, j] == out_float.buildings.heights[i, j]
