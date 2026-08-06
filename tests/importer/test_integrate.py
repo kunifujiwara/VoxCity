@@ -126,3 +126,64 @@ def test_out_of_bounds_group_skipped_without_consuming_id(caplog, propagate_voxc
     assert id_map["good"] == expected_next_id
     assert int(out.buildings.ids[3, 3]) == expected_next_id
     assert "bad" in caplog.text
+
+
+def _building_ks(classes, i, j):
+    """Voxel k indices occupied by a building in column (i, j)."""
+    return np.flatnonzero(classes[i, j, :] == BUILDING_CODE).tolist()
+
+
+def test_stamped_metadata_survives_regenerate_voxels():
+    """stamp_buildings must derive heights/min_heights against the SAME ground
+    datum the voxelizer uses, so that stamping and then regenerating the voxel
+    grid is a fixed point. With a uniform non-zero DEM the old code was off by
+    dem_min/meshsize cells, which made the imported building sink (or vanish)
+    on the first edit."""
+    from voxcity.generator.update import regenerate_voxels
+
+    vc = make_flat_voxcity(nx=12, ny=12, nz=20, meshsize=1.0)
+    vc.dem.elevation[:] = 10.0  # non-zero DEM minimum
+
+    occ = {"b1": np.array([[4, 5, k] for k in range(1, 5)], dtype=np.int64)}
+    out = stamp_buildings(vc, occ)
+
+    before = _building_ks(out.voxels.classes, 4, 5)
+    assert before == [1, 2, 3, 4]
+
+    regenerate_voxels(out, inplace=True)
+    assert _building_ks(out.voxels.classes, 4, 5) == before
+
+
+def test_ground_datum_matches_voxelizer_on_sloped_dem():
+    """On a sloped DEM the voxelizer flattens each building's footprint to that
+    building's mean DEM via process_grid. stamp_buildings must measure its spans
+    against that same flattened datum, not the raw per-cell DEM."""
+    from voxcity.geoprocessor.raster import process_grid
+
+    vc = make_flat_voxcity(nx=12, ny=12, nz=24, meshsize=1.0)
+    for i in range(12):
+        vc.dem.elevation[i, :] = 10.0 + i  # sloped, min = 10.0
+
+    # One building straddling two DEM steps.
+    occ = {"b1": np.array(
+        [[4, 5, k] for k in range(5, 9)] + [[5, 5, k] for k in range(5, 9)],
+        dtype=np.int64,
+    )}
+    out = stamp_buildings(vc, occ)
+
+    dem0 = np.asarray(out.dem.elevation, dtype=float)
+    eff = process_grid(out.buildings.ids, dem0 - dem0.min())
+    for i, j in [(4, 5), (5, 5)]:
+        ground = int(eff[i, j] / 1.0 + 0.5) + 1
+        assert out.buildings.min_heights[i, j] == [[float(5 - ground), float(9 - ground)]]
+
+
+def test_flat_zero_dem_metadata_unchanged():
+    """Guard on the no-op case: with a flat zero DEM the correction is
+    identically zero, so heights/min_heights must keep their existing values."""
+    vc = make_flat_voxcity(nx=10, ny=10, nz=8, meshsize=1.0)
+    occ = {"b1": np.array([[2, 3, 1], [2, 3, 2], [2, 3, 3]], dtype=np.int64)}
+    out = stamp_buildings(vc, occ)
+    # ground_level = int(0/1 + 0.5) + 1 = 1; spans are k - 1.
+    assert out.buildings.min_heights[2, 3] == [[0.0, 3.0]]
+    assert out.buildings.heights[2, 3] == 3.0

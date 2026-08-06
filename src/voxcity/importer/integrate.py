@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import numpy as np
 
+from ..geoprocessor.raster import process_grid
 from ..utils.logging import get_logger
 
 _logger = get_logger(__name__)
@@ -30,7 +31,17 @@ def _spans_from_ks(ks):
 
 def stamp_buildings(voxcity, occupied_by_name, building_value=BUILDING_CODE,
                     overwrite=True, source=None, manifest_extra=None):
-    """Write occupied cells into voxcity and update derived metadata grids."""
+    """Write occupied cells into voxcity and update derived metadata grids.
+
+    Runs in two passes. Pass 1 writes voxel classes and assigns building ids.
+    Pass 2 derives heights/min_heights -- but only after the *effective* ground
+    datum has been computed, because that datum depends on the ids pass 1 just
+    assigned (process_grid averages the DEM per building footprint).
+
+    The datum MUST match generator/voxelizer.py's, since regenerate_voxels()
+    rebuilds these columns from the metadata written here. Getting it wrong made
+    imported buildings shift vertically on the first edit.
+    """
     classes = voxcity.voxels.classes
     nx, ny, nz = classes.shape
     meshsize = float(voxcity.voxels.meta.meshsize)
@@ -57,7 +68,10 @@ def stamp_buildings(voxcity, occupied_by_name, building_value=BUILDING_CODE,
     # so cross-group collisions inside a single stamp_buildings invocation
     # can be detected and logged instead of silently overwriting ids_grid.
     column_owner = {}
+    # Pass-1 output, consumed by pass 2: [(bid, {(i, j): [absolute k, ...]}), ...]
+    pending = []
 
+    # --- Pass 1: voxel classes + building ids ---
     for name, occ in occupied_by_name.items():
         if not len(occ):
             continue
@@ -86,13 +100,7 @@ def stamp_buildings(voxcity, occupied_by_name, building_value=BUILDING_CODE,
         next_id += 1
         id_map[name] = bid
 
-        for (i, j), ks in cols.items():
-            spans = _spans_from_ks(ks)
-            top_k = max(s[1] for s in spans)  # exclusive end
-            # heights/min_heights store values above ground level (matching
-            # the convention used by generator/voxelizer.py), so the DEM-derived
-            # ground offset must be subtracted from the absolute voxel indices.
-            ground_level = int(voxcity.dem.elevation[i, j] / meshsize + 0.5) + 1
+        for i, j in cols:
             owner = column_owner.get((i, j))
             if owner is not None and owner[0] != name:
                 _logger.warning(
@@ -102,6 +110,23 @@ def stamp_buildings(voxcity, occupied_by_name, building_value=BUILDING_CODE,
                 )
             column_owner[(i, j)] = (name, bid)
             ids_grid[i, j] = bid
+
+        pending.append((bid, cols))
+
+    # --- Effective ground datum, mirroring generator/voxelizer.py exactly:
+    #     dem_grid = process_grid(building_id_grid, dem - dem.min())
+    #     ground_level = int(dem_grid[i, j] / voxel_size + 0.5) + 1
+    #     Computed here (after pass 1) because process_grid averages the DEM per
+    #     building id and therefore needs the ids just assigned above.
+    dem0 = np.asarray(voxcity.dem.elevation, dtype=float)
+    eff_dem = process_grid(ids_grid, dem0 - dem0.min())
+
+    # --- Pass 2: heights / min_heights, measured above the effective ground ---
+    for _bid, cols in pending:
+        for (i, j), ks in cols.items():
+            spans = _spans_from_ks(ks)
+            top_k = max(s[1] for s in spans)  # exclusive end
+            ground_level = int(eff_dem[i, j] / meshsize + 0.5) + 1
             heights_grid[i, j] = max(float(heights_grid[i, j]), (top_k - ground_level) * meshsize)
             cell = min_heights[i, j]
             if not isinstance(cell, list):
