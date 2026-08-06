@@ -219,17 +219,35 @@ def test_sequential_stamps_first_building_still_round_trips():
 
 def test_non_float_dem_dtype_matches_float_equivalent():
     """np.asarray(..., dtype=float) is the only thing preventing integer
-    truncation of the ground level when the DEM's own dtype is integral. An
-    int32 DEM must produce the same min_heights as its float equivalent."""
-    vc_int = make_flat_voxcity(nx=10, ny=10, nz=12, meshsize=1.0)
-    vc_int.dem.elevation = np.full((10, 10), 5, dtype=np.int32)
+    truncation of the ground level when the DEM's own dtype is integral.
 
-    vc_float = make_flat_voxcity(nx=10, ny=10, nz=12, meshsize=1.0)
-    vc_float.dem.elevation[:] = 5.0
+    A *uniform* int DEM would not exercise this at all: dem - dem.min() is zero
+    regardless of dtype. The truncation only bites when a building's footprint
+    straddles two DEM steps, because process_grid then writes that footprint's
+    fractional mean back into the grid -- and an int grid floors it. Here the
+    footprint spans dem 5 and 6, so the mean is 0.5 above the global min:
+    float keeps ground_level = int(0.5 + 0.5) + 1 = 2, an int grid truncates the
+    mean to 0 and yields 1, shifting the building a whole voxel.
+    """
+    def _model(dtype):
+        vc = make_flat_voxcity(nx=10, ny=10, nz=16, meshsize=1.0)
+        dem = np.full((10, 10), 5, dtype=dtype)
+        dem[3, :] = 6
+        vc.dem.elevation = dem
+        return vc
 
-    occ = {"b1": np.array([[2, 3, 6], [2, 3, 7], [2, 3, 8]], dtype=np.int64)}
-    out_int = stamp_buildings(vc_int, occ)
-    out_float = stamp_buildings(vc_float, occ)
+    # Footprint straddles the 5/6 DEM step -> footprint mean is fractional.
+    occ = {"b1": np.array(
+        [[2, 3, k] for k in range(6, 9)] + [[3, 3, k] for k in range(6, 9)],
+        dtype=np.int64,
+    )}
+    out_int = stamp_buildings(_model(np.int32), occ)
+    out_float = stamp_buildings(_model(float), occ)
 
-    assert out_int.buildings.min_heights[2, 3] == out_float.buildings.min_heights[2, 3]
-    assert out_int.buildings.heights[2, 3] == out_float.buildings.heights[2, 3]
+    # Non-vacuous: the float path must land on the fractional-mean datum, i.e.
+    # ground_level 2, not the truncated 1.
+    assert out_float.buildings.min_heights[2, 3] == [[4.0, 7.0]]
+
+    for i, j in [(2, 3), (3, 3)]:
+        assert out_int.buildings.min_heights[i, j] == out_float.buildings.min_heights[i, j]
+        assert out_int.buildings.heights[i, j] == out_float.buildings.heights[i, j]
