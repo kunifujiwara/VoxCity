@@ -39,6 +39,11 @@ BUILDING_CLASS = -3
 WINDOW_CLASS = -16
 BUILDING_SURFACE_CLASSES = (BUILDING_CLASS, WINDOW_CLASS)
 
+# Tree canopy. Named locally to match how the rest of the package spells this
+# code per-module (``TREE_CODE`` in generator.voxelizer, ``VOXCITY_TREE_CODE``
+# in the GPU simulators); importing one of those here would invert the layering.
+TREE_CLASS = -2
+
 def create_voxel_mesh(voxel_array, class_id, meshsize=1.0, building_id_grid=None, mesh_type=None):
     """
     Create a 3D mesh from voxels preserving sharp edges, scaled by meshsize.
@@ -63,7 +68,11 @@ def create_voxel_mesh(voxel_array, class_id, meshsize=1.0, building_id_grid=None
         (e.g. building -3 + window/glass -16 form a single continuous surface,
         with no internal face along their shared boundary). See
         ``BUILDING_SURFACE_CLASSES`` for the standard building-surface set.
-    
+
+        Membership of tree canopy (-2) in this set also changes the boundary
+        rule under ``mesh_type='building_solar'``/``'open_air'`` -- see
+        ``mesh_type`` below.
+
     meshsize : float, default=1.0
         The real-world size of each voxel in meters, applied uniformly to x, y, and z
         dimensions. Used to scale the output mesh to real-world coordinates.
@@ -76,9 +85,23 @@ def create_voxel_mesh(voxel_array, class_id, meshsize=1.0, building_id_grid=None
     mesh_type : str, optional
         Type of mesh to create, controlling which faces are included:
         - None (default): create faces at boundaries between different classes
-        - 'building_solar' or 'open_air': only create faces at boundaries between
-                          buildings (-3) and either void (0) or trees (-2). Useful for
-                          solar analysis where only exposed surfaces matter.
+        - 'building_solar' or 'open_air': emit only the exposed skin of the
+          class set, for solar/visibility analysis where buried faces do not
+          matter. Active only when the class set intersects
+          ``BUILDING_SURFACE_CLASSES``; otherwise the default rule applies.
+          Which neighbours count as "exposed" depends on whether tree canopy
+          (-2) is itself in the class set:
+
+          * -2 NOT in the set (the classic building-surface case): a face is
+            emitted toward void (0) *or* toward canopy (-2). Canopy is a
+            see-through occluder rather than a surface, so the wall behind it
+            is still lit and still visible, and must be meshed.
+          * -2 in the set (canopy is being meshed as a surface too): a face is
+            emitted only toward void (0). A tree-adjacent face is now internal
+            to the set, so this suppresses tree-to-tree seams and building
+            faces buried against canopy.
+
+          Out-of-bounds neighbours always count as exposed under both rules.
 
     Returns
     -------
@@ -90,8 +113,21 @@ def create_voxel_mesh(voxel_array, class_id, meshsize=1.0, building_id_grid=None
         - vertices: 3D coordinates of each vertex
         - faces: triangles defined by vertex indices
         - face_normals: normal vectors for each face
-        - metadata: If class_id=-3, includes 'building_id' mapping faces to buildings
-    
+        - metadata: when the class set intersects ``BUILDING_SURFACE_CLASSES``
+          and ``building_id_grid`` is given, includes per-triangle
+          'building_id' and 'face_voxel_class' arrays.
+
+        Caveat on 'building_id': tracking is enabled per *call* (it turns on
+        when the class set intersects ``BUILDING_SURFACE_CLASSES``), not per
+        face. If the class set is broader than those classes, every face still
+        gets a 'building_id' sampled from ``building_id_grid`` at its (u, v)
+        column -- including tree, ground and water faces, which may pick up the
+        id of a building sharing their column (canopy overhanging a roof, say;
+        a horizontal neighbour sits in its own column and so reads 0 instead).
+        Use 'face_voxel_class'
+        to filter: 'building_id' is only meaningful for faces whose own class
+        is in ``BUILDING_SURFACE_CLASSES``.
+
     Examples
     --------
     Basic usage for a simple voxel array:
@@ -167,6 +203,11 @@ def create_voxel_mesh(voxel_array, class_id, meshsize=1.0, building_id_grid=None
         and bool(class_ids_set & set(BUILDING_SURFACE_CLASSES))
     )
 
+    # Canopy is a see-through occluder, so a tree neighbour normally leaves the
+    # surface behind it exposed -- unless trees are themselves in the set being
+    # meshed (entire-surface mode), where a tree-adjacent face is internal.
+    tree_is_open = TREE_CLASS not in class_ids_set
+
     # Collect per-direction boundary face data
     all_face_verts = []      # list of (M, 4, 3) arrays
     all_face_normals = []    # list of (M, 3) arrays
@@ -193,7 +234,9 @@ def create_voxel_mesh(voxel_array, class_id, meshsize=1.0, building_id_grid=None
         adj_values = voxel_array[adj_clamped[:, 0], adj_clamped[:, 1], adj_clamped[:, 2]]
 
         if solar_mode:
-            inbound_boundary = (adj_values == 0) | (adj_values == -2)
+            inbound_boundary = (adj_values == 0)
+            if tree_is_open:
+                inbound_boundary |= (adj_values == TREE_CLASS)
         else:
             inbound_boundary = (adj_values == 0) | (~np.isin(adj_values, class_ids))
 
