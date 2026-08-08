@@ -193,7 +193,14 @@ def create_voxel_mesh(voxel_array, class_id, meshsize=1.0, building_id_grid=None
         adj_values = voxel_array[adj_clamped[:, 0], adj_clamped[:, 1], adj_clamped[:, 2]]
 
         if solar_mode:
-            inbound_boundary = (adj_values == 0) | (adj_values == -2)
+            # A tree neighbor is "open" (canopy is a see-through occluder)
+            # unless trees are themselves part of the surface set being
+            # meshed -- then a tree-adjacent face is internal and only air
+            # exposes a surface (entire-surface mode).
+            if -2 in class_ids_set:
+                inbound_boundary = (adj_values == 0)
+            else:
+                inbound_boundary = (adj_values == 0) | (adj_values == -2)
         else:
             inbound_boundary = (adj_values == 0) | (~np.isin(adj_values, class_ids))
 
