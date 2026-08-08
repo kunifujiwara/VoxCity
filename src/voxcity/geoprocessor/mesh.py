@@ -122,7 +122,9 @@ def create_voxel_mesh(voxel_array, class_id, meshsize=1.0, building_id_grid=None
         face. If the class set is broader than those classes, every face still
         gets a 'building_id' sampled from ``building_id_grid`` at its (u, v)
         column -- including tree, ground and water faces, which may pick up the
-        id of a building they merely overhang or abut. Use 'face_voxel_class'
+        id of a building sharing their column (canopy overhanging a roof, say;
+        a horizontal neighbour sits in its own column and so reads 0 instead).
+        Use 'face_voxel_class'
         to filter: 'building_id' is only meaningful for faces whose own class
         is in ``BUILDING_SURFACE_CLASSES``.
 
