@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass
-from typing import Tuple
+from typing import Optional, Tuple
 
 import numpy as np
 
@@ -35,7 +35,31 @@ SURFACE_TABLE_CONVENTION = "voxel-array[row,col,z]*meshsize"
 
 NO_PATCH = -1
 
+# How deep a patch id is carried into solid. The fill exists to cover the
+# one-or-two-cell staircase a slanted surface leaves behind, not to label a
+# building's whole core: a ray leaving a front face outward never enters the
+# interior, and one grazing along the surface crosses at most a step or two.
+# Bounding it keeps this O(N) instead of O(depth x N) -- unbounded, a solid
+# terrain column costs seconds on a city-sized grid (measured: ~5.5s for a
+# 59-cell column, ~10.6s for a ~100-cell block, both on grids this solver
+# actually runs at).
+MAX_PATCH_FILL_DEPTH = 3
+
+# Signature sentinel for "no override supplied" -- kept next to NO_PATCH
+# because both mean "behave as today", one at table granularity and one at
+# per-surface granularity.
+NO_SURFACE_OVERRIDE = "none"
+
 _FIELDS = ("cell", "face", "origin", "normal", "patch", "area")
+
+# Which fields are (S, 3) vectors rather than (S,) scalars -- the single
+# source of truth the shape-check loop reads from, so adding a 7th field to
+# _FIELDS can't be done without also deciding its shape here.
+_VECTOR3_FIELDS = frozenset({"cell", "origin", "normal"})
+
+# Sentinel distinct from any real attribute value, including None, so
+# `getattr(table, name, _MISSING) is _MISSING` unambiguously means "absent".
+_MISSING = object()
 
 
 @dataclass
@@ -62,21 +86,41 @@ class SurfaceOverride:
         return len(self.cell)
 
 
-def _length(table) -> int:
-    """Row count from a possibly-empty, possibly-duck-typed table.
+def _missing_fields(table) -> list:
+    """Names of required attributes ``table`` does not have at all.
 
-    Called before validation has run, so this must not assume ``cell`` exists
-    or has a sane shape -- ``surface_override_signature`` calls it on tables
-    that have not been (and may never be) validated.
+    Distinct from "present but wrong shape", which the caller checks next --
+    this only answers "can I even call getattr(table, name) and get
+    something back".
     """
-    cell = getattr(table, "cell", None)
-    if cell is None:
-        return 0
+    return [name for name in _FIELDS if getattr(table, name, _MISSING) is _MISSING]
+
+
+def _length(table) -> Optional[int]:
+    """Row count from a table, or ``None`` if it lacks ``cell`` entirely.
+
+    ``None`` (attribute absent -- a malformed table) is kept distinct from
+    ``0`` (attribute present, but an empty array -- a legitimately empty
+    override) specifically so ``surface_override_signature`` cannot conflate
+    "malformed" with "none supplied" and collapse a broken table onto the
+    ``NO_SURFACE_OVERRIDE`` sentinel. Called before validation may have run,
+    so it must not assume ``cell`` exists or has a sane shape.
+    """
+    cell = getattr(table, "cell", _MISSING)
+    if cell is _MISSING:
+        return None
     return len(np.asarray(cell))
 
 
 def validate_surface_override(table, grid_shape: Tuple[int, int, int]) -> None:
-    """Reject a table this solver cannot safely index."""
+    """Reject a table this solver cannot safely index.
+
+    Ordering rule: call this before trusting ``surface_override_signature``
+    on anything other than the ``table is None`` case. A table that passes
+    here is guaranteed to have every required attribute and a well-defined
+    length, which is exactly what the signature needs to be content-sensitive
+    instead of raising or silently degrading.
+    """
     conv = getattr(table, "convention", None)
     if conv != SURFACE_TABLE_CONVENTION:
         raise ValueError(
@@ -85,14 +129,20 @@ def validate_surface_override(table, grid_shape: Tuple[int, int, int]) -> None:
             f"different voxel-axis convention and its cell indices would "
             f"silently address the wrong voxels.")
 
+    missing = _missing_fields(table)
+    if missing:
+        raise ValueError(
+            f"surface table is missing required attribute(s) {missing}; "
+            f"expected all of {list(_FIELDS)}")
+
     n = _length(table)
-    for name, shape in (("cell", (n, 3)), ("face", (n,)), ("origin", (n, 3)),
-                        ("normal", (n, 3)), ("patch", (n,)), ("area", (n,))):
+    for name in _FIELDS:
+        expected = (n, 3) if name in _VECTOR3_FIELDS else (n,)
         got = np.asarray(getattr(table, name)).shape
-        if got != shape:
+        if got != expected:
             raise ValueError(
                 f"surface table arrays must all have the same length; "
-                f"{name} has shape {got}, expected {shape}")
+                f"{name} has shape {got}, expected {expected}")
 
     if n == 0:
         return
@@ -112,18 +162,33 @@ def validate_surface_override(table, grid_shape: Tuple[int, int, int]) -> None:
             f"{float(np.abs(lens - 1.0).max()):.4f}")
 
 
-NO_SURFACE_OVERRIDE = "none"
-
-
 def surface_override_signature(table) -> str:
-    """Cache-key contribution. ``None`` gets its own constant so cache entries
-    written before this feature existed stay valid for the no-override case.
+    """Cache-key contribution. ``None`` gets its own constant,
+    ``NO_SURFACE_OVERRIDE``, so cache entries written before this feature
+    existed stay valid for the no-override case.
+
+    Ordering rule: call ``validate_surface_override`` before trusting this
+    signature. A malformed table -- present but missing a required attribute
+    -- raises ``ValueError`` here rather than returning
+    ``NO_SURFACE_OVERRIDE``: collapsing the two would let a broken table
+    masquerade as "none supplied" and reuse another run's cached result.
 
     The derived cell-patch grid is NOT hashed: it is a pure function of the
     table and the voxel content, both already in the key.
     """
-    if table is None or _length(table) == 0:
+    if table is None:
         return NO_SURFACE_OVERRIDE
+
+    missing = _missing_fields(table)
+    if missing:
+        raise ValueError(
+            f"surface table is missing required attribute(s) {missing}; "
+            f"cannot compute a signature for a malformed table -- call "
+            f"validate_surface_override first.")
+
+    if _length(table) == 0:
+        return NO_SURFACE_OVERRIDE
+
     h = hashlib.blake2b(digest_size=16)
     h.update(getattr(table, "convention", "").encode("utf-8"))
     for name in _FIELDS:
@@ -134,34 +199,45 @@ def surface_override_signature(table) -> str:
 
 
 def build_cell_patch_grid(table, is_solid: np.ndarray) -> np.ndarray:
-    """Per-cell patch id for the skip DDA, interior cells filled.
+    """Per-cell patch id for the skip DDA, interior cells filled up to a
+    bounded depth.
 
-    Surface rows are scattered onto their cells first (a corner cell touched by
-    two patches keeps the last row's id -- either wall is a defensible owner and
-    the mock behaved the same way). Interior solid cells then inherit the patch
-    of the nearest patched cell by breadth-first dilation. Without the interior
-    fill, a ray skipping its own staircase cell immediately hits the patchless
-    interior cell behind it and blocks anyway; the mock's headline numbers were
-    measured with interior fill (its build_cell_patch).
+    Surface rows are scattered onto their cells first (a corner cell touched
+    by two patches keeps the last row's id -- either wall is a defensible
+    owner and the mock behaved the same way). Interior solid cells then
+    inherit the patch of the nearest patched cell by breadth-first dilation,
+    capped at ``MAX_PATCH_FILL_DEPTH`` rounds. Without any interior fill, a
+    ray skipping its own staircase cell immediately hits the patchless
+    interior cell behind it and blocks anyway; the mock's headline numbers
+    were measured with interior fill (its build_cell_patch). Cells deeper
+    than the bound simply stay ``NO_PATCH``, which is the safe direction: an
+    un-patched cell is opaque, so the worst case is a ray blocking where it
+    would otherwise have passed, not the reverse.
     """
     solid = np.asarray(is_solid, dtype=bool)
     grid = np.full(solid.shape, NO_PATCH, dtype=np.int32)
     n = _length(table)
-    if n == 0:
+    if not n:
         return grid
 
     cell = np.asarray(table.cell)
     patch = np.asarray(table.patch)
-    keyed = patch >= 0
-    grid[cell[keyed, 0], cell[keyed, 1], cell[keyed, 2]] = patch[keyed]
+    # Any negative patch id counts as "no patch" here, not just NO_PATCH
+    # specifically -- a caller need not use exactly this constant.
+    has_patch = patch >= 0
+    grid[cell[has_patch, 0], cell[has_patch, 1], cell[has_patch, 2]] = patch[has_patch]
 
-    # BFS dilation: each pass hands ids one cell deeper along a face-adjacent
-    # neighbour. Depth is bounded by the grid's diameter, so this terminates;
-    # a pass that makes no progress means the remaining unfilled solid cells
-    # have no patched neighbour anywhere (an isolated interior with no
-    # surface table entry touching it), so stop rather than spin.
+    # Bounded BFS dilation: each round hands ids one cell deeper along a
+    # face-adjacent neighbour, for at most MAX_PATCH_FILL_DEPTH rounds -- see
+    # the constant's comment for why that bound is enough. A round that makes
+    # no progress means the remaining unfilled solid cells have no patched
+    # neighbour anywhere yet (an isolated interior island with no surface
+    # table entry touching it), so stop early rather than spend the rest of
+    # the budget doing nothing.
     todo = solid & (grid == NO_PATCH)
-    while todo.any():
+    for _round in range(MAX_PATCH_FILL_DEPTH):
+        if not todo.any():
+            break
         progressed = False
         for axis in range(3):
             for shift in (1, -1):
