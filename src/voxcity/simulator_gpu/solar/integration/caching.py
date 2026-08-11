@@ -33,6 +33,11 @@ from .utils import (
     VOXCITY_WINDOW_CODE,
 )
 
+from ..surface_override import (
+    validate_surface_override, surface_override_signature,
+    build_cell_patch_grid, NO_SURFACE_OVERRIDE,
+)
+
 # Voxel codes that together form a building's exterior surface (building + glass).
 BUILDING_SURFACE_CLASSES = (VOXCITY_BUILDING_CODE, VOXCITY_WINDOW_CODE)
 
@@ -145,6 +150,7 @@ class CachedBuildingRadiationModel:
     boundary_mask: Optional[np.ndarray] = None
     cached_building_mesh: object = None
     voxel_data_hash: str = ""
+    surface_override_signature: str = NO_SURFACE_OVERRIDE
 
 
 @dataclass
@@ -460,33 +466,40 @@ def get_or_create_building_radiation_model(
     n_reflection_steps: int = 2,
     progress_report: bool = False,
     building_class_id=None,
+    surface_override=None,
     **kwargs
 ) -> Tuple[object, np.ndarray]:
     """
     Get cached RadiationModel for building surfaces or create a new one.
-    
+
     Args:
         voxcity: VoxCity object
         n_reflection_steps: Number of reflection bounces
         progress_report: Print progress messages
         building_class_id: Building-surface voxel class code(s). None (default)
             uses (-3, -16) so window/glass cells count as building surface.
+        surface_override: Optional table (duck-typed, see
+            ``solar.surface_override.SurfaceOverride``) of true polygon
+            normals plus coplanar patch ids. When supplied, the model is
+            built from these surfaces instead of extracting them from voxel
+            occupancy, and rays skip occlusion by their own patch.
         **kwargs: Additional RadiationConfig parameters
-        
+
     Returns:
         Tuple of (RadiationModel, is_building_surf boolean array)
     """
     global _building_radiation_model_cache
-    
+
     from ..radiation import RadiationModel, RadiationConfig
     from ..domain import Domain
-    
+
     voxel_data = voxcity.voxels.classes
     meshsize = voxcity.voxels.meta.meshsize
     ny_vc, nx_vc, nz = voxel_data.shape
     requested_n_azimuth = int(kwargs.get('n_azimuth', 40))
     requested_n_elevation = int(kwargs.get('n_elevation', 10))
     voxel_hash = _voxel_content_hash(voxel_data)
+    ov_sig = surface_override_signature(surface_override)
 
     # Check if cache is valid
     cache_valid = False
@@ -498,7 +511,8 @@ def get_or_create_building_radiation_model(
             cache.n_azimuth == requested_n_azimuth and
             cache.n_elevation == requested_n_elevation):
             if cache.voxel_data_hash == voxel_hash:
-                if n_reflection_steps == 0 or cache.n_reflection_steps > 0:
+                if ((n_reflection_steps == 0 or cache.n_reflection_steps > 0)
+                        and cache.surface_override_signature == ov_sig):
                     cache_valid = True
                     if progress_report:
                         print("Using cached Building RadiationModel (SVF/CSF already computed)")
@@ -510,7 +524,11 @@ def get_or_create_building_radiation_model(
                 # constant across optimization individuals (only tree placements change).
                 # Only warm-refresh when the reflection-step requirement is compatible;
                 # a new n_reflection_steps value requires a new Domain.
-                if n_reflection_steps == 0 or cache.n_reflection_steps > 0:
+                #
+                # Warm refresh reuses the cached model's surface set, which
+                # bakes in the override table -- only valid for the same table.
+                if ((n_reflection_steps == 0 or cache.n_reflection_steps > 0)
+                        and cache.surface_override_signature == ov_sig):
                     needs_refresh = True
 
     if cache_valid:
@@ -579,9 +597,53 @@ def get_or_create_building_radiation_model(
         surface_reflections=surface_reflections,
         cache_svf_matrix=surface_reflections,
     )
-    
-    model = RadiationModel(domain, config)
-    
+
+    injected_surfaces = None
+    cell_patch_grid = None
+    if surface_override is not None and len(np.asarray(surface_override.cell)):
+        from ..domain import surfaces_from_override
+        validate_surface_override(surface_override, grid_shape=(ni, nj, nk))
+        injected_surfaces = surfaces_from_override(surface_override)
+        cell_patch_grid = build_cell_patch_grid(surface_override,
+                                                is_solid_np.astype(bool))
+
+        # build_cell_patch_grid silently drops table rows whose cell is not
+        # solid per this solver's own is_solid (the safe direction). That is
+        # only "silent but fine" when the caller's occupancy and
+        # convert_voxel_data_to_arrays agree; warn if a non-trivial fraction
+        # of patched rows disagree, since that would otherwise look like "the
+        # feature just doesn't help much here" rather than a real mismatch.
+        cell = np.asarray(surface_override.cell)
+        patch = np.asarray(surface_override.patch)
+        patched = patch >= 0
+        n_patched = int(patched.sum())
+        if n_patched:
+            not_solid = ~is_solid_np.astype(bool)[cell[:, 0], cell[:, 1], cell[:, 2]]
+            n_disagree = int((patched & not_solid).sum())
+            if n_disagree > 0.01 * n_patched:
+                print(
+                    f"Warning: surface_override has {n_disagree}/{n_patched} "
+                    f"patched rows whose cell is not solid per this solver's "
+                    f"occupancy (convert_voxel_data_to_arrays); those rows "
+                    f"were dropped from the patch grid. This usually means "
+                    f"the caller's occupancy definition disagrees with "
+                    f"convert_voxel_data_to_arrays (e.g. window/glass "
+                    f"classification)."
+                )
+
+    # Pass surfaces/cell_patch only when actually supplied. Passing
+    # surfaces=None / cell_patch=None unconditionally would break any
+    # existing subclass or test double whose __init__ predates these
+    # parameters -- and None means "not supplied" anyway, so there is
+    # nothing to gain by passing it explicitly.
+    extra = {}
+    if injected_surfaces is not None:
+        extra["surfaces"] = injected_surfaces
+    if cell_patch_grid is not None:
+        extra["cell_patch"] = cell_patch_grid
+
+    model = RadiationModel(domain, config, **extra)
+
     if progress_report:
         print("Computing Sky View Factors...")
     model.compute_svf()
@@ -623,8 +685,9 @@ def get_or_create_building_radiation_model(
         bldg_indices=bldg_indices,
         mesh_to_surface_idx=None,
         voxel_data_hash=voxel_hash,
+        surface_override_signature=ov_sig,
     )
-    
+
     return model, is_building_surf
 
 

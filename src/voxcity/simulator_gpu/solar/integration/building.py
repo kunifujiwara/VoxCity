@@ -142,6 +142,11 @@ def get_building_solar_irradiance(
     with_reflections = kwargs.pop('with_reflections', False)
     computation_mask = kwargs.pop('computation_mask', None)
     target_selectors = kwargs.pop('target_selectors', None)
+    # Popped rather than left in kwargs: get_or_create_building_radiation_model
+    # is called below as (..., surface_override=surface_override, **kwargs);
+    # if 'surface_override' were still in kwargs that call would raise
+    # TypeError: got multiple values for argument 'surface_override'.
+    surface_override = kwargs.pop('surface_override', None)
     if target_selectors is not None and with_reflections:
         logger.warning(
             "target_selectors for building solar irradiance currently use output-only restriction; "
@@ -159,6 +164,7 @@ def get_building_solar_irradiance(
         n_reflection_steps=n_reflection_steps,
         progress_report=progress_report,
         building_class_id=building_class_id,
+        surface_override=surface_override,
         **kwargs
     )
     
