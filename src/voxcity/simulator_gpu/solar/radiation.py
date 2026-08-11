@@ -55,6 +55,12 @@ IEAST = 4    # +x/+u normal (North-facing; legacy PALM label)
 IWEST = 5    # -x/-u normal (South-facing; legacy PALM label)
 
 
+def surface_incidence_cosine(normal, sun_dir) -> float:
+    """max(0, normal . sun_dir). The kernel inlines this; extracted for tests."""
+    d = normal[0] * sun_dir[0] + normal[1] * sun_dir[1] + normal[2] * sun_dir[2]
+    return float(max(0.0, d))
+
+
 @dataclass
 class RadiationConfig:
     """
@@ -116,24 +122,48 @@ class RadiationModel:
     def __init__(
         self,
         domain: Domain,
-        config: Optional[RadiationConfig] = None
+        config: Optional[RadiationConfig] = None,
+        surfaces: Optional[Surfaces] = None,
+        cell_patch=None,
     ):
         """
         Initialize radiation model.
-        
+
         Args:
             domain: Domain object with geometry
             config: Radiation configuration (uses defaults if None)
+            surfaces: Pre-built Surfaces to use instead of extracting from
+                domain occupancy (e.g. from surfaces_from_override). Must be
+                supplied at construction: every internal flux buffer below is
+                allocated against its count.
+            cell_patch: Optional (nx, ny, nz) int array of per-cell patch ids
+                for the own-patch ray skip. Defaults to all NO_PATCH (-1).
         """
         self.domain = domain
         self.config = config or RadiationConfig()
-        
-        # Extract surfaces from domain
-        print("Extracting surfaces from domain...")
-        self.surfaces = extract_surfaces_from_domain(domain)
+
+        # Extract surfaces from domain, unless the caller injected a set built
+        # from a surface table. Injection must happen HERE and not by
+        # assignment after construction: every internal flux buffer below is
+        # allocated against self.n_surfaces.
+        if surfaces is not None:
+            self.surfaces = surfaces
+        else:
+            print("Extracting surfaces from domain...")
+            self.surfaces = extract_surfaces_from_domain(domain)
         self.n_surfaces = self.surfaces.count
         print(f"Found {self.n_surfaces} surface elements")
-        
+
+        # Per-cell patch ids for the own-patch ray skip. All -1 (skip disabled
+        # everywhere) unless the caller supplied a grid.
+        self.cell_patch = ti.field(dtype=ti.i32,
+                                   shape=(domain.nx, domain.ny, domain.nz))
+        if cell_patch is not None:
+            self.cell_patch.from_numpy(
+                np.ascontiguousarray(cell_patch, dtype=np.int32))
+        else:
+            self.cell_patch.fill(-1)
+
         # Initialize sub-components
         self.solar_calc = SolarCalculator(
             domain.origin_lat or 0.0, 
@@ -740,27 +770,15 @@ class RadiationModel:
             shadow = self.surfaces.shadow_factor[i]
             canopy_trans = self.surfaces.canopy_transmissivity[i]
             
-            # Get surface normal
-            normal = Vector3(0.0, 0.0, 0.0)
-            if direction == 0:  # Up
-                normal = Vector3(0.0, 0.0, 1.0)
-            elif direction == 1:  # Down
-                normal = Vector3(0.0, 0.0, -1.0)
-            elif direction == 2:  # North
-                normal = Vector3(0.0, 1.0, 0.0)
-            elif direction == 3:  # South
-                normal = Vector3(0.0, -1.0, 0.0)
-            elif direction == 4:  # East
-                normal = Vector3(1.0, 0.0, 0.0)
-            elif direction == 5:  # West
-                normal = Vector3(-1.0, 0.0, 0.0)
-            
-            # Sun direction
+            # The stored normal IS the axis normal for every surface built from
+            # occupancy, so this is bit-identical to the old direction switch --
+            # and the true polygon normal wherever a caller overrode it.
+            normal = self.surfaces.normal[i]
+
             sun_dir = self.solar_calc.sun_direction[None]
-            
-            # Cosine of incidence angle (angle between sun and surface normal)
-            cos_incidence = (sun_dir[0] * normal[0] + 
-                            sun_dir[1] * normal[1] + 
+
+            cos_incidence = (sun_dir[0] * normal[0] +
+                            sun_dir[1] * normal[1] +
                             sun_dir[2] * normal[2])
             cos_incidence = ti.max(0.0, cos_incidence)
             
