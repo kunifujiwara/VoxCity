@@ -27,6 +27,318 @@ from ..raytracing import (
 )
 
 
+@ti.func
+def ray_voxel_first_hit_skip_patch(
+    ray_origin: Vector3,
+    ray_dir: Vector3,
+    is_solid: ti.template(),
+    cell_patch: ti.template(),
+    my_patch: ti.i32,
+    nx: ti.i32,
+    ny: ti.i32,
+    nz: ti.i32,
+    dx: ti.f32,
+    dy: ti.f32,
+    dz: ti.f32,
+    max_dist: ti.f32
+):
+    """
+    3D-DDA ray marching to find first solid voxel hit, ignoring voxels that
+    belong to the ray's own source patch.
+
+    Why this exists: a voxelised building facade is a staircase of
+    axis-aligned faces. A ray leaving a planar polygon patch at a shallow
+    angle can immediately re-enter a concave notch of that same patch's own
+    voxelisation and be stopped by it -- a self-occlusion artifact, not a
+    real shadow. A planar patch cannot legitimately occlude a ray leaving
+    its own front side, so any voxel tagged with the ray's own patch id is
+    treated as transparent for this ray. Voxels belonging to a different
+    patch (a neighbouring building, etc.) still block normally.
+
+    This is a verbatim copy of ``ray_voxel_first_hit`` from
+    ``simulator_gpu.raytracing`` with one line changed (the solid test
+    inside the DDA loop). It is a copy rather than a parameterisation of
+    the shared function because that function has callers outside the
+    solar package that have no notion of patches. When ``my_patch < 0``
+    the extra condition can never trigger, so this function is bit-identical
+    to the original.
+
+    Args:
+        ray_origin: Ray origin
+        ray_dir: Ray direction (normalized)
+        is_solid: 3D field of solid cells
+        cell_patch: 3D field mapping each cell to the polygon patch id that
+            "owns" it (-1 if the cell isn't owned by any patch)
+        my_patch: The patch id the ray originates from (-1 disables skipping)
+        nx, ny, nz: Grid dimensions
+        dx, dy, dz: Cell sizes
+        max_dist: Maximum ray distance
+
+    Returns:
+        Tuple of (hit, t_hit, ix, iy, iz)
+    """
+    hit = 0
+    t_hit = max_dist
+    hit_ix, hit_iy, hit_iz = 0, 0, 0
+
+    # Find entry into domain
+    domain_min = Vector3(0.0, 0.0, 0.0)
+    domain_max = Vector3(nx * dx, ny * dy, nz * dz)
+
+    in_domain, t_enter, t_exit = ray_aabb_intersect(
+        ray_origin, ray_dir, domain_min, domain_max, 0.0, max_dist
+    )
+
+    if in_domain == 1:
+        # Start position (slightly inside domain)
+        t = t_enter + 1e-5
+        pos = ray_origin + ray_dir * t
+
+        # Current voxel indices
+        ix = ti.cast(ti.floor(pos[0] / dx), ti.i32)
+        iy = ti.cast(ti.floor(pos[1] / dy), ti.i32)
+        iz = ti.cast(ti.floor(pos[2] / dz), ti.i32)
+
+        # Clamp to valid range
+        ix = ti.max(0, ti.min(nx - 1, ix))
+        iy = ti.max(0, ti.min(ny - 1, iy))
+        iz = ti.max(0, ti.min(nz - 1, iz))
+
+        # Step directions
+        step_x = 1 if ray_dir[0] >= 0 else -1
+        step_y = 1 if ray_dir[1] >= 0 else -1
+        step_z = 1 if ray_dir[2] >= 0 else -1
+
+        # Initialize DDA variables
+        t_max_x = 1e30
+        t_max_y = 1e30
+        t_max_z = 1e30
+        t_delta_x = 1e30
+        t_delta_y = 1e30
+        t_delta_z = 1e30
+
+        # t values for next boundary crossing
+        if ti.abs(ray_dir[0]) > 1e-10:
+            if step_x > 0:
+                t_max_x = ((ix + 1) * dx - pos[0]) / ray_dir[0] + t
+            else:
+                t_max_x = (ix * dx - pos[0]) / ray_dir[0] + t
+            t_delta_x = ti.abs(dx / ray_dir[0])
+
+        if ti.abs(ray_dir[1]) > 1e-10:
+            if step_y > 0:
+                t_max_y = ((iy + 1) * dy - pos[1]) / ray_dir[1] + t
+            else:
+                t_max_y = (iy * dy - pos[1]) / ray_dir[1] + t
+            t_delta_y = ti.abs(dy / ray_dir[1])
+
+        if ti.abs(ray_dir[2]) > 1e-10:
+            if step_z > 0:
+                t_max_z = ((iz + 1) * dz - pos[2]) / ray_dir[2] + t
+            else:
+                t_max_z = (iz * dz - pos[2]) / ray_dir[2] + t
+            t_delta_z = ti.abs(dz / ray_dir[2])
+
+        # 3D-DDA traversal - optimized with done flag to reduce branch divergence
+        max_steps = nx + ny + nz
+        done = 0
+
+        for _ in range(max_steps):
+            if done == 0:
+                # Bounds check - exit if outside domain
+                if ix < 0 or ix >= nx or iy < 0 or iy >= ny or iz < 0 or iz >= nz:
+                    done = 1
+                elif t > t_exit:
+                    done = 1
+                # Check current voxel for solid hit
+                # the only line that differs from ray_voxel_first_hit
+                elif (is_solid[ix, iy, iz] == 1
+                      and not (my_patch >= 0 and cell_patch[ix, iy, iz] == my_patch)):
+                    hit = 1
+                    t_hit = t
+                    hit_ix = ix
+                    hit_iy = iy
+                    hit_iz = iz
+                    done = 1
+                else:
+                    # Step to next voxel using branchless min selection
+                    if t_max_x < t_max_y and t_max_x < t_max_z:
+                        t = t_max_x
+                        ix += step_x
+                        t_max_x += t_delta_x
+                    elif t_max_y < t_max_z:
+                        t = t_max_y
+                        iy += step_y
+                        t_max_y += t_delta_y
+                    else:
+                        t = t_max_z
+                        iz += step_z
+                        t_max_z += t_delta_z
+
+    return hit, t_hit, hit_ix, hit_iy, hit_iz
+
+
+@ti.func
+def ray_canopy_absorption_skip_patch(
+    ray_origin: Vector3,
+    ray_dir: Vector3,
+    lad: ti.template(),
+    is_solid: ti.template(),
+    cell_patch: ti.template(),
+    my_patch: ti.i32,
+    nx: ti.i32,
+    ny: ti.i32,
+    nz: ti.i32,
+    dx: ti.f32,
+    dy: ti.f32,
+    dz: ti.f32,
+    max_dist: ti.f32,
+    ext_coef: ti.f32
+):
+    """
+    Trace ray through canopy computing Beer-Lambert absorption, ignoring
+    solid voxels that belong to the ray's own source patch.
+
+    Why this exists: the canopy shadow path folds the solid check into the
+    same DDA march as the Beer-Lambert absorption accumulation, so simply
+    running the plain skip-DDA (``ray_voxel_first_hit_skip_patch``) first
+    and absorption second would still zero the transmissivity on the
+    surface's own voxelisation staircase -- the solid test has to be
+    patch-aware inside this single march too. As with the first-hit
+    variant, a planar patch cannot legitimately occlude a ray leaving its
+    own front side, so voxels tagged with the ray's own patch id are
+    treated as transparent (canopy absorption in those cells, if any, is
+    still accumulated as normal -- only the *solid* short-circuit is
+    skipped).
+
+    This is a verbatim copy of ``ray_canopy_absorption`` from
+    ``simulator_gpu.raytracing`` with one line changed (the solid test
+    inside the DDA loop). It is a copy rather than a parameterisation of
+    the shared function because that function has callers outside the
+    solar package that have no notion of patches. When ``my_patch < 0``
+    the extra condition can never trigger, so this function is bit-identical
+    to the original.
+
+    Args:
+        ray_origin: Ray origin
+        ray_dir: Ray direction (normalized)
+        lad: 3D field of Leaf Area Density
+        is_solid: 3D field of solid cells (buildings/terrain)
+        cell_patch: 3D field mapping each cell to the polygon patch id that
+            "owns" it (-1 if the cell isn't owned by any patch)
+        my_patch: The patch id the ray originates from (-1 disables skipping)
+        nx, ny, nz: Grid dimensions
+        dx, dy, dz: Cell sizes
+        max_dist: Maximum ray distance
+        ext_coef: Extinction coefficient
+
+    Returns:
+        Tuple of (transmissivity, path_length_through_canopy)
+    """
+    transmissivity = 1.0
+    total_lad_path = 0.0
+
+    # Find entry into domain
+    domain_min = Vector3(0.0, 0.0, 0.0)
+    domain_max = Vector3(nx * dx, ny * dy, nz * dz)
+
+    in_domain, t_enter, t_exit = ray_aabb_intersect(
+        ray_origin, ray_dir, domain_min, domain_max, 0.0, max_dist
+    )
+
+    if in_domain == 1:
+        t = t_enter + 1e-5
+        pos = ray_origin + ray_dir * t
+
+        ix = ti.cast(ti.floor(pos[0] / dx), ti.i32)
+        iy = ti.cast(ti.floor(pos[1] / dy), ti.i32)
+        iz = ti.cast(ti.floor(pos[2] / dz), ti.i32)
+
+        ix = ti.max(0, ti.min(nx - 1, ix))
+        iy = ti.max(0, ti.min(ny - 1, iy))
+        iz = ti.max(0, ti.min(nz - 1, iz))
+
+        step_x = 1 if ray_dir[0] >= 0 else -1
+        step_y = 1 if ray_dir[1] >= 0 else -1
+        step_z = 1 if ray_dir[2] >= 0 else -1
+
+        t_max_x = 1e30
+        t_max_y = 1e30
+        t_max_z = 1e30
+        t_delta_x = 1e30
+        t_delta_y = 1e30
+        t_delta_z = 1e30
+
+        if ti.abs(ray_dir[0]) > 1e-10:
+            if step_x > 0:
+                t_max_x = ((ix + 1) * dx - pos[0]) / ray_dir[0] + t
+            else:
+                t_max_x = (ix * dx - pos[0]) / ray_dir[0] + t
+            t_delta_x = ti.abs(dx / ray_dir[0])
+
+        if ti.abs(ray_dir[1]) > 1e-10:
+            if step_y > 0:
+                t_max_y = ((iy + 1) * dy - pos[1]) / ray_dir[1] + t
+            else:
+                t_max_y = (iy * dy - pos[1]) / ray_dir[1] + t
+            t_delta_y = ti.abs(dy / ray_dir[1])
+
+        if ti.abs(ray_dir[2]) > 1e-10:
+            if step_z > 0:
+                t_max_z = ((iz + 1) * dz - pos[2]) / ray_dir[2] + t
+            else:
+                t_max_z = (iz * dz - pos[2]) / ray_dir[2] + t
+            t_delta_z = ti.abs(dz / ray_dir[2])
+
+        t_prev = t
+        max_steps = nx + ny + nz
+        done = 0
+
+        for _ in range(max_steps):
+            if done == 0:
+                if ix < 0 or ix >= nx or iy < 0 or iy >= ny or iz < 0 or iz >= nz:
+                    done = 1
+                elif t > t_exit:
+                    done = 1
+                # the only line that differs from ray_canopy_absorption
+                elif (is_solid[ix, iy, iz] == 1
+                      and not (my_patch >= 0 and cell_patch[ix, iy, iz] == my_patch)):
+                    transmissivity = 0.0
+                    done = 1
+                else:
+                    # Get step distance
+                    t_next = ti.min(t_max_x, ti.min(t_max_y, t_max_z))
+
+                    # Path length through this cell
+                    path_len = t_next - t_prev
+
+                    # Accumulate absorption from LAD
+                    cell_lad = lad[ix, iy, iz]
+                    if cell_lad > 0.0:
+                        lad_path = cell_lad * path_len
+                        total_lad_path += lad_path
+                        # Beer-Lambert: T = exp(-ext_coef * LAD * path)
+                        transmissivity *= ti.exp(-ext_coef * lad_path)
+
+                    t_prev = t_next
+
+                    # Step to next voxel
+                    if t_max_x < t_max_y and t_max_x < t_max_z:
+                        t = t_max_x
+                        ix += step_x
+                        t_max_x += t_delta_x
+                    elif t_max_y < t_max_z:
+                        t = t_max_y
+                        iy += step_y
+                        t_max_y += t_delta_y
+                    else:
+                        t = t_max_z
+                        iz += step_z
+                        t_max_z += t_delta_z
+
+    return transmissivity, total_lad_path
+
+
 @ti.data_oriented
 class RayTracer:
     """
@@ -200,7 +512,9 @@ __all__ = [
     'RayTracer',
     'ray_aabb_intersect',
     'ray_voxel_first_hit',
+    'ray_voxel_first_hit_skip_patch',
     'ray_canopy_absorption',
+    'ray_canopy_absorption_skip_patch',
     'ray_voxel_transmissivity',
     'ray_trace_to_target',
     'ray_point_to_point_transmissivity',
