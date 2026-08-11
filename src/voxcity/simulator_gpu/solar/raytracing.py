@@ -13,6 +13,7 @@ import math
 from typing import Tuple, Optional
 
 from .core import Vector3, Point3, EXT_COEF
+from .surface_override import NO_PATCH
 
 # Import shared ray tracing functions from parent module
 from ..raytracing import (
@@ -25,6 +26,15 @@ from ..raytracing import (
     sample_hemisphere_direction,
     hemisphere_solid_angle,
 )
+
+# The `my_patch >= 0` guards in ray_voxel_first_hit_skip_patch and
+# ray_canopy_absorption_skip_patch below are deliberately NOT `my_patch !=
+# NO_PATCH`. build_cell_patch_grid (surface_override.py) treats *any*
+# negative id as unpatched (`has_patch = (patch >= 0) & ...`), so a stray
+# id like -5 must disable skipping too, not just exactly NO_PATCH. This
+# assertion documents -- and would catch -- NO_PATCH ever becoming
+# non-negative, which would silently break that equivalence.
+assert NO_PATCH < 0, "my_patch >= 0 guards below assume NO_PATCH is negative"
 
 
 @ti.func
@@ -152,6 +162,9 @@ def ray_voxel_first_hit_skip_patch(
                     done = 1
                 # Check current voxel for solid hit
                 # the only line that differs from ray_voxel_first_hit
+                # my_patch < 0 disables the skip. Any negative id counts as unpatched, matching
+                # build_cell_patch_grid in surface_override.py -- deliberately NOT `!= NO_PATCH`,
+                # which would let a stray -5 enable skipping against a grid that never seeded it.
                 elif (is_solid[ix, iy, iz] == 1
                       and not (my_patch >= 0 and cell_patch[ix, iy, iz] == my_patch)):
                     hit = 1
@@ -301,6 +314,9 @@ def ray_canopy_absorption_skip_patch(
                 elif t > t_exit:
                     done = 1
                 # the only line that differs from ray_canopy_absorption
+                # my_patch < 0 disables the skip. Any negative id counts as unpatched, matching
+                # build_cell_patch_grid in surface_override.py -- deliberately NOT `!= NO_PATCH`,
+                # which would let a stray -5 enable skipping against a grid that never seeded it.
                 elif (is_solid[ix, iy, iz] == 1
                       and not (my_patch >= 0 and cell_patch[ix, iy, iz] == my_patch)):
                     transmissivity = 0.0

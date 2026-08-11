@@ -93,6 +93,9 @@ def ray_voxel_first_hit(
     
     Returns:
         Tuple of (hit, t_hit, ix, iy, iz)
+
+    A patch-skipping copy of this function lives in solar/raytracing.py as
+    ray_voxel_first_hit_skip_patch; keep the DDA scaffolding in sync.
     """
     hit = 0
     t_hit = max_dist
@@ -363,6 +366,9 @@ def ray_canopy_absorption(
     
     Returns:
         Tuple of (transmissivity, path_length_through_canopy)
+
+    A patch-skipping copy of this function lives in solar/raytracing.py as
+    ray_canopy_absorption_skip_patch; keep the DDA scaffolding in sync.
     """
     transmissivity = 1.0
     total_lad_path = 0.0
