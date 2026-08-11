@@ -644,3 +644,54 @@ def _extract_surfaces_kernel(
                 area = dy * dz
                 surfaces.add_surface(i, j, k, IWEST, center, normal, area,
                                      default_albedo)
+
+
+def surfaces_from_override(override, default_albedo: float = 0.2) -> Surfaces:
+    """Build the surface set from a caller-supplied table instead of occupancy.
+
+    The table decides how many surfaces there are, which is the point: a voxel
+    on a building corner is cut by two wall polygons and emits two surfaces with
+    two true normals. Occupancy extraction can only produce one surface per
+    exposed face, with an axis normal.
+    """
+    n = len(np.asarray(override.cell))
+    surfaces = Surfaces(max(n, 1))
+    if n == 0:
+        return surfaces
+
+    _fill_surfaces_from_override_kernel(
+        surfaces,
+        np.ascontiguousarray(override.cell, dtype=np.int32),
+        np.ascontiguousarray(override.face, dtype=np.int32),
+        np.ascontiguousarray(override.origin, dtype=np.float32),
+        np.ascontiguousarray(override.normal, dtype=np.float32),
+        np.ascontiguousarray(override.patch, dtype=np.int32),
+        np.ascontiguousarray(override.area, dtype=np.float32),
+        n, float(default_albedo),
+    )
+    surfaces.n_surfaces[None] = n
+    return surfaces
+
+
+@ti.kernel
+def _fill_surfaces_from_override_kernel(
+    surfaces: ti.template(),
+    cell: ti.types.ndarray(),
+    face: ti.types.ndarray(),
+    origin: ti.types.ndarray(),
+    normal: ti.types.ndarray(),
+    patch: ti.types.ndarray(),
+    area: ti.types.ndarray(),
+    n: ti.i32,
+    default_albedo: ti.f32,
+):
+    for s in range(n):
+        surfaces.position[s] = ti.math.ivec3(cell[s, 0], cell[s, 1], cell[s, 2])
+        surfaces.direction[s] = face[s]
+        surfaces.center[s] = Vector3(origin[s, 0], origin[s, 1], origin[s, 2])
+        surfaces.normal[s] = Vector3(normal[s, 0], normal[s, 1], normal[s, 2])
+        surfaces.area[s] = area[s]
+        surfaces.albedo[s] = default_albedo
+        surfaces.patch_id[s] = patch[s]
+        surfaces.svf[s] = 1.0
+        surfaces.shadow[s] = 1.0
