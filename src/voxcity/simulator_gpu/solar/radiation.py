@@ -449,6 +449,9 @@ class RadiationModel:
             self.svf_calc.compute_svf_with_canopy(
                 self.surfaces.center,  # Use world coordinates, not grid indices
                 self.surfaces.direction,
+                self.surfaces.normal,
+                self.surfaces.patch_id,
+                self.cell_patch,
                 self.domain.is_solid,
                 self.domain.lad,
                 self.n_surfaces,
@@ -460,6 +463,9 @@ class RadiationModel:
             self.svf_calc.compute_svf(
                 self.surfaces.center,  # Use world coordinates, not grid indices
                 self.surfaces.direction,
+                self.surfaces.normal,
+                self.surfaces.patch_id,
+                self.cell_patch,
                 self.domain.is_solid,
                 self.n_surfaces,
                 self.surfaces.svf
@@ -842,7 +848,18 @@ class RadiationModel:
             # where skyvft is the transmissivity-weighted sky view factor
             # palm_solar's svf is equivalent to PALM's skyvft (computed in svf.py)
             sw_in_dif = 0.0
-            if direction == 0:  # Upward facing - full hemisphere (PALM: iup)
+            if self.surfaces.patch_id[i] >= 0:
+                # Overridden surface: svf was computed from the true polygon
+                # normal (see svf.py's override branch), including the
+                # analytic (1 + n_z)/2 rescale that already makes it ~0 for a
+                # face pointing mostly downward. The face enum on such a
+                # surface is only which axis-aligned voxel face the ray
+                # leaves from -- a table can legitimately report face=IDOWN
+                # for a surface whose true normal is only partly downward,
+                # so hard-zeroing on that enum would discard a real diffuse
+                # contribution the SVF already accounts for correctly.
+                sw_in_dif = sw_diffuse * svf
+            elif direction == 0:  # Upward facing - full hemisphere (PALM: iup)
                 sw_in_dif = sw_diffuse * svf
             elif direction == 1:  # Downward facing - cannot see sky (PALM: idown)
                 # Downward surfaces face away from sky, receive no sky diffuse

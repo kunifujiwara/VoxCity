@@ -31,7 +31,46 @@ import math
 from typing import Tuple, Optional
 
 from .core import Vector3, Point3, PI, TWO_PI
-from .raytracing import ray_voxel_first_hit, ray_canopy_absorption, sample_hemisphere_direction, hemisphere_solid_angle
+from .raytracing import (
+    ray_voxel_first_hit,
+    ray_voxel_first_hit_skip_patch,
+    ray_canopy_absorption,
+    ray_canopy_absorption_skip_patch,
+    sample_hemisphere_direction,
+    hemisphere_solid_angle,
+)
+
+
+def unobstructed_svf_for_normal(normal, n_azimuth: int = 72,
+                                 n_elevation: int = 36) -> float:
+    """Cosine-weighted sky fraction for an unobstructed surface, ground below.
+
+    Full-sphere reference for the kernel's override branch. The closed form is
+    (1 + n_z)/2; this integrates it numerically so the kernel and the maths can
+    be compared through a similar discretisation rather than against an ideal.
+
+    Note this reference uses elevation measured **from the horizon** (its own
+    convention, hence ``cos(E)`` for the solid angle) -- deliberately
+    different from the kernel's zenith convention (``compute_svf`` measures
+    elevation from the zenith, weighting bands by ``sin``), so that agreement
+    between the two is meaningful rather than a shared assumption.
+    """
+    import numpy as np
+
+    n = np.asarray(normal, dtype=np.float64)
+    n = n / max(np.linalg.norm(n), 1e-12)
+
+    az = (np.arange(n_azimuth) + 0.5) * (2.0 * np.pi / n_azimuth)
+    el = (np.arange(2 * n_elevation) + 0.5) * (np.pi / (2 * n_elevation)) - np.pi / 2
+    A, E = np.meshgrid(az, el, indexing="ij")
+    d = np.stack([np.cos(E) * np.cos(A), np.cos(E) * np.sin(A), np.sin(E)], axis=-1)
+    solid = np.cos(E)                                  # dOmega weight
+
+    w = np.clip(d @ n, 0.0, None) * solid
+    total = w.sum()
+    if total <= 0:
+        return 1.0
+    return float(w[d[..., 2] > 0].sum() / total)
 
 
 @ti.data_oriented
@@ -138,22 +177,38 @@ class SVFCalculator:
         self,
         surf_pos: ti.template(),
         surf_dir: ti.template(),
+        surf_normal: ti.template(),
+        surf_patch: ti.template(),
+        cell_patch: ti.template(),
         is_solid: ti.template(),
         n_surf: ti.i32,
         svf: ti.template()
     ):
         """
         Compute Sky View Factor for all surfaces.
-        
+
         Uses PALM's methodology (radiation_model_mod.f90):
         - For upward surfaces: vffrac_up = (cos(2*elev_low) - cos(2*elev_high)) / (2*n_azim)
         - For vertical surfaces: vffrac_vert = (sin(az2) - sin(az1)) * elev_terms / (2*pi)
-          where az is measured relative to surface normal and elev_terms accounts for 
+          where az is measured relative to surface normal and elev_terms accounts for
           the elevation integration.
-        
+
+        Surfaces with surf_patch[i] >= 0 (an externally supplied true normal,
+        see surface_override.py) take a second branch instead: cosine-weight
+        against the true normal, rescale by the analytic (1 + n_z) / 2 sky
+        fraction (the direction grid only covers the upper hemisphere), and
+        skip the ray's own patch during occlusion. See the in-loop comments
+        for the physics. Surfaces with surf_patch[i] < 0 take the untouched
+        six-way analytic branch, bit-identical to before this branch existed.
+
         Args:
             surf_pos: Surface positions (n_surf, 3)
             surf_dir: Surface directions (n_surf,)
+            surf_normal: True surface normals (n_surf,) -- only read when
+                surf_patch[i] >= 0
+            surf_patch: Coplanar patch id per surface (n_surf,); < 0 means
+                "no override, use the six-way analytic branch"
+            cell_patch: Per-cell patch id grid for the own-patch ray skip
             is_solid: 3D field of solid cells
             n_surf: Number of surfaces
             svf: Output SVF values (n_surf,)
@@ -166,11 +221,18 @@ class SVFCalculator:
             pos = Vector3(surf_pos[i][0], surf_pos[i][1], surf_pos[i][2])
             direction = surf_dir[i]
             
+            use_override = surf_patch[i] >= 0
+
             # Get surface normal and azimuth of normal (for vertical surfaces)
             normal = Vector3(0.0, 0.0, 0.0)
             normal_azim = 0.0  # Azimuth angle of surface normal (for vertical surfaces)
-            
-            if direction == 0:  # Up
+
+            if use_override:
+                # A caller-supplied true polygon normal replaces the axis
+                # normal entirely; normal_azim stays 0 and is never read
+                # below because the override branch does not use it.
+                normal = surf_normal[i]
+            elif direction == 0:  # Up
                 normal = Vector3(0.0, 0.0, 1.0)
             elif direction == 1:  # Down
                 normal = Vector3(0.0, 0.0, -1.0)
@@ -193,24 +255,29 @@ class SVFCalculator:
                 pos[1] + normal[1] * eps,
                 pos[2] + normal[2] * eps,
             )
-            
+
             visible_vf = 0.0
             total_vf = 0.0
-            
+
             # Trace rays to all hemisphere directions
             for i_azim, i_elev in ti.ndrange(self.n_azimuth, self.n_elevation):
                 ray_dir = self.directions[i_azim, i_elev]
-                
+
                 # Check if direction is above surface (dot product with normal > 0)
                 cos_angle = ray_dir[0] * normal[0] + ray_dir[1] * normal[1] + ray_dir[2] * normal[2]
-                
+
                 if cos_angle > 0.001:  # Small threshold to avoid numerical issues
                     # Compute view factor fraction based on surface orientation
                     elev_low = ti.cast(i_elev, ti.f32) * (PI / 2.0) / n_elev_f
                     elev_high = ti.cast(i_elev + 1, ti.f32) * (PI / 2.0) / n_elev_f
-                    
+
                     vf_frac = 0.0
-                    if direction == 0:  # Upward surface
+                    if use_override:
+                        # Elevation is measured FROM THE ZENITH in this grid
+                        # (z = cos(elev)), so a band's solid angle goes as
+                        # sin(elev_mid). Cosine-weight against the true normal.
+                        vf_frac = cos_angle * ti.sin(0.5 * (elev_low + elev_high))
+                    elif direction == 0:  # Upward surface
                         # PALM: vffrac_up = (cos(2*elev_low) - cos(2*elev_high)) / (2*n_azim)
                         vf_frac = (ti.cos(2.0 * elev_low) - ti.cos(2.0 * elev_high)) / (2.0 * n_azim_f)
                     elif direction == 1:  # Downward surface
@@ -221,59 +288,77 @@ class SVFCalculator:
                         # Compute azimuth relative to surface normal
                         azim_low = ti.cast(i_azim, ti.f32) * d_azim
                         azim_high = ti.cast(i_azim + 1, ti.f32) * d_azim
-                        
+
                         # Relative azimuth measured from the surface normal.
                         az1_rel = azim_low - normal_azim
                         az2_rel = azim_high - normal_azim
-                        
+
                         # Elevation terms for vertical surface
                         # elev_terms = elev_high - elev_low + sin(elev_low)*cos(elev_low) - sin(elev_high)*cos(elev_high)
-                        elev_terms = (elev_high - elev_low 
-                                     + ti.sin(elev_low) * ti.cos(elev_low) 
+                        elev_terms = (elev_high - elev_low
+                                     + ti.sin(elev_low) * ti.cos(elev_low)
                                      - ti.sin(elev_high) * ti.cos(elev_high))
-                        
+
                         # vffrac_vert = (sin(az2) - sin(az1)) * elev_terms / (2*π)
                         vf_frac = (ti.sin(az2_rel) - ti.sin(az1_rel)) * elev_terms / TWO_PI
-                        
+
                         # Only positive contributions (ray in front of surface)
                         if vf_frac < 0.0:
                             vf_frac = 0.0
-                    
+
                     total_vf += vf_frac
-                    
-                    # Trace ray
-                    hit, _, _, _, _ = ray_voxel_first_hit(
+
+                    # Trace ray, skipping voxels tagged with this surface's own
+                    # patch (a bit-identical no-op when surf_patch[i] < 0).
+                    hit, _, _, _, _ = ray_voxel_first_hit_skip_patch(
                         ray_origin, ray_dir,
-                        is_solid,
+                        is_solid, cell_patch, surf_patch[i],
                         self.nx, self.ny, self.nz,
                         self.dx, self.dy, self.dz,
                         self.max_dist
                     )
-                    
+
                     if hit == 0:
                         visible_vf += vf_frac
-            
-            # For vertical surfaces (direction 2-5), account for ground blocking
-            # Directions with z < 0 see ground, not sky
-            # We sample hemisphere with z > 0, but for vertical walls the mirrored rays (z < 0)
-            # would have same view factor contribution and are ALL blocked by ground
-            # This effectively doubles the total and leaves visible unchanged
-            if direction >= 2:  # Vertical surfaces
-                # The lower hemisphere (z < 0) contribution equals upper hemisphere (z > 0) by symmetry
-                # All lower hemisphere rays are blocked by ground
-                total_vf = total_vf * 2.0
-            
-            # Normalize SVF so that unobstructed surface = 1.0
-            if total_vf > 0.001:
-                svf[i] = visible_vf / total_vf
+
+            if use_override:
+                # The direction grid covers the upper hemisphere only, but a
+                # tilted surface's front hemisphere dips below the horizontal,
+                # where every ray ends in ground. That analytic fraction is
+                # (1 + n_z)/2 -- for a vertical wall it reproduces the old
+                # doubling exactly, for a flat roof it is 1.
+                if total_vf > 0.001:
+                    svf[i] = visible_vf / total_vf * (1.0 + normal[2]) * 0.5
+                else:
+                    # No grid direction is in front of this surface at all
+                    # (it faces downward). The old fallback of 1.0 would be
+                    # badly wrong; the analytic value is right.
+                    svf[i] = ti.max(0.0, (1.0 + normal[2]) * 0.5)
             else:
-                svf[i] = 1.0
+                # For vertical surfaces (direction 2-5), account for ground blocking
+                # Directions with z < 0 see ground, not sky
+                # We sample hemisphere with z > 0, but for vertical walls the mirrored rays (z < 0)
+                # would have same view factor contribution and are ALL blocked by ground
+                # This effectively doubles the total and leaves visible unchanged
+                if direction >= 2:  # Vertical surfaces
+                    # The lower hemisphere (z < 0) contribution equals upper hemisphere (z > 0) by symmetry
+                    # All lower hemisphere rays are blocked by ground
+                    total_vf = total_vf * 2.0
+
+                # Normalize SVF so that unobstructed surface = 1.0
+                if total_vf > 0.001:
+                    svf[i] = visible_vf / total_vf
+                else:
+                    svf[i] = 1.0
     
     @ti.kernel
     def compute_svf_with_canopy(
         self,
         surf_pos: ti.template(),
         surf_dir: ti.template(),
+        surf_normal: ti.template(),
+        surf_patch: ti.template(),
+        cell_patch: ti.template(),
         is_solid: ti.template(),
         lad: ti.template(),
         n_surf: ti.i32,
@@ -283,14 +368,26 @@ class SVFCalculator:
     ):
         """
         Compute SVF including canopy absorption.
-        
+
         Uses PALM's methodology (radiation_model_mod.f90):
         - For upward surfaces: vffrac_up = (cos(2*elev_low) - cos(2*elev_high)) / (2*n_azim)
         - For vertical surfaces: vffrac_vert = (sin(az2) - sin(az1)) * elev_terms / (2*pi)
-        
+
+        This is the live path: Domain.lad is always an allocated Taichi
+        field, so RadiationModel.compute_svf always calls this kernel rather
+        than compute_svf (above). Surfaces with surf_patch[i] >= 0 take the
+        same override branch as compute_svf -- see its docstring and in-loop
+        comments for the physics; surf_patch[i] < 0 takes the untouched
+        six-way analytic branch.
+
         Args:
             surf_pos: Surface positions
             surf_dir: Surface directions
+            surf_normal: True surface normals (n_surf,) -- only read when
+                surf_patch[i] >= 0
+            surf_patch: Coplanar patch id per surface (n_surf,); < 0 means
+                "no override, use the six-way analytic branch"
+            cell_patch: Per-cell patch id grid for the own-patch ray skip
             is_solid: 3D solid field
             lad: 3D Leaf Area Density field
             n_surf: Number of surfaces
@@ -301,16 +398,20 @@ class SVFCalculator:
         n_azim_f = ti.cast(self.n_azimuth, ti.f32)
         n_elev_f = ti.cast(self.n_elevation, ti.f32)
         d_azim = TWO_PI / n_azim_f
-        
+
         for i in range(n_surf):
             pos = Vector3(surf_pos[i][0], surf_pos[i][1], surf_pos[i][2])
             direction = surf_dir[i]
-            
+
+            use_override = surf_patch[i] >= 0
+
             # Get surface normal and azimuth of normal (for vertical surfaces)
             normal = Vector3(0.0, 0.0, 0.0)
             normal_azim = 0.0
-            
-            if direction == 0:  # Up
+
+            if use_override:
+                normal = surf_normal[i]
+            elif direction == 0:  # Up
                 normal = Vector3(0.0, 0.0, 1.0)
             elif direction == 1:  # Down
                 normal = Vector3(0.0, 0.0, -1.0)
@@ -333,83 +434,101 @@ class SVFCalculator:
                 pos[1] + normal[1] * eps,
                 pos[2] + normal[2] * eps,
             )
-            
+
             visible_omega = 0.0
             visible_omega_urban = 0.0
             total_omega = 0.0
-            
+
             for i_azim, i_elev in ti.ndrange(self.n_azimuth, self.n_elevation):
                 ray_dir = self.directions[i_azim, i_elev]
-                
+
                 cos_angle = ray_dir[0] * normal[0] + ray_dir[1] * normal[1] + ray_dir[2] * normal[2]
-                
+
                 if cos_angle > 0.001:
                     # Compute view factor fraction based on surface orientation
                     elev_low = ti.cast(i_elev, ti.f32) * (PI / 2.0) / n_elev_f
                     elev_high = ti.cast(i_elev + 1, ti.f32) * (PI / 2.0) / n_elev_f
-                    
+
                     vf_frac = 0.0
-                    if direction == 0 or direction == 1:  # Upward or Downward surface
+                    if use_override:
+                        # Elevation is measured FROM THE ZENITH in this grid
+                        # (z = cos(elev)), so a band's solid angle goes as
+                        # sin(elev_mid). Cosine-weight against the true normal.
+                        vf_frac = cos_angle * ti.sin(0.5 * (elev_low + elev_high))
+                    elif direction == 0 or direction == 1:  # Upward or Downward surface
                         # PALM: vffrac_up
                         vf_frac = (ti.cos(2.0 * elev_low) - ti.cos(2.0 * elev_high)) / (2.0 * n_azim_f)
                     else:
                         # Vertical surfaces: use PALM's vffrac_vert formula
                         azim_low = ti.cast(i_azim, ti.f32) * d_azim
                         azim_high = ti.cast(i_azim + 1, ti.f32) * d_azim
-                        
+
                         # Relative azimuth measured from the surface normal.
                         az1_rel = azim_low - normal_azim
                         az2_rel = azim_high - normal_azim
-                        
+
                         # Elevation terms
-                        elev_terms = (elev_high - elev_low 
-                                     + ti.sin(elev_low) * ti.cos(elev_low) 
+                        elev_terms = (elev_high - elev_low
+                                     + ti.sin(elev_low) * ti.cos(elev_low)
                                      - ti.sin(elev_high) * ti.cos(elev_high))
-                        
+
                         # vffrac_vert = (sin(az2) - sin(az1)) * elev_terms / (2*π)
                         vf_frac = (ti.sin(az2_rel) - ti.sin(az1_rel)) * elev_terms / TWO_PI
-                        
+
                         if vf_frac < 0.0:
                             vf_frac = 0.0
-                    
+
                     total_omega += vf_frac
-                    
-                    # Trace with canopy absorption
-                    trans, _ = ray_canopy_absorption(
+
+                    # Trace with canopy absorption, skipping voxels tagged
+                    # with this surface's own patch (a bit-identical no-op
+                    # when surf_patch[i] < 0).
+                    trans, _ = ray_canopy_absorption_skip_patch(
                         ray_origin, ray_dir,
-                        lad, is_solid,
+                        lad, is_solid, cell_patch, surf_patch[i],
                         self.nx, self.ny, self.nz,
                         self.dx, self.dy, self.dz,
                         self.max_dist,
                         ext_coef
                     )
-                    
+
                     # SVF with canopy considers transparency (PALM's skyvft)
                     visible_omega += vf_frac * trans
-                    
+
                     # SVF urban (only solid obstacles, PALM's skyvf)
-                    hit, _, _, _, _ = ray_voxel_first_hit(
+                    hit, _, _, _, _ = ray_voxel_first_hit_skip_patch(
                         ray_origin, ray_dir,
-                        is_solid,
+                        is_solid, cell_patch, surf_patch[i],
                         self.nx, self.ny, self.nz,
                         self.dx, self.dy, self.dz,
                         self.max_dist
                     )
                     if hit == 0:
                         visible_omega_urban += vf_frac
-            
-            # For vertical surfaces (direction 2-5), account for ground blocking
-            # Directions with z < 0 see ground, not sky
-            # The lower hemisphere has equal total_omega contribution, all blocked by ground
-            if direction >= 2:  # Vertical surfaces
-                total_omega = total_omega * 2.0
-            
-            if total_omega > 1e-10:
-                svf[i] = visible_omega / total_omega
-                svf_urban[i] = visible_omega_urban / total_omega
+
+            if use_override:
+                # Same (1 + n_z)/2 rescale as compute_svf -- see its
+                # in-loop comment for the physics.
+                sky_frac = ti.max(0.0, (1.0 + normal[2]) * 0.5)
+                if total_omega > 0.001:
+                    svf[i] = visible_omega / total_omega * sky_frac
+                    svf_urban[i] = visible_omega_urban / total_omega * sky_frac
+                else:
+                    svf[i] = sky_frac
+                    svf_urban[i] = sky_frac
             else:
-                svf[i] = 0.0
-                svf_urban[i] = 0.0
+                # For vertical surfaces (direction 2-5), account for ground blocking
+                # Directions with z < 0 see ground, not sky
+                # The lower hemisphere has equal total_omega contribution, all blocked by ground
+                if direction >= 2:  # Vertical surfaces
+                    total_omega = total_omega * 2.0
+
+                if total_omega > 1e-10:
+                    svf[i] = visible_omega / total_omega
+                    svf_urban[i] = visible_omega_urban / total_omega
+                else:
+                    svf[i] = 0.0
+                    svf_urban[i] = 0.0
 
 
 @ti.kernel
