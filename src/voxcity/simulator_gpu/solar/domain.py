@@ -496,7 +496,11 @@ class Surfaces:
         
         # Surface properties
         self.albedo = ti.field(dtype=ti.f32, shape=(max_surfaces,))
-        
+
+        # Coplanar polygon patch this surface belongs to; -1 means "no
+        # override", which is what every surface built from occupancy reports.
+        self.patch_id = ti.field(dtype=ti.i32, shape=(max_surfaces,))
+
         # Radiation fluxes (shortwave only)
         self.sw_in_direct = ti.field(dtype=ti.f32, shape=(max_surfaces,))
         self.sw_in_diffuse = ti.field(dtype=ti.f32, shape=(max_surfaces,))
@@ -514,7 +518,8 @@ class Surfaces:
         self.canopy_transmissivity = ti.field(dtype=ti.f32, shape=(max_surfaces,))
         
         self.n_surfaces[None] = 0
-    
+        self.patch_id.fill(-1)
+
     @ti.func
     def add_surface(
         self,
@@ -534,6 +539,7 @@ class Surfaces:
             self.normal[idx] = normal
             self.area[idx] = area
             self.albedo[idx] = albedo
+            self.patch_id[idx] = -1
             self.svf[idx] = 1.0
             self.shadow[idx] = 1.0
         return idx
