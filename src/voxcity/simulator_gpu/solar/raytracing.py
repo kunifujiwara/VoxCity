@@ -395,6 +395,9 @@ class RayTracer:
         self,
         surf_pos: ti.template(),
         surf_dir: ti.template(),
+        surf_normal: ti.template(),
+        surf_patch: ti.template(),
+        cell_patch: ti.template(),
         sun_dir: ti.types.vector(3, ti.f32),
         is_solid: ti.template(),
         n_surf: ti.i32,
@@ -402,58 +405,60 @@ class RayTracer:
     ):
         """
         Compute shadow factors for all surfaces.
-        
+
         shadow_factor = 0 means fully sunlit
         shadow_factor = 1 means fully shaded
+
+        The facing test and the shadow ray both use the surface's stored
+        normal (``surf_normal``), not a per-direction sign switch. For
+        surfaces built from occupancy (``extract_surfaces_from_domain``)
+        that normal is exactly one of the six axis vectors, so
+        ``dot(normal, sun_dir) > 0`` reduces algebraically to the old
+        per-direction sign checks (e.g. direction 4 / IEAST's old test
+        ``sun_dir[0] > 0`` *is* ``dot((1,0,0), sun_dir) > 0``) -- this
+        kernel is behaviourally identical for those surfaces. For a true,
+        non-axis-aligned normal (e.g. a 45-degree wall from
+        ``surfaces_from_override``) the dot product test is also the
+        *correct* one: the old switch would keep declaring such a face
+        "away from sun" the moment the sun left its dominant axis, even
+        while the true surface was still lit.
+
+        The shadow ray is cast with ``ray_voxel_first_hit_skip_patch``,
+        which treats any voxel tagged with the ray's own patch id
+        (``surf_patch[i]``) as transparent. This is what removes the
+        staircase self-occlusion: a voxelised slanted facade is a stair-step
+        of axis-aligned faces, and a ray leaving one step at a shallow angle
+        would otherwise immediately re-enter a concave notch of its own
+        voxelisation and be reported as shadowed by itself. Surfaces with
+        ``surf_patch[i] < 0`` (every occupancy-built surface) disable the
+        skip entirely, so the DDA march is bit-identical to the original
+        ``ray_voxel_first_hit`` in that case.
         """
         # Small offset to ensure ray origin is outside the solid voxel
         eps = 0.01
-        
+
         for i in range(n_surf):
-            # Get surface position
             pos = surf_pos[i]
-            direction = surf_dir[i]
-            
-            # Check if surface normal faces toward sun (dot product > 0)
-            # Direction indices: 0=Up, 1=Down, 2=INORTH(+y), 3=ISOUTH(-y), 4=IEAST(+x), 5=IWEST(-x)
-            # In VoxCity grid: +x/+u = North, +y/+v = East, +z = Up
-            face_sun = 1
-            normal = Vector3(0.0, 0.0, 0.0)
-            if direction == 0:  # Up (+z normal)
-                face_sun = 1 if sun_dir[2] > 0 else 0
-                normal = Vector3(0.0, 0.0, 1.0)
-            elif direction == 1:  # Down (-z normal)
-                face_sun = 1 if sun_dir[2] < 0 else 0
-                normal = Vector3(0.0, 0.0, -1.0)
-            elif direction == 2:  # INORTH (+y normal, East-facing in VoxCity)
-                face_sun = 1 if sun_dir[1] > 0 else 0
-                normal = Vector3(0.0, 1.0, 0.0)
-            elif direction == 3:  # ISOUTH (-y normal, West-facing in VoxCity)
-                face_sun = 1 if sun_dir[1] < 0 else 0
-                normal = Vector3(0.0, -1.0, 0.0)
-            elif direction == 4:  # IEAST (+x/+u normal, North-facing; legacy PALM label)
-                face_sun = 1 if sun_dir[0] > 0 else 0
-                normal = Vector3(1.0, 0.0, 0.0)
-            elif direction == 5:  # IWEST (-x/-u normal, South-facing; legacy PALM label)
-                face_sun = 1 if sun_dir[0] < 0 else 0
-                normal = Vector3(-1.0, 0.0, 0.0)
-            
-            if face_sun == 0:
+            normal = surf_normal[i]
+
+            cos_inc = (sun_dir[0] * normal[0] + sun_dir[1] * normal[1]
+                       + sun_dir[2] * normal[2])
+
+            if cos_inc <= 0.0:
                 shadow_factor[i] = 1.0
             else:
-                # Offset ray origin slightly along surface normal to avoid self-intersection
                 ray_origin = Vector3(pos[0] + normal[0] * eps,
                                      pos[1] + normal[1] * eps,
                                      pos[2] + normal[2] * eps)
-                
-                hit, _, _, _, _ = ray_voxel_first_hit(
+
+                hit, _, _, _, _ = ray_voxel_first_hit_skip_patch(
                     ray_origin, sun_dir,
-                    is_solid,
+                    is_solid, cell_patch, surf_patch[i],
                     self.nx, self.ny, self.nz,
                     self.dx, self.dy, self.dz,
                     self.max_dist
                 )
-                
+
                 shadow_factor[i] = ti.cast(hit, ti.f32)
     
     @ti.kernel
@@ -461,6 +466,9 @@ class RayTracer:
         self,
         surf_pos: ti.template(),
         surf_dir: ti.template(),
+        surf_normal: ti.template(),
+        surf_patch: ti.template(),
+        cell_patch: ti.template(),
         sun_dir: ti.types.vector(3, ti.f32),
         is_solid: ti.template(),
         lad: ti.template(),
@@ -470,55 +478,53 @@ class RayTracer:
     ):
         """
         Compute shadow factors including canopy absorption.
+
+        Same restructuring as ``compute_direct_shadows``: the facing test
+        and the shadow/absorption ray both use the surface's stored normal
+        (``surf_normal``) rather than a per-direction sign switch, which is
+        behaviourally identical for the axis normals produced by
+        ``extract_surfaces_from_domain`` and correct for the true,
+        non-axis-aligned normals produced by ``surfaces_from_override``.
+
+        This is the live path -- ``Domain.lad`` is always an allocated
+        Taichi field, so ``compute_shortwave_radiation`` always calls this
+        kernel rather than ``compute_direct_shadows``. The shadow/absorption
+        march itself uses ``ray_canopy_absorption_skip_patch``, which folds
+        the same own-patch skip into the Beer-Lambert accumulation: a voxel
+        tagged with the ray's own patch id (``surf_patch[i]``) never
+        short-circuits the march as "solid" (though canopy absorption in
+        that cell, if any, still accumulates normally). That skip is what
+        removes the staircase self-occlusion from a voxelised slanted
+        facade. Surfaces with ``surf_patch[i] < 0`` disable the skip, so the
+        march is bit-identical to the original ``ray_canopy_absorption``.
         """
         # Small offset to ensure ray origin is outside the solid voxel
         eps = 0.01
-        
+
         for i in range(n_surf):
             pos = surf_pos[i]
-            direction = surf_dir[i]
-            
-            # Check if surface normal faces toward sun (dot product > 0)
-            # In VoxCity grid: +x/+u = North, +y/+v = East, +z = Up
-            face_sun = 1
-            normal = Vector3(0.0, 0.0, 0.0)
-            if direction == 0:  # Up (+z)
-                face_sun = 1 if sun_dir[2] > 0 else 0
-                normal = Vector3(0.0, 0.0, 1.0)
-            elif direction == 1:  # Down (-z)
-                face_sun = 1 if sun_dir[2] < 0 else 0
-                normal = Vector3(0.0, 0.0, -1.0)
-            elif direction == 2:  # INORTH (+y, East-facing)
-                face_sun = 1 if sun_dir[1] > 0 else 0
-                normal = Vector3(0.0, 1.0, 0.0)
-            elif direction == 3:  # ISOUTH (-y, West-facing)
-                face_sun = 1 if sun_dir[1] < 0 else 0
-                normal = Vector3(0.0, -1.0, 0.0)
-            elif direction == 4:  # IEAST (+x/+u, North-facing; legacy PALM label)
-                face_sun = 1 if sun_dir[0] > 0 else 0
-                normal = Vector3(1.0, 0.0, 0.0)
-            elif direction == 5:  # IWEST (-x, North-facing)
-                face_sun = 1 if sun_dir[0] < 0 else 0
-                normal = Vector3(-1.0, 0.0, 0.0)
-            
-            if face_sun == 0:
+            normal = surf_normal[i]
+
+            cos_inc = (sun_dir[0] * normal[0] + sun_dir[1] * normal[1]
+                       + sun_dir[2] * normal[2])
+
+            if cos_inc <= 0.0:
                 shadow_factor[i] = 1.0
                 canopy_transmissivity[i] = 0.0
             else:
-                # Offset ray origin slightly along surface normal to avoid self-intersection
                 ray_origin = Vector3(pos[0] + normal[0] * eps,
                                      pos[1] + normal[1] * eps,
                                      pos[2] + normal[2] * eps)
-                
-                trans, _ = ray_canopy_absorption(
+
+                trans, _ = ray_canopy_absorption_skip_patch(
                     ray_origin, sun_dir,
-                    lad, is_solid,
+                    lad, is_solid, cell_patch, surf_patch[i],
                     self.nx, self.ny, self.nz,
                     self.dx, self.dy, self.dz,
                     self.max_dist,
                     self.ext_coef
                 )
-                
+
                 canopy_transmissivity[i] = trans
                 shadow_factor[i] = 1.0 - trans
 

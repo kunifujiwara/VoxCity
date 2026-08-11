@@ -538,6 +538,9 @@ class RadiationModel:
                 self.ray_tracer.compute_direct_with_canopy(
                     self.surfaces.center,  # Use world coordinates, not grid indices
                     self.surfaces.direction,
+                    self.surfaces.normal,
+                    self.surfaces.patch_id,
+                    self.cell_patch,
                     sun_dir,
                     self.domain.is_solid,
                     self.domain.lad,
@@ -549,6 +552,9 @@ class RadiationModel:
                 self.ray_tracer.compute_direct_shadows(
                     self.surfaces.center,  # Use world coordinates, not grid indices
                     self.surfaces.direction,
+                    self.surfaces.normal,
+                    self.surfaces.patch_id,
+                    self.cell_patch,
                     sun_dir,
                     self.domain.is_solid,
                     self.n_surfaces,
