@@ -655,6 +655,9 @@ def surfaces_from_override(override, default_albedo: float = 0.2) -> Surfaces:
     exposed face, with an axis normal.
     """
     n = len(np.asarray(override.cell))
+    # max(n, 1): Taichi fields cannot have a zero-sized shape. The `if n == 0`
+    # branch below returns before the kernel ever runs, so that one placeholder
+    # slot is never written and n_surfaces / count stay genuinely 0.
     surfaces = Surfaces(max(n, 1))
     if n == 0:
         return surfaces
@@ -662,6 +665,10 @@ def surfaces_from_override(override, default_albedo: float = 0.2) -> Surfaces:
     _fill_surfaces_from_override_kernel(
         surfaces,
         np.ascontiguousarray(override.cell, dtype=np.int32),
+        # The table declares `face` as int8; Taichi's ndarray marshalling
+        # doesn't care about that width, but int32 is the normalised form
+        # this module uses for every index/id field (cell, patch), so it is
+        # upcast here to match rather than passed through as-is.
         np.ascontiguousarray(override.face, dtype=np.int32),
         np.ascontiguousarray(override.origin, dtype=np.float32),
         np.ascontiguousarray(override.normal, dtype=np.float32),
@@ -685,9 +692,22 @@ def _fill_surfaces_from_override_kernel(
     n: ti.i32,
     default_albedo: ti.f32,
 ):
+    """Copy one row per surface, verbatim, into a freshly allocated Surfaces.
+
+    No aggregation across rows: two rows sharing a `cell` (a corner voxel cut
+    by two wall polygons) become two independent surfaces, each keeping its
+    own normal, origin, area, and patch id.
+    """
     for s in range(n):
         surfaces.position[s] = ti.math.ivec3(cell[s, 0], cell[s, 1], cell[s, 2])
         surfaces.direction[s] = face[s]
+        # Use the table's own origin verbatim -- do NOT "simplify" this to a
+        # computed cell centre (e.g. cell * meshsize + 0.5 * meshsize). For a
+        # corner cell the true ray origin is offset toward the patch's own
+        # exposed faces; a cell-centre origin measured -70% error there,
+        # because the ray then has to cross the adjacent wall's material,
+        # which belongs to a different patch and so is not skipped by the
+        # patch-aware DDA (Task 2).
         surfaces.center[s] = Vector3(origin[s, 0], origin[s, 1], origin[s, 2])
         surfaces.normal[s] = Vector3(normal[s, 0], normal[s, 1], normal[s, 2])
         surfaces.area[s] = area[s]
