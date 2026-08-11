@@ -182,6 +182,95 @@ def test_kernel_downward_override_normal_gives_near_zero_svf(_ti):
     assert svf[0] == pytest.approx(0.0, abs=1e-4)
 
 
+# ---------------------------------------------------------------------------
+# The unobstructed cases above cannot pin sin(elev_mid) vs cos(elev_mid).
+#
+# For an unobstructed surface visible_vf and total_vf sum the *same* set of
+# directions with the *same* weights, so visible_vf / total_vf is exactly
+# 1.0 regardless of what vf_frac's weight function is -- the weight cancels
+# out of the ratio. Every test above would pass identically if the override
+# branch used cos(elev_mid) instead of sin(elev_mid) (the specific error the
+# original plan made and review caught). The weight only matters when
+# numerator and denominator differ, i.e. under partial obstruction. The two
+# tests below build real occluders and compare the override branch against
+# the pre-existing analytic branch (vffrac_up / vffrac_vert), which computes
+# the same physical quantity by construction (PALM's closed-form integral of
+# the very same cos(elev)*sin(elev) response for a flat roof). Midpoint sum
+# vs. exact integral should agree to O(dtheta^2); a wrong weight function
+# would not converge to the same answer at all.
+# ---------------------------------------------------------------------------
+
+def test_flat_roof_partial_obstruction_pins_sin_weight(_ti):
+    """Flat roof (normal (0,0,1)) with real, azimuthally- and
+    elevation-irregular occluders (asymmetric pillars, not a symmetric
+    half-space wall -- a symmetric 180-degree wall blocks each elevation
+    band by the same fraction and would make visible/total = 0.5 for *any*
+    weight function, which would not discriminate sin from cos either).
+
+    Run the identical geometry and surface position twice: once through the
+    analytic branch (patch_id = -1) and once through the override branch
+    (patch_id >= 0, but the occluder cells are never tagged with that patch,
+    so the own-patch skip never fires and both runs see exactly the same
+    solid voxels). They must agree to within ~2%."""
+    nx = ny = nz = 20
+    occ = np.zeros((nx, ny, nz), dtype=np.int32)
+    occ[9:12, 13:17, 3:17] = 1     # north, tall block, moderate distance
+    occ[13:17, 9:12, 3:9] = 1      # east, medium block, moderate distance
+    occ[6:9, 6:9, 3:14] = 1        # southwest, cube, tall
+    occ[9:12, 4:7, 3:6] = 1        # south, short
+    occ[14:17, 14:17, 3:11] = 1    # northeast, medium
+    patch = np.full((nx, ny, nz), -1, dtype=np.int32)  # occluders untagged
+
+    center = [[10.5, 10.5, 2.5]]
+    svf_analytic = _run_svf(occ, patch, centers=center, dirs_enum=[0],
+                             normals=[[0.0, 0.0, 1.0]], patches=[-1])[0]
+    svf_override = _run_svf(occ, patch, centers=center, dirs_enum=[0],
+                             normals=[[0.0, 0.0, 1.0]], patches=[5])[0]
+
+    print(f"flat roof: analytic={svf_analytic:.6f} override={svf_override:.6f}")
+
+    # The obstruction must actually bite, so this test fails loudly if the
+    # scene is ever "simplified" back into open air (where the ratio is
+    # trivially 1.0 for both branches regardless of weight).
+    assert svf_analytic < 0.9
+    assert svf_override < 0.9
+    assert 0.3 < svf_analytic < 0.7
+
+    assert svf_override == pytest.approx(svf_analytic, rel=0.02)
+
+
+def test_vertical_wall_partial_obstruction_pins_sin_weight(_ti):
+    """Same construction as the flat-roof test above, but for a vertical
+    wall (normal (1,0,0)), comparing the override branch against the
+    analytic vffrac_vert + vertical-doubling path. Vertical surfaces already
+    exercise a different elevation weighting (vffrac_vert integrates
+    sin(elev)*cos(elev) via elev_terms, not vffrac_up's cos(2 elev) form),
+    so this pins the override branch's sin(elev_mid) independently of the
+    flat-roof case above."""
+    nx = ny = nz = 20
+    occ = np.zeros((nx, ny, nz), dtype=np.int32)
+    occ[9, 12, 4:15] = 1     # ahead-north, tall
+    occ[12, 10, 4:7] = 1     # ahead-straight, short
+    occ[8, 6:9, 4:9] = 1     # ahead-south, cube
+    occ[13, 15, 4:6] = 1     # ahead-far-north, very short
+    occ[10, 13, 4:8] = 1     # near ahead-north, medium
+    patch = np.full((nx, ny, nz), -1, dtype=np.int32)  # occluders untagged
+
+    center = [[5.5, 10.5, 5.5]]
+    svf_analytic = _run_svf(occ, patch, centers=center, dirs_enum=[4],
+                             normals=[[1.0, 0.0, 0.0]], patches=[-1])[0]
+    svf_override = _run_svf(occ, patch, centers=center, dirs_enum=[4],
+                             normals=[[1.0, 0.0, 0.0]], patches=[5])[0]
+
+    print(f"vertical wall: analytic={svf_analytic:.6f} override={svf_override:.6f}")
+
+    assert svf_analytic < 0.9
+    assert svf_override < 0.9
+    assert 0.15 < svf_analytic < 0.7
+
+    assert svf_override == pytest.approx(svf_analytic, rel=0.02)
+
+
 def test_kernel_with_canopy_matches_closed_form_too(_ti):
     """compute_svf_with_canopy is the live production path (Domain.lad is
     always allocated, see RadiationModel.compute_svf), so the override
