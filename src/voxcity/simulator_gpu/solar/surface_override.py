@@ -213,6 +213,14 @@ def build_cell_patch_grid(table, is_solid: np.ndarray) -> np.ndarray:
     than the bound simply stay ``NO_PATCH``, which is the safe direction: an
     un-patched cell is opaque, so the worst case is a ray blocking where it
     would otherwise have passed, not the reverse.
+
+    Unlike ``validate_surface_override`` and ``surface_override_signature``,
+    this does not check the table's shape or required attributes before
+    using it -- call ``validate_surface_override`` first. A table missing
+    ``cell`` degrades silently to an all-``NO_PATCH`` grid (still the safe
+    direction); one missing another field, e.g. ``patch``, raises a bare
+    ``AttributeError`` instead of the explanatory ``ValueError`` validation
+    would give.
     """
     solid = np.asarray(is_solid, dtype=bool)
     grid = np.full(solid.shape, NO_PATCH, dtype=np.int32)
@@ -222,9 +230,15 @@ def build_cell_patch_grid(table, is_solid: np.ndarray) -> np.ndarray:
 
     cell = np.asarray(table.cell)
     patch = np.asarray(table.patch)
-    # Any negative patch id counts as "no patch" here, not just NO_PATCH
-    # specifically -- a caller need not use exactly this constant.
-    has_patch = patch >= 0
+    # A row counts as patched only if its patch id is non-negative AND its
+    # cell is actually solid. The solidity check matters because the
+    # dilation below reads seeded cells as sources without re-checking them:
+    # a row naming an air cell would otherwise hand its patch id straight to
+    # a real neighbouring solid cell, making that neighbour transparent to
+    # its own rays. The caller's occupancy and this solver's `is_solid` are
+    # derived independently and can legitimately disagree (e.g. a
+    # window/glass classification difference), so this is not hypothetical.
+    has_patch = (patch >= 0) & solid[cell[:, 0], cell[:, 1], cell[:, 2]]
     grid[cell[has_patch, 0], cell[has_patch, 1], cell[has_patch, 2]] = patch[has_patch]
 
     # Bounded BFS dilation: each round hands ids one cell deeper along a

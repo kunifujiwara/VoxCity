@@ -133,6 +133,29 @@ def test_cell_patch_grid_scatters_and_fills_interior():
     assert (grid[~is_solid] == NO_PATCH).all()       # air stays patchless
 
 
+def test_non_solid_row_does_not_seed_a_patch_that_leaks_to_a_neighbour():
+    """A table row naming a cell that is not solid must not contaminate a
+    genuinely solid neighbour. The dilation reads seeded cells as sources
+    without re-checking their solidity, so an air-located seed would
+    otherwise hand its patch id straight to a real neighbouring cell and
+    make that neighbour transparent to its own rays -- the caller's
+    occupancy and this solver's is_solid are derived independently and can
+    legitimately disagree (e.g. a window/glass classification difference)."""
+    is_solid = np.zeros((5, 3, 3), dtype=bool)
+    is_solid[3, 1, 1] = True                         # only this cell is solid
+    ov = SurfaceOverride(
+        cell=np.array([[2, 1, 1]], dtype=np.int32),  # table names an air cell
+        face=np.array([4], dtype=np.int8),
+        origin=np.array([[2.5, 1.5, 1.5]], dtype=np.float32),
+        normal=np.array([[1.0, 0.0, 0.0]], dtype=np.float32),
+        patch=np.array([99], dtype=np.int32),
+        area=np.array([1.0], dtype=np.float32),
+    )
+    grid = build_cell_patch_grid(ov, is_solid)
+    assert grid[2, 1, 1] == NO_PATCH                 # the named air cell: unseeded
+    assert grid[3, 1, 1] == NO_PATCH                 # its solid neighbour: not contaminated
+
+
 def test_patch_fill_depth_is_bounded():
     """Unbounded dilation measured ~5.5s on a 59-cell solid column and
     ~10.6s on a ~100-cell block at city-scale grid sizes. Depth must be
@@ -162,10 +185,12 @@ def test_patch_fill_depth_is_bounded():
 
 
 def test_bfs_terminates_on_an_unreachable_island():
-    """A solid region with no patched cell anywhere in it must not spin --
-    this pins the `if not progressed: break` early exit, which a
-    well-meaning simplification of the loop could delete without any other
-    test noticing."""
+    """A solid region with no patched cell anywhere in it, and no patched
+    neighbour to inherit from, must stay entirely NO_PATCH rather than
+    picking up a stray id. Termination itself is now structurally guaranteed
+    by the MAX_PATCH_FILL_DEPTH round cap (see test_patch_fill_depth_is_bounded);
+    the `if not progressed: break` here is only a same-round efficiency
+    early-exit, not what keeps this from spinning."""
     is_solid = np.zeros((10, 3, 3), dtype=bool)
     is_solid[1:4, 1, 1] = True   # patched slab, as in the interior-fill test
     is_solid[7:9, 1, 1] = True   # isolated island: no patch touches it, and
