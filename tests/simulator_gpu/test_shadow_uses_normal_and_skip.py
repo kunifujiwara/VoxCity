@@ -29,6 +29,8 @@ def _run_shadow(occ_np, patch_np, centers, dirs_enum, normals, patches, sun):
     def fill(c: ti.types.ndarray(), de: ti.types.ndarray(),
              nn: ti.types.ndarray(), pp: ti.types.ndarray()):
         for i in range(n):
+            # unused by these kernels; do not reuse this fixture for
+            # position-dependent checks
             s.position[i] = ti.math.ivec3(0, 0, 0)
             s.direction[i] = de[i]
             s.center[i] = ti.Vector([c[i, 0], c[i, 1], c[i, 2]])
@@ -68,6 +70,8 @@ def _run_canopy(occ_np, patch_np, lad_np, centers, dirs_enum, normals, patches, 
     def fill(c: ti.types.ndarray(), de: ti.types.ndarray(),
              nn: ti.types.ndarray(), pp: ti.types.ndarray()):
         for i in range(n):
+            # unused by these kernels; do not reuse this fixture for
+            # position-dependent checks
             s.position[i] = ti.math.ivec3(0, 0, 0)
             s.direction[i] = de[i]
             s.center[i] = ti.Vector([c[i, 0], c[i, 1], c[i, 2]])
@@ -155,3 +159,65 @@ def test_canopy_own_staircase_no_longer_shadows(_ti):
                             sun=(1.0, 0.0, 0.0))
     assert sf[0] == pytest.approx(0.0)             # sunlit
     assert trans[0] == pytest.approx(1.0)          # no canopy present
+
+
+def test_grazing_ray_escapes_a_multi_step_staircase(_ti):
+    """The other tests here fire the sun at (1,0,0) against a 45-degree
+    normal -- cos_inc ~= 0.707, a comfortable incidence angle where the ray
+    clears its own patch's voxelisation after a single DDA step. The bug
+    this task exists to fix (a -30.7% bias, and outright zero-beam
+    blackouts) is specifically at grazing azimuths, where a ray leaving the
+    facade nearly parallel to its own plane has to cross several of its own
+    staircase steps -- not just one -- before it escapes the notch.
+
+    A skip that only clears the *first* same-patch voxel hit along the ray
+    (instead of every same-patch voxel encountered during the march) would
+    pass every other test in this file: at 45 degrees the ray leaves the
+    notch after one cell, so a first-only skip looks indistinguishable from
+    a full skip. Only a grazing ray, crossing multiple own-patch cells in a
+    row, tells them apart.
+
+    Geometry: sun_dir is built as cos(5deg)*in_plane + sin(5deg)*normal,
+    where in_plane = (r2, -r2, 0) is perpendicular to the wall's normal
+    (r2, r2, 0) -- i.e. sun_dir sits 5 degrees off the facade plane
+    (cos_inc ~= 0.087), not the ~45-degree incidence the other tests use.
+    Tracing the kernel's own 3D-DDA from the surface (done with a
+    standalone Python replica while designing this test, not shipped) shows
+    the ray visits, in order: (10,10,1), (11,10,1), (11,9,1), (12,9,1),
+    (12,8,1), ... . The first four of those are marked solid and tagged
+    with the surface's own patch id (7); (12,8,1) and beyond are left
+    empty. So the ray must cross 4 of its own staircase steps before
+    reaching open space.
+    """
+    nx = ny = 24
+    nz = 4
+    occ = np.zeros((nx, ny, nz), dtype=np.int32)
+    patch = np.full((nx, ny, nz), -1, dtype=np.int32)
+    own_steps = [(10, 10, 1), (11, 10, 1), (11, 9, 1), (12, 9, 1)]
+    for (i, j, k) in own_steps:
+        occ[i, j, k] = 1
+        patch[i, j, k] = 7
+
+    r2 = float(np.sqrt(0.5))
+    theta = np.radians(5.0)
+    in_plane = np.array([r2, -r2, 0.0])
+    normal = np.array([r2, r2, 0.0])
+    sun = np.cos(theta) * in_plane + np.sin(theta) * normal
+
+    sf = _run_shadow(occ, patch,
+                     centers=[[10.5, 10.5, 1.5]], dirs_enum=[4],
+                     normals=[[r2, r2, 0.0]], patches=[7],
+                     sun=tuple(sun))
+    assert sf[0] == pytest.approx(0.0)             # sunlit
+
+    # Control: the same four staircase cells, but belonging to someone
+    # else's patch -- must still shadow, since a foreign patch legitimately
+    # occludes.
+    foreign_patch = np.full((nx, ny, nz), -1, dtype=np.int32)
+    for (i, j, k) in own_steps:
+        foreign_patch[i, j, k] = 99
+    sf_foreign = _run_shadow(occ, foreign_patch,
+                             centers=[[10.5, 10.5, 1.5]], dirs_enum=[4],
+                             normals=[[r2, r2, 0.0]], patches=[7],
+                             sun=tuple(sun))
+    assert sf_foreign[0] == pytest.approx(1.0)     # shaded

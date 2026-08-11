@@ -549,6 +549,13 @@ class RadiationModel:
                     self.surfaces.canopy_transmissivity
                 )
             else:
+                # Domain.lad is always an allocated Taichi field (never
+                # None), so this branch is unreachable in practice -- the
+                # `if` above always takes compute_direct_with_canopy. Kept
+                # for the case where lad ever legitimately becomes None,
+                # and exercised directly by
+                # tests/simulator_gpu/test_shadow_uses_normal_and_skip.py
+                # rather than through this call site.
                 self.ray_tracer.compute_direct_shadows(
                     self.surfaces.center,  # Use world coordinates, not grid indices
                     self.surfaces.direction,
