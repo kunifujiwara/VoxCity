@@ -56,7 +56,24 @@ IWEST = 5    # -x/-u normal (South-facing; legacy PALM label)
 
 
 def surface_incidence_cosine(normal, sun_dir) -> float:
-    """max(0, normal . sun_dir). The kernel inlines this; extracted for tests."""
+    """max(0, normal . sun_dir).
+
+    The `cos_incidence` arithmetic in `_compute_initial_sw_pass` below
+    INLINES this same expression rather than calling this function --
+    Taichi kernels can't call plain Python functions like this one. The two
+    must therefore be changed together by hand: if the kernel's formula
+    changes, update this one to match, or the two silently drift apart.
+
+    This function exists purely so the arithmetic is unit-testable without
+    building a Domain/RadiationModel. It does NOT exercise the kernel, so it
+    cannot catch a kernel-side regression (e.g. reading the wrong field, or
+    reinstating the old direction-based normal switch) on its own -- that is
+    what test_kernel_uses_the_true_normal_not_the_axis_normal in
+    tests/simulator_gpu/test_direct_beam_uses_normal.py is for: it drives
+    the real kernel end to end with a surface normal deliberately off-axis
+    from its `direction`, and pins the resulting irradiance to the
+    true-normal answer.
+    """
     d = normal[0] * sun_dir[0] + normal[1] * sun_dir[1] + normal[2] * sun_dir[2]
     return float(max(0.0, d))
 
