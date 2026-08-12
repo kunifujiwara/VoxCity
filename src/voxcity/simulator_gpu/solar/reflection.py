@@ -220,6 +220,7 @@ def compute_initial_and_reflections_fused(
     surf_canopy_trans: ti.template(),
     surf_albedo: ti.template(),
     surf_normal: ti.template(),
+    surf_patch: ti.template(),
     # Sun properties
     sun_dir_x: ti.f32,
     sun_dir_y: ti.f32,
@@ -249,47 +250,60 @@ def compute_initial_and_reflections_fused(
 ):
     """
     Fully fused kernel: initial radiation + all reflection iterations.
-    
+
     This is the most optimized version that runs everything in one kernel.
+
+    SYNC WARNING: Phase 1 below must be kept bit-for-bit in step with
+    `_compute_initial_sw_pass` in radiation.py -- that is the live kernel;
+    this one is currently unreachable (no caller constructs
+    OptimizedReflectionSolver's sibling free function), but it carries the
+    same signature and was found still doing the old direction-based axis
+    normal and the old hard-zero-on-IDOWN diffuse rule after the live kernel
+    was fixed to use `surfaces.normal` and to follow SVF unconditionally for
+    overridden (patch_id >= 0) surfaces. If this kernel is ever wired up
+    without re-checking it against radiation.py first, that regression comes
+    back silently.
     """
     min_stable_coszen = 0.0262
-    
+
     # ========== Phase 1: Initial radiation pass ==========
     for i in range(n_surfaces):
         direction = surf_direction[i]
         svf_val = surf_svf[i]
         shadow = surf_shadow[i]
         canopy_trans = surf_canopy_trans[i]
-        
-        # Get surface normal
-        normal_x, normal_y, normal_z = 0.0, 0.0, 0.0
-        if direction == 0:  # Up
-            normal_z = 1.0
-        elif direction == 1:  # Down
-            normal_z = -1.0
-        elif direction == 2:  # North
-            normal_y = 1.0
-        elif direction == 3:  # South
-            normal_y = -1.0
-        elif direction == 4:  # East
-            normal_x = 1.0
-        elif direction == 5:  # West
-            normal_x = -1.0
-        
+        patch = surf_patch[i]
+
+        # The stored normal IS the axis normal for every surface built from
+        # occupancy, so this is bit-identical to the old direction switch --
+        # and the true polygon normal wherever a caller overrode it. Mirrors
+        # _compute_initial_sw_pass in radiation.py.
+        normal = surf_normal[i]
+
         # Cosine of incidence
-        cos_inc = sun_dir_x * normal_x + sun_dir_y * normal_y + sun_dir_z * normal_z
+        cos_inc = sun_dir_x * normal[0] + sun_dir_y * normal[1] + sun_dir_z * normal[2]
         cos_inc = ti.max(0.0, cos_inc)
-        
+
         # Direct radiation
         sw_dir = 0.0
         if cos_zenith > min_stable_coszen and shadow < 0.5:
             sw_dir = sw_direct * cos_inc * canopy_trans
-        
+
         # Diffuse radiation
         sw_dif = 0.0
-        if direction != 1:  # Not downward
+        if patch >= 0:
+            # Overridden surface: svf was computed from the true polygon
+            # normal, including the analytic rescale that already makes it
+            # ~0 for a face pointing mostly downward. `direction` on such a
+            # surface is only which axis-aligned voxel face the ray leaves
+            # from -- a table can legitimately report direction==IDOWN for a
+            # surface whose true normal is only partly downward, so
+            # hard-zeroing on that enum would discard a real diffuse
+            # contribution the SVF already accounts for correctly.
             sw_dif = sw_diffuse * svf_val
-        
+        elif direction != 1:  # Not downward
+            sw_dif = sw_diffuse * svf_val
+
         # Store results
         sw_in_direct[i] = sw_dir
         sw_in_diffuse[i] = sw_dif
