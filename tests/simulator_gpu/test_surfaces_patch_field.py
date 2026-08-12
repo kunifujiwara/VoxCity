@@ -1,4 +1,3 @@
-import numpy as np
 import pytest
 
 ti = pytest.importorskip("taichi")
