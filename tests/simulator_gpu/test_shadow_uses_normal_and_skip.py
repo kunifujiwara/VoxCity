@@ -43,7 +43,7 @@ def _run_shadow(occ_np, patch_np, centers, dirs_enum, normals, patches, sun):
 
     tracer = RayTracer(d)
     tracer.compute_direct_shadows(
-        s.center, s.direction, s.normal, s.patch_id, cell_patch,
+        s.center, s.normal, s.patch_id, cell_patch,
         ti.Vector([float(sun[0]), float(sun[1]), float(sun[2])]),
         d.is_solid, n, s.shadow_factor)
     return s.shadow_factor.to_numpy()[:n]
@@ -84,7 +84,7 @@ def _run_canopy(occ_np, patch_np, lad_np, centers, dirs_enum, normals, patches, 
 
     tracer = RayTracer(d)
     tracer.compute_direct_with_canopy(
-        s.center, s.direction, s.normal, s.patch_id, cell_patch,
+        s.center, s.normal, s.patch_id, cell_patch,
         ti.Vector([float(sun[0]), float(sun[1]), float(sun[2])]),
         d.is_solid, d.lad, n, s.shadow_factor, s.canopy_transmissivity)
     return s.shadow_factor.to_numpy()[:n], s.canopy_transmissivity.to_numpy()[:n]

@@ -58,11 +58,15 @@ IWEST = 5    # -x/-u normal (South-facing; legacy PALM label)
 def surface_incidence_cosine(normal, sun_dir) -> float:
     """max(0, normal . sun_dir).
 
-    The `cos_incidence` arithmetic in `_compute_initial_sw_pass` below
-    INLINES this same expression rather than calling this function --
-    Taichi kernels can't call plain Python functions like this one. The two
-    must therefore be changed together by hand: if the kernel's formula
-    changes, update this one to match, or the two silently drift apart.
+    This same expression is INLINED, rather than calling this function, at
+    every site below -- Taichi kernels can't call plain Python functions like
+    this one:
+      - `cos_incidence` in `_compute_initial_sw_pass` (this file, ~line 814)
+      - `cos_inc` in `RayTracer.compute_direct_shadows` (raytracing.py)
+      - `cos_inc` in `RayTracer.compute_direct_with_canopy` (raytracing.py)
+      - `cos_inc` in `reflection.py` (~line 284)
+    All four must be changed together by hand: if the formula changes in one,
+    update the rest to match, or they silently drift apart.
 
     This function exists purely so the arithmetic is unit-testable without
     building a Domain/RadiationModel. It does NOT exercise the kernel, so it
@@ -543,7 +547,6 @@ class RadiationModel:
             if self.domain.lad is not None:
                 self.ray_tracer.compute_direct_with_canopy(
                     self.surfaces.center,  # Use world coordinates, not grid indices
-                    self.surfaces.direction,
                     self.surfaces.normal,
                     self.surfaces.patch_id,
                     self.cell_patch,
@@ -564,7 +567,6 @@ class RadiationModel:
                 # rather than through this call site.
                 self.ray_tracer.compute_direct_shadows(
                     self.surfaces.center,  # Use world coordinates, not grid indices
-                    self.surfaces.direction,
                     self.surfaces.normal,
                     self.surfaces.patch_id,
                     self.cell_patch,

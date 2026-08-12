@@ -394,7 +394,6 @@ class RayTracer:
     def compute_direct_shadows(
         self,
         surf_pos: ti.template(),
-        surf_dir: ti.template(),
         surf_normal: ti.template(),
         surf_patch: ti.template(),
         cell_patch: ti.template(),
@@ -465,7 +464,6 @@ class RayTracer:
     def compute_direct_with_canopy(
         self,
         surf_pos: ti.template(),
-        surf_dir: ti.template(),
         surf_normal: ti.template(),
         surf_patch: ti.template(),
         cell_patch: ti.template(),
