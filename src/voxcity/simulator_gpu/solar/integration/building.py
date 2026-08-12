@@ -12,6 +12,7 @@ drop-in replacement with GPU acceleration.
 """
 
 import logging
+from functools import lru_cache
 
 import numpy as np
 from typing import Optional, Tuple, Dict
@@ -63,23 +64,81 @@ def _mesh_geometry_signature(mesh):
     return (id(mesh), len(mesh.faces), bounds)
 
 
-def _map_mesh_faces_to_surfaces(mesh_face_centers, mesh_face_normals, surface_centers_scene, surface_normals_scene, bldg_indices):
+@lru_cache(maxsize=1)
+def _direction_to_scene_normal_key():
+    """Map each surface ``direction`` index (0-5, see ``domain.DIR_NORMALS``)
+    to the unit-axis normal key it corresponds to in scene coordinates.
+
+    Mesh faces from ``create_voxel_mesh`` are always axis-aligned, so their
+    face normals round exactly to one of these six keys. A surface's
+    ``direction`` is the voxel-face axis it was built from -- including for
+    override surfaces, where it is the exposed face the ray leaves from, not
+    the (possibly non-axis-aligned) true polygon normal -- so ``direction``
+    is the correct join key between mesh faces and surfaces, independent of
+    whether the surface's own normal happens to round to a unit axis.
+    """
+    from ..domain import DIR_NORMALS
+
+    mapping = {}
+    for direction, normal in DIR_NORMALS.items():
+        scene_normal = uv_domain_points_to_scene(np.array(normal, dtype=np.float64))
+        key = tuple(int(v) for v in np.rint(scene_normal).astype(np.int8))
+        mapping[direction] = key
+    return mapping
+
+
+def _map_mesh_faces_to_surfaces(
+    mesh_face_centers,
+    mesh_face_normals,
+    surface_centers_scene,
+    surface_directions,
+    bldg_indices,
+    max_match_distance,
+):
+    """Match voxel-mesh faces to solver surfaces.
+
+    Both sides are bucketed by the voxel-face axis they occupy: mesh faces
+    by their (always axis-aligned) rounded face normal, surfaces by their
+    ``direction`` index translated to the same scene-axis key. Keying
+    surfaces by ``direction`` rather than by rounding their own normal keeps
+    this correct even when override surfaces carry a true, non-axis-aligned
+    normal (e.g. a sloped facade whose normal rounds to (1, 1, 0)) -- such a
+    surface's ``direction`` is still one of the six voxel-face axes.
+
+    Within a bucket, each face is matched to its nearest surface centroid,
+    but only if that centroid is within ``max_match_distance``; otherwise the
+    face gets -1 (no match), which callers already render as NaN rather than
+    silently inheriting a distant, implausible surface.
+    """
     mesh_normals_key = np.rint(mesh_face_normals).astype(np.int8)
-    surface_normals_key = np.rint(surface_normals_scene).astype(np.int8)
-    result = np.empty(len(mesh_face_centers), dtype=np.int64)
+    direction_key_map = _direction_to_scene_normal_key()
+    key_to_direction = {key: direction for direction, key in direction_key_map.items()}
+
+    result = np.full(len(mesh_face_centers), -1, dtype=np.int64)
+    bldg_directions = surface_directions[bldg_indices]
 
     for normal_key in np.unique(mesh_normals_key, axis=0):
+        direction = key_to_direction.get(tuple(int(v) for v in normal_key))
         face_mask = np.all(mesh_normals_key == normal_key, axis=1)
-        surface_mask = np.all(surface_normals_key[bldg_indices] == normal_key, axis=1)
+        if direction is None:
+            # Not one of the six voxel-face axes -- shouldn't happen for an
+            # axis-aligned voxel mesh, but leave these faces unmatched (-1)
+            # rather than guessing.
+            continue
+
+        surface_mask = bldg_directions == direction
         candidate_indices = bldg_indices[surface_mask]
 
         if candidate_indices.size == 0:
-            result[face_mask] = -1
             continue
 
         tree = cKDTree(surface_centers_scene[candidate_indices])
-        _, nearest_idx = tree.query(mesh_face_centers[face_mask], k=1)
-        result[face_mask] = candidate_indices[nearest_idx]
+        dist, nearest_idx = tree.query(mesh_face_centers[face_mask], k=1)
+        matched = candidate_indices[nearest_idx]
+        within_cap = dist <= max_match_distance
+
+        face_indices = np.flatnonzero(face_mask)
+        result[face_indices[within_cap]] = matched[within_cap]
 
     return result
 
@@ -259,8 +318,8 @@ def get_building_solar_irradiance(
         else:
             surf_centers_all = model.surfaces.center.to_numpy()[:n_surfaces]
             surf_centers_scene = uv_domain_points_to_scene(surf_centers_all)
-            surf_normals_scene = uv_domain_points_to_scene(model.surfaces.normal.to_numpy()[:n_surfaces])
-            
+            surf_directions_all = model.surfaces.direction.to_numpy()[:n_surfaces]
+
             if cache_matches_mesh and cache.mesh_face_centers is not None:
                 mesh_face_centers = cache.mesh_face_centers
             else:
@@ -273,8 +332,15 @@ def get_building_solar_irradiance(
                 mesh_face_centers,
                 building_mesh.face_normals,
                 surf_centers_scene,
-                surf_normals_scene,
+                surf_directions_all,
                 bldg_indices,
+                # A correct match sits at ~0.47 m (half a voxel-face
+                # diagonal-ish offset) on real cities; 2x meshsize leaves
+                # generous headroom over that while still confidently
+                # rejecting the 2-28 m cross-bucket mismatches the old,
+                # uncapped rint-keyed matching produced (see
+                # tests/simulator_gpu/test_mesh_surface_mapping.py).
+                max_match_distance=2.0 * meshsize,
             )
             
             if cache is not None:

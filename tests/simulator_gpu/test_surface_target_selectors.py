@@ -292,6 +292,7 @@ class _FakeSolarModel:
             sw_in_diffuse=_ArrayField([1.0, 2.0]),
             center=_ArrayField([[0.25, 0.25, 1.0], [0.25, 3.25, 1.0]]),
             normal=_ArrayField([[0.0, 0.0, 1.0], [0.0, 0.0, 1.0]]),
+            direction=_ArrayField([0, 0]),  # IUP, matching the normal above
         )
         self.compute_calls = 0
 
