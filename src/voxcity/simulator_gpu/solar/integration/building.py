@@ -308,6 +308,11 @@ def get_building_solar_irradiance(
         cache.mesh_geometry_signature == mesh_signature
     )
     
+    # Filled in below only when an override table is active; stays None on the
+    # no-buildings path so that branch attaches nothing either.
+    used_normals = None
+    used_index = None
+
     # Map palm_solar values to mesh faces
     if len(bldg_indices) > 0:
         if (cache is not None and 
@@ -348,6 +353,33 @@ def get_building_solar_irradiance(
                 cache.mesh_geometry_signature = mesh_signature
         
         valid_surface_mask = mesh_to_surface_idx >= 0
+
+        if surface_override is not None:
+            # The returned mesh is the axis-aligned voxel staircase, but with
+            # an override table the value on a face was computed against the
+            # true polygon normal instead. Export that normal per face so a
+            # consumer projecting these values onto a polygon model can route
+            # each one to the surface that produced it; matching by axis
+            # bucket alone puts a value computed for a tilted facade on a
+            # horizontal roof polygon, which then reports more than a
+            # horizontal surface can physically receive.
+            #
+            # surfaces.normal is read here on both branches above, including
+            # the cached-mapping one -- it is only a .to_numpy(), and caching
+            # it would have to be keyed to the model, since a different
+            # override table rebuilds the model with a different surface set.
+            # uv_domain_points_to_scene is a pure u/v <-> x/y swap, so it is
+            # valid for vectors as well as points (the same assumption
+            # _direction_to_scene_normal_key already makes).
+            surf_normals_scene = uv_domain_points_to_scene(
+                model.surfaces.normal.to_numpy()[:n_surfaces].astype(np.float64))
+            used_normals = np.full((n_mesh_faces, 3), np.nan, dtype=np.float64)
+            used_normals[valid_surface_mask] = (
+                surf_normals_scene[mesh_to_surface_idx[valid_surface_mask]])
+            # A copy, not a view on the cached mapping: -1 marks "this face
+            # matched no surface", pairing with the NaN rows above.
+            used_index = mesh_to_surface_idx.astype(np.int64)
+
         sw_in_direct = np.full(n_mesh_faces, np.nan, dtype=np.float64)
         sw_in_diffuse = np.full(n_mesh_faces, np.nan, dtype=np.float64)
         sw_in_reflected = np.full(n_mesh_faces, np.nan, dtype=np.float64)
@@ -426,6 +458,9 @@ def get_building_solar_irradiance(
         'diffuse': sw_in_diffuse,
         'global': total_sw,
     })
+    if used_normals is not None:
+        metadata['surface_override_normals'] = used_normals
+        metadata['surface_override_index'] = used_index
     building_mesh.metadata = metadata
     if face_svf is not None:
         building_mesh.metadata['svf'] = face_svf

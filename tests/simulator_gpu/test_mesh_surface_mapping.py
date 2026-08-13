@@ -18,6 +18,8 @@ by rounding the surface's own normal, and caps the nearest-centroid distance
 so an out-of-range match becomes -1 (which the caller already renders as
 NaN) instead of a distant guess.
 """
+import math
+
 import numpy as np
 import pytest
 
@@ -229,3 +231,162 @@ def test_occupancy_built_surfaces_map_identically_old_vs_new(_ti):
           f"({n_unmatched} unmatched on both sides, e.g. the block's ground-contact "
           f"underside, which extract_surfaces_from_domain never emits a surface for)")
     assert np.array_equal(old_result, new_result)
+
+
+# ---------------------------------------------------------------------------
+# Exporting the mapping (and the normal it selected) alongside the values.
+#
+# get_building_solar_irradiance returns an axis-aligned voxel-staircase mesh
+# with per-face irradiance in `metadata`. A consumer that projects those
+# values onto a polygon city model has to re-derive which surface produced
+# each value, and can only do so by axis bucket -- so a value computed for a
+# 20-degree-tilted facade lands on a horizontal roof polygon, and the roof
+# then reports irradiance above the physical ceiling for a horizontal
+# surface. The join is already known here (`mesh_to_surface_idx`), so it is
+# exported: the surface index per face, and that surface's own normal in the
+# mesh's own (scene) frame.
+#
+# Only when an override table is active: without one every surface normal is
+# already the mesh face's own axis normal, so the export would carry no
+# information, and the flag-off output must stay byte-identical.
+# ---------------------------------------------------------------------------
+
+# Both in the table's own frame, i.e. uv-domain (u=row, v=col, z) -- see
+# surface_override.SURFACE_TABLE_CONVENTION. Deliberately chosen with u != v
+# so that the u/v <-> x/y swap into scene coordinates is observable: if the
+# export dropped the swap these would come back unchanged and the assertions
+# below would still see a unit, finite, correctly-indexed normal.
+_ROOF_NORMAL_UV = (math.sin(math.radians(20.0)), 0.0, math.cos(math.radians(20.0)))
+_WALL_NORMAL_UV = (math.cos(math.radians(15.0)), math.sin(math.radians(15.0)), 0.0)
+
+
+def _override_city(_ti):
+    """A 6x6x6 city with one building column at (row, col) = (2, 2), plus a
+    two-row override table on that column: a 20-degree-tilted "roof" on the
+    column's IUP face and an azimuthally rotated "wall" on one IEAST face.
+
+    Only two of the five voxel-face directions the staircase mesh actually
+    has are covered, so the remaining faces must come back unmapped -- that
+    is what keeps the NaN/-1 half of the contract from being vacuous.
+    """
+    from tests.simulator._roof_helpers import make_voxcity_with_building
+    from voxcity.simulator_gpu.solar.surface_override import SurfaceOverride
+
+    voxcity = make_voxcity_with_building(nx=6, ny=6, nz=6, bh=3)
+    table = SurfaceOverride(
+        cell=np.array([[2, 2, 3], [2, 2, 2]], dtype=np.int32),
+        face=np.array([0, 4], dtype=np.int8),          # IUP, IEAST
+        origin=np.array([[2.5, 2.5, 4.0], [3.0, 2.5, 2.5]], dtype=np.float32),
+        normal=np.array([_ROOF_NORMAL_UV, _WALL_NORMAL_UV], dtype=np.float32),
+        patch=np.array([0, 1], dtype=np.int32),
+        area=np.array([1.0, 1.0], dtype=np.float32),
+    )
+    return voxcity, table
+
+
+@pytest.fixture
+def small_city_with_override(_ti):
+    from voxcity.simulator_gpu.solar.integration import caching
+
+    caching.clear_building_radiation_model_cache()
+    yield _override_city(_ti)
+    caching.clear_building_radiation_model_cache()
+
+
+@pytest.fixture
+def small_city_no_override(_ti):
+    from voxcity.simulator_gpu.solar.integration import caching
+
+    caching.clear_building_radiation_model_cache()
+    yield _override_city(_ti)[0]
+    caching.clear_building_radiation_model_cache()
+
+
+def _run(voxcity, **kwargs):
+    from voxcity.simulator_gpu.solar.integration.building import (
+        get_building_solar_irradiance,
+    )
+
+    return get_building_solar_irradiance(
+        voxcity, azimuth_degrees_ori=210.0, elevation_degrees=20.0,
+        direct_normal_irradiance=900.0, diffuse_irradiance=100.0,
+        **kwargs)
+
+
+def test_override_run_exports_used_normals(small_city_with_override):
+    """When surface_override is active, the returned mesh carries the normal
+    the solver actually used for each face, in scene coordinates."""
+    voxcity, table = small_city_with_override
+    mesh = _run(voxcity, surface_override=table)
+
+    n = len(mesh.faces)
+    normals = mesh.metadata["surface_override_normals"]
+    index = mesh.metadata["surface_override_index"]
+
+    assert normals.shape == (n, 3) and normals.dtype == np.float64
+    assert index.shape == (n,) and index.dtype == np.int64
+
+    finite = np.isfinite(normals).all(axis=1)
+    assert finite.any(), "no mesh face mapped to an override surface at all"
+    assert (~finite).any(), (
+        "every face mapped, so the NaN/-1 assertions below are vacuous -- the "
+        "table deliberately leaves three of the mesh's face directions uncovered")
+    assert (index[finite] >= 0).all()
+    assert (index[~finite] == -1).all()
+    assert np.allclose(np.linalg.norm(normals[finite], axis=1), 1.0, atol=1e-5)
+
+    # Scene frame, checked against the table's own normals through the
+    # exported mapping. surfaces_from_override copies one surface per table
+    # row in order, so the surface index is the table row index.
+    expected = _scene(np.asarray(table.normal, dtype=np.float64))
+    np.testing.assert_allclose(normals[finite], expected[index[finite]],
+                               rtol=0, atol=1e-7)
+
+    # ...and pinned explicitly on the tilted roof, whose u and v components
+    # differ, so this fails if the u/v <-> x/y swap is ever dropped.
+    roof_faces = np.flatnonzero(finite & (index == 0))
+    wall_faces = np.flatnonzero(finite & (index == 1))
+    assert roof_faces.size and wall_faces.size, (
+        f"expected both table rows to be reached; got roof={roof_faces.size} "
+        f"wall={wall_faces.size}")
+    np.testing.assert_allclose(
+        normals[roof_faces[0]],
+        [_ROOF_NORMAL_UV[1], _ROOF_NORMAL_UV[0], _ROOF_NORMAL_UV[2]],
+        rtol=0, atol=1e-7)
+    np.testing.assert_allclose(
+        normals[wall_faces[0]],
+        [_WALL_NORMAL_UV[1], _WALL_NORMAL_UV[0], _WALL_NORMAL_UV[2]],
+        rtol=0, atol=1e-7)
+
+    print(f"used-normal export: {n} faces, {int(finite.sum())} mapped "
+          f"({roof_faces.size} to the tilted roof, {wall_faces.size} to the "
+          f"rotated wall), {int((~finite).sum())} unmapped")
+
+
+def test_override_export_survives_the_mesh_map_cache_hit(small_city_with_override):
+    """The second call reuses the cached mesh->surface mapping, which is the
+    branch that never loads the surface arrays. The export must still be
+    there, and identical -- nothing about the run changed."""
+    voxcity, table = small_city_with_override
+
+    first = _run(voxcity, surface_override=table)
+    first_normals = first.metadata["surface_override_normals"].copy()
+    first_index = first.metadata["surface_override_index"].copy()
+
+    second = _run(voxcity, surface_override=table)
+
+    np.testing.assert_array_equal(second.metadata["surface_override_index"],
+                                  first_index)
+    np.testing.assert_array_equal(
+        np.isnan(second.metadata["surface_override_normals"]),
+        np.isnan(first_normals))
+    np.testing.assert_allclose(second.metadata["surface_override_normals"],
+                               first_normals, rtol=0, atol=0, equal_nan=True)
+
+
+def test_no_override_no_keys(small_city_no_override):
+    """Flag-off output is byte-identical: the keys must be ABSENT, not empty."""
+    mesh = _run(small_city_no_override)
+
+    assert "surface_override_normals" not in mesh.metadata
+    assert "surface_override_index" not in mesh.metadata
