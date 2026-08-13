@@ -143,6 +143,18 @@ def _map_mesh_faces_to_surfaces(
     return result
 
 
+# The two keys of the surface_override wire protocol -- see
+# get_building_solar_irradiance's `Returns:`, which is the authority on them.
+# Claimed as a pair by _drop_override_export below, because for these two
+# (unlike every other key these functions write) presence IS the signal: it
+# means "an override table was active on THIS run".
+#
+# Nothing else is claimed. The same inherited-metadata habit does leave other
+# conditionally-written keys stale on a reused mesh -- a 'dni_threshold' from
+# a PSH run sitting beside a fresh 'min_elevation' after a DSH one, and 'svf'
+# likewise -- which is deliberately left alone: no contract attaches meaning
+# to their presence. The entry-clear below is the pattern to follow if that
+# ever needs generalising.
 _OVERRIDE_EXPORT_KEYS = ('surface_override_normals', 'surface_override_index')
 
 
@@ -207,16 +219,17 @@ def _drop_override_export(metadata):
     with no sunshine at all, and an end-side clear missed it.
 
     A metadata of None or {} means there is nothing inherited to clear, so
-    callers can pass ``getattr(mesh, 'metadata', None)`` without a guard --
-    some meshes reaching these functions have no metadata attribute at all.
+    callers can pass ``getattr(mesh, 'metadata', None)`` without a guard.
+    That tolerance is load-bearing, not padding: meshes with no metadata
+    attribute at all do reach these functions, and at entry the attribute has
+    not yet been forced into existence the way an end-of-function clear could
+    assume.
 
-    Only these two keys are claimed. The same inherited-dict habit leaves
-    other conditionally-written keys stale on a reused mesh (a 'dni_threshold'
-    from a PSH run sitting beside a fresh 'min_elevation' after a DSH one, and
-    'svf' likewise), which is deliberately left alone here: no contract
-    attaches meaning to their presence, whereas these two are a wire protocol
-    where presence IS the signal. This entry-clear is the pattern to follow if
-    that ever needs generalising.
+    In the two accumulating functions this clears ``building_svf_mesh.copy()``
+    and not the caller's own mesh: real callers pass a Trimesh, which has
+    ``.copy()``. Only a duck-typed mesh without one aliases the two, and the
+    sole example in this codebase is a test double -- so there is no
+    caller-visible hazard here, on success or on a raise partway through.
     """
     if not metadata:
         return
@@ -696,7 +709,8 @@ def get_cumulative_building_solar_irradiance(
     result_mesh = building_svf_mesh.copy() if hasattr(building_svf_mesh, 'copy') else building_svf_mesh
     # This copy carries the caller's metadata, and every exit below returns
     # this same object -- so own the export keys from here rather than at each
-    # exit. See _drop_override_export.
+    # exit. See _drop_override_export, including its note on why this clears
+    # the copy and not the caller's own mesh.
     _drop_override_export(getattr(result_mesh, 'metadata', None))
     n_faces = len(result_mesh.faces) if hasattr(result_mesh, 'faces') else 0
 
@@ -1033,8 +1047,8 @@ def get_building_sunlight_hours(
     result_mesh = building_svf_mesh.copy() if hasattr(building_svf_mesh, 'copy') else building_svf_mesh
     # Own the export keys from here: this function has TWO exits -- the
     # no-sunshine early return below and the normal one -- and both return
-    # this object with the caller's metadata copied into it. See
-    # _drop_override_export.
+    # this object with the caller's metadata copied into it. Clearing at the
+    # exits instead missed the early one. See _drop_override_export.
     _drop_override_export(getattr(result_mesh, 'metadata', None))
     n_faces = len(result_mesh.faces) if hasattr(result_mesh, 'faces') else 0
 

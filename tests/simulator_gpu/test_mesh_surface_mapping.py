@@ -765,7 +765,14 @@ def test_sunlight_no_sunshine_early_return_no_keys(small_city_no_override):
     is clean, but that result is `building_svf_mesh.copy()`, whose metadata
     was inherited rather than built. What the run captured says nothing about
     what the result already carried; only an entry-side clear covers every
-    exit, including this one."""
+    exit, including this one.
+
+    Not redundant with test_sunlight_no_override_no_keys, and not the whole
+    of the coverage either: those two also die if the entry clear is removed,
+    so the clear itself is pinned three ways. This one is the only test that
+    separates clearing at *entry* from clearing at each *exit* -- move the
+    clear back to the end of the function and this is the single test that
+    notices."""
     from voxcity.simulator_gpu.solar.integration.building import (
         get_building_sunlight_hours,
     )
