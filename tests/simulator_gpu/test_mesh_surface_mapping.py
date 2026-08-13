@@ -499,3 +499,255 @@ def test_no_override_no_keys(small_city_no_override):
 
     assert "surface_override_normals" not in mesh.metadata
     assert "surface_override_index" not in mesh.metadata
+
+
+# ---------------------------------------------------------------------------
+# ...and the same export off the two accumulating entry points.
+#
+# get_cumulative_building_solar_irradiance and get_building_sunlight_hours
+# both return `building_svf_mesh.copy()`, taken BEFORE their loop, and
+# accumulate scalars into it from per-timestep meshes. The export above lands
+# on those per-timestep meshes and so never reached the returned one -- a
+# consumer calling either of these got values with no way to tell which normal
+# produced them, which is the whole defect. The mapping is constant across
+# timesteps (same mesh, same surfaces), so carrying one timestep's copy is
+# exact rather than an approximation.
+# ---------------------------------------------------------------------------
+
+# Local noon-ish at the site below, so every timestep is sunlit and carries
+# DNI -- both loop modes need at least one live iteration to capture from.
+_SITE = dict(lon=139.0, lat=35.0, tz=9.0)
+_SUMMER_DAY = ("06-21 10:00:00", "06-21 12:00:00")
+
+
+def _weather_df():
+    import pandas as pd
+
+    return pd.DataFrame(
+        {"DNI": [800.0, 850.0, 900.0], "DHI": [100.0, 110.0, 120.0]},
+        index=pd.date_range("2020-06-21 10:00:00", periods=3, freq="h"))
+
+
+def _fresh_building_mesh(voxcity):
+    """A staircase mesh that has never been through
+    get_building_solar_irradiance.
+
+    That function writes its metadata onto the mesh object it is handed, and
+    both accumulating functions start with `building_svf_mesh.copy()` -- so a
+    reused mesh would hand the export to the result via the copy, and the
+    tests below would pass with no implementation at all.
+    """
+    from voxcity.geoprocessor.mesh import create_voxel_mesh
+    from voxcity.simulator_gpu.solar.integration.caching import (
+        BUILDING_SURFACE_CLASSES,
+    )
+
+    mesh = create_voxel_mesh(
+        voxcity.voxels.classes,
+        BUILDING_SURFACE_CLASSES,
+        voxcity.voxels.meta.meshsize,
+        building_id_grid=voxcity.buildings.ids,
+        mesh_type='open_air',
+    )
+    assert mesh is not None and len(mesh.faces) > 0
+    assert "surface_override_normals" not in (mesh.metadata or {})
+    # No pre-computed SVF either, so the sky-patch branch takes its
+    # get_building_solar_irradiance diffuse call rather than the svf shortcut.
+    assert "svf" not in (mesh.metadata or {})
+    return mesh
+
+
+def _assert_carries_the_export(result, voxcity, table):
+    """The result carries the same export a single-timestep run produces."""
+    n = len(result.faces)
+    normals = result.metadata["surface_override_normals"]
+    index = result.metadata["surface_override_index"]
+
+    assert normals.shape == (n, 3)
+    assert index.shape == (n,)
+    finite = np.isfinite(normals).all(axis=1)
+    assert finite.any(), "carried, but nothing in it is finite"
+    assert (index[finite] >= 0).all()
+
+    reference = _run(voxcity, building_svf_mesh=_fresh_building_mesh(voxcity),
+                     surface_override=table)
+    np.testing.assert_array_equal(index,
+                                  reference.metadata["surface_override_index"])
+    np.testing.assert_allclose(normals,
+                               reference.metadata["surface_override_normals"],
+                               rtol=0, atol=0, equal_nan=True)
+
+
+@pytest.mark.parametrize("use_sky_patches", [False, True])
+def test_cumulative_run_carries_the_export(small_city_with_override, use_sky_patches):
+    """Parametrized over both of this function's loops: the per-timestep loop
+    and the sky-patch loop, which are separate capture sites."""
+    from voxcity.simulator_gpu.solar.integration.building import (
+        get_cumulative_building_solar_irradiance,
+    )
+
+    voxcity, table = small_city_with_override
+    result = get_cumulative_building_solar_irradiance(
+        voxcity, _fresh_building_mesh(voxcity), _weather_df(),
+        use_sky_patches=use_sky_patches, surface_override=table, **_SITE)
+
+    _assert_carries_the_export(result, voxcity, table)
+
+
+def test_cumulative_sky_patch_run_with_precomputed_svf_carries_the_export(
+        small_city_with_override):
+    """The sky-patch branch's patch loop, isolated. With SVF already on the
+    mesh the diffuse base is arithmetic and the branch's *other*
+    get_building_solar_irradiance call never happens, so only the patch loop
+    can supply the export -- without this, the test above would keep passing
+    on the diffuse call alone."""
+    from voxcity.simulator_gpu.solar.integration.building import (
+        get_cumulative_building_solar_irradiance,
+    )
+
+    voxcity, table = small_city_with_override
+    mesh = _fresh_building_mesh(voxcity)
+    mesh.metadata["svf"] = np.full(len(mesh.faces), 0.5, dtype=np.float64)
+
+    result = get_cumulative_building_solar_irradiance(
+        voxcity, mesh, _weather_df(),
+        use_sky_patches=True, surface_override=table, **_SITE)
+
+    _assert_carries_the_export(result, voxcity, table)
+
+
+def test_a_later_timestep_that_lost_the_export_does_not_clear_it(
+        small_city_with_override, monkeypatch):
+    """`if override_export is None`: capture once, from the first result that
+    carries it. Re-capturing unconditionally looks equivalent -- the export is
+    invariant across timesteps -- right up until one result doesn't carry it,
+    and then the whole run silently returns without the keys."""
+    from voxcity.simulator_gpu.solar.integration import building as B
+
+    voxcity, table = small_city_with_override
+    real = B.get_building_solar_irradiance
+    calls = {"n": 0}
+
+    def only_the_first_carries_it(*args, **kwargs):
+        mesh = real(*args, **kwargs)
+        calls["n"] += 1
+        if calls["n"] > 1 and mesh is not None:
+            for key in ("surface_override_normals", "surface_override_index"):
+                mesh.metadata.pop(key, None)
+        return mesh
+
+    monkeypatch.setattr(B, "get_building_solar_irradiance",
+                        only_the_first_carries_it)
+    result = B.get_cumulative_building_solar_irradiance(
+        voxcity, _fresh_building_mesh(voxcity), _weather_df(),
+        use_sky_patches=False, surface_override=table, **_SITE)
+    # The reference run below must see the real function again.
+    monkeypatch.undo()
+
+    assert calls["n"] > 1, "one timestep only -- the guard was never exercised"
+    _assert_carries_the_export(result, voxcity, table)
+
+
+def test_cumulative_overcast_sky_patch_run_carries_the_export(small_city_with_override):
+    """The sky-patch branch's third capture site. With no direct beam anywhere
+    in the period there are no active patches, so its patch loop never runs and
+    the only get_building_solar_irradiance call left is the one that builds the
+    diffuse base -- which has to carry the export or an overcast period returns
+    values with no normals attached."""
+    from voxcity.simulator_gpu.solar.integration.building import (
+        get_cumulative_building_solar_irradiance,
+    )
+
+    voxcity, table = small_city_with_override
+    overcast = _weather_df()
+    overcast["DNI"] = 0.0
+
+    result = get_cumulative_building_solar_irradiance(
+        voxcity, _fresh_building_mesh(voxcity), overcast,
+        use_sky_patches=True, surface_override=table, **_SITE)
+
+    # Nothing direct got accumulated, i.e. the patch loop really was empty.
+    assert np.nanmax(np.abs(result.metadata["cumulative_direct"])) == 0.0
+    _assert_carries_the_export(result, voxcity, table)
+
+
+@pytest.mark.parametrize("use_sky_patches", [False, True])
+def test_sunlight_run_carries_the_export(small_city_with_override, use_sky_patches):
+    """Same, for the sunlight-hours function's own two loops."""
+    from voxcity.simulator_gpu.solar.integration.building import (
+        get_building_sunlight_hours,
+    )
+
+    voxcity, table = small_city_with_override
+    result = get_building_sunlight_hours(
+        voxcity, building_svf_mesh=_fresh_building_mesh(voxcity), mode='DSH',
+        period_start=_SUMMER_DAY[0], period_end=_SUMMER_DAY[1],
+        use_sky_patches=use_sky_patches, surface_override=table, **_SITE)
+
+    _assert_carries_the_export(result, voxcity, table)
+
+
+def _mesh_carrying_a_stale_export(voxcity):
+    """A mesh that has already been through an override run, i.e. carrying
+    that run's export in its own metadata.
+
+    Both accumulating functions start from `building_svf_mesh.copy()`, which
+    copies metadata too -- so without an explicit clear a no-override run
+    hands the caller a previous run's normals under the key that is supposed
+    to mean "this run had an override". Poisoning with an obviously bogus
+    value keeps the assertions below from being vacuous the way a fresh mesh
+    would leave them.
+    """
+    mesh = _fresh_building_mesh(voxcity)
+    n = len(mesh.faces)
+    mesh.metadata["surface_override_normals"] = np.zeros((n, 3), dtype=np.float64)
+    mesh.metadata["surface_override_index"] = np.zeros(n, dtype=np.int64)
+    return mesh
+
+
+def test_no_override_clears_an_inherited_export(small_city_no_override):
+    """get_building_solar_irradiance seeds its metadata from the input mesh's
+    own dict and writes the result back onto that same mesh object, so a
+    caller reusing one mesh across an override run and a plain one would keep
+    reading the override run's normals. Absence has to keep meaning "no
+    override ran"."""
+    voxcity = small_city_no_override
+    mesh = _mesh_carrying_a_stale_export(voxcity)
+
+    result = _run(voxcity, building_svf_mesh=mesh)
+
+    assert "surface_override_normals" not in result.metadata
+    assert "surface_override_index" not in result.metadata
+
+
+@pytest.mark.parametrize("use_sky_patches", [False, True])
+def test_cumulative_no_override_no_keys(small_city_no_override, use_sky_patches):
+    """Flag-off through the accumulating path too: absence stays the signal,
+    even when the input mesh arrives carrying an earlier run's export."""
+    from voxcity.simulator_gpu.solar.integration.building import (
+        get_cumulative_building_solar_irradiance,
+    )
+
+    voxcity = small_city_no_override
+    result = get_cumulative_building_solar_irradiance(
+        voxcity, _mesh_carrying_a_stale_export(voxcity), _weather_df(),
+        use_sky_patches=use_sky_patches, **_SITE)
+
+    assert "surface_override_normals" not in result.metadata
+    assert "surface_override_index" not in result.metadata
+
+
+@pytest.mark.parametrize("use_sky_patches", [False, True])
+def test_sunlight_no_override_no_keys(small_city_no_override, use_sky_patches):
+    from voxcity.simulator_gpu.solar.integration.building import (
+        get_building_sunlight_hours,
+    )
+
+    voxcity = small_city_no_override
+    result = get_building_sunlight_hours(
+        voxcity, building_svf_mesh=_mesh_carrying_a_stale_export(voxcity),
+        mode='DSH', period_start=_SUMMER_DAY[0], period_end=_SUMMER_DAY[1],
+        use_sky_patches=use_sky_patches, **_SITE)
+
+    assert "surface_override_normals" not in result.metadata
+    assert "surface_override_index" not in result.metadata

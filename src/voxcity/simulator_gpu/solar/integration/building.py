@@ -143,6 +143,62 @@ def _map_mesh_faces_to_surfaces(
     return result
 
 
+_OVERRIDE_EXPORT_KEYS = ('surface_override_normals', 'surface_override_index')
+
+
+def _capture_override_export(irradiance_mesh, n_faces):
+    """Lift get_building_solar_irradiance's surface_override export off one
+    per-timestep result, for an accumulating caller to re-attach to the mesh
+    it actually returns.
+
+    get_cumulative_building_solar_irradiance and get_building_sunlight_hours
+    both return a copy of the input mesh taken *before* their loop and
+    accumulate scalars into it, so the export -- which
+    get_building_solar_irradiance writes onto the per-timestep meshes --
+    never reaches the caller unless it is carried across explicitly. Without
+    it a consumer of those two functions is back to guessing which normal
+    produced a value, which is the defect the export exists to fix.
+
+    Carrying one timestep's copy is exact, not an approximation: the export
+    is a function of the mesh<->surface join and the surface normals, neither
+    of which depends on sun position, so every timestep produces the same
+    arrays. The first result that carries it is therefore authoritative.
+
+    Returns None when there is nothing to carry: no override table was
+    active, or the result's face count doesn't line up with the mesh being
+    accumulated into -- the same length guard the value accumulation applies
+    around it.
+
+    The arrays are handed on by reference, which is safe because
+    get_building_solar_irradiance already builds each result's pair as fresh
+    copies detached from the model cache; nothing here aliases a cache
+    buffer.
+    """
+    metadata = getattr(irradiance_mesh, 'metadata', None) or {}
+    if any(key not in metadata for key in _OVERRIDE_EXPORT_KEYS):
+        return None
+    if any(len(metadata[key]) != n_faces for key in _OVERRIDE_EXPORT_KEYS):
+        return None
+    return {key: metadata[key] for key in _OVERRIDE_EXPORT_KEYS}
+
+
+def _drop_override_export(metadata):
+    """Clear an inherited export from a metadata dict when the run that
+    produced it had no override table of its own.
+
+    Every entry point here starts from the caller's mesh metadata -- the
+    single-timestep function copies the input mesh's dict, the two
+    accumulating ones start from ``building_svf_mesh.copy()``, which copies
+    metadata too. A mesh that has already been through an override run
+    carries that run's export, so without this it would ride through a run
+    made *without* a table. Presence of these keys has to keep meaning "this
+    run had an override" or a consumer keying off it reads stale normals with
+    no way to notice.
+    """
+    for key in _OVERRIDE_EXPORT_KEYS:
+        metadata.pop(key, None)
+
+
 # =============================================================================
 # Public API Functions
 # =============================================================================
@@ -524,6 +580,12 @@ def get_building_solar_irradiance(
     if used_normals is not None:
         metadata['surface_override_normals'] = used_normals
         metadata['surface_override_index'] = used_index
+    else:
+        # `metadata` starts as a copy of the input mesh's own dict, and this
+        # function writes its result back onto that same mesh object -- so a
+        # caller reusing a mesh across runs would otherwise carry the earlier
+        # override run's export into this one. See _drop_override_export.
+        _drop_override_export(metadata)
     building_mesh.metadata = metadata
     if face_svf is not None:
         building_mesh.metadata['svf'] = face_svf
@@ -613,7 +675,10 @@ def get_cumulative_building_solar_irradiance(
     cumulative_direct = np.zeros(n_faces, dtype=np.float64)
     cumulative_diffuse = np.zeros(n_faces, dtype=np.float64)
     cumulative_global = np.zeros(n_faces, dtype=np.float64)
-    
+    # Filled from the first per-timestep result that carries it, and attached
+    # to result_mesh at the end -- see _capture_override_export.
+    override_export = None
+
     face_svf = result_mesh.metadata.get('svf') if hasattr(result_mesh, 'metadata') else None
     
     # Extract arrays
@@ -677,6 +742,11 @@ def get_cumulative_building_solar_irradiance(
             if diffuse_mesh is not None and 'diffuse' in diffuse_mesh.metadata:
                 base_diffuse = diffuse_mesh.metadata['diffuse']
                 cumulative_diffuse = np.nan_to_num(base_diffuse, nan=0.0) * total_cumulative_dhi
+                # Also a capture site, and the only one an overcast period
+                # reaches: with no direct beam anywhere in the period the
+                # patch loop below has no active patches to iterate.
+                if override_export is None:
+                    override_export = _capture_override_export(diffuse_mesh, n_faces)
         
         # Direct component
         active_indices = np.where(active_mask)[0]
@@ -700,7 +770,9 @@ def get_cumulative_building_solar_irradiance(
                 direct_vals = irradiance_mesh.metadata['direct']
                 if len(direct_vals) == n_faces:
                     cumulative_direct += np.nan_to_num(direct_vals, nan=0.0) * cumulative_dni_patch
-            
+                if override_export is None:
+                    override_export = _capture_override_export(irradiance_mesh, n_faces)
+
             if progress_report and ((i + 1) % max(1, len(active_indices) // 10) == 0):
                 print(f"  Patch {i+1}/{len(active_indices)} ({100*(i+1)/len(active_indices):.1f}%)")
         
@@ -736,7 +808,9 @@ def get_cumulative_building_solar_irradiance(
                     cumulative_diffuse += np.nan_to_num(irradiance_mesh.metadata['diffuse'], nan=0.0) * time_step_hours
                 if 'global' in irradiance_mesh.metadata:
                     cumulative_global += np.nan_to_num(irradiance_mesh.metadata['global'], nan=0.0) * time_step_hours
-            
+                if override_export is None:
+                    override_export = _capture_override_export(irradiance_mesh, n_faces)
+
             if progress_report and (t_idx + 1) % max(1, n_timesteps // 10) == 0:
                 print(f"  Processed {t_idx + 1}/{n_timesteps} ({100*(t_idx+1)/n_timesteps:.1f}%)")
     
@@ -785,7 +859,11 @@ def get_cumulative_building_solar_irradiance(
     result_mesh.metadata['global'] = cumulative_global
     if face_svf is not None:
         result_mesh.metadata['svf'] = face_svf
-    
+    if override_export is not None:
+        result_mesh.metadata.update(override_export)
+    else:
+        _drop_override_export(result_mesh.metadata)
+
     return result_mesh
 
 
@@ -909,7 +987,11 @@ def get_building_sunlight_hours(
     
     sunlight_hours = np.zeros(n_faces, dtype=np.float64)
     potential_hours = 0.0
-    
+    # Filled from the first per-timestep result that carries it, and attached
+    # to result_mesh at the end -- see _capture_override_export. Stays None on
+    # the no-sunshine early return below, which runs no timestep at all.
+    override_export = None
+
     elevation_arr = solar_positions['elevation'].to_numpy()
     azimuth_arr = solar_positions['azimuth'].to_numpy()
     n_timesteps = len(elevation_arr)
@@ -1001,7 +1083,9 @@ def get_building_sunlight_hours(
                 if len(direct_vals) == n_faces:
                     receives_sun = np.nan_to_num(direct_vals, nan=0.0) > 0.0
                     sunlight_hours += receives_sun.astype(np.float64) * patch_hours
-            
+                if override_export is None:
+                    override_export = _capture_override_export(irradiance_mesh, n_faces)
+
             if progress_report and ((i + 1) % max(1, len(active_indices) // 10) == 0):
                 print(f"  Patch {i+1}/{len(active_indices)} ({100*(i+1)/len(active_indices):.1f}%)")
     else:
@@ -1025,7 +1109,9 @@ def get_building_sunlight_hours(
                 if len(direct_vals) == n_faces:
                     receives_sun = np.nan_to_num(direct_vals, nan=0.0) > 0.0
                     sunlight_hours += receives_sun.astype(np.float64) * time_step_hours
-            
+                if override_export is None:
+                    override_export = _capture_override_export(irradiance_mesh, n_faces)
+
             if progress_report and ((i + 1) % max(1, n_sunshine // 10) == 0):
                 print(f"  Processed {i+1}/{n_sunshine} ({100*(i+1)/n_sunshine:.1f}%)")
     
@@ -1059,7 +1145,11 @@ def get_building_sunlight_hours(
         result_mesh.metadata['dni_threshold'] = dni_threshold
     else:
         result_mesh.metadata['min_elevation'] = min_elevation
-    
+    if override_export is not None:
+        result_mesh.metadata.update(override_export)
+    else:
+        _drop_override_export(result_mesh.metadata)
+
     return result_mesh
 
 
