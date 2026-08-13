@@ -620,6 +620,66 @@ def test_cumulative_sky_patch_run_with_precomputed_svf_carries_the_export(
     _assert_carries_the_export(result, voxcity, table)
 
 
+def test_cumulative_svf_plus_overcast_completes_with_no_keys(
+        small_city_with_override, monkeypatch):
+    """The one documented legitimate-absence case, pinned from the producer
+    side: precomputed SVF (the diffuse base is arithmetic) plus an overcast
+    period (no DNI, so no active patches) means no per-timestep solver call
+    happens at all -- there is nothing to lift the export from, and the keys
+    must come back ABSENT even though an override table was supplied. The run
+    itself must still complete normally.
+
+    This is the combination between the two tests above: SVF-with-direct
+    carries the export off the patch loop, overcast-without-SVF off the
+    diffuse-base call. It guards against a future "helpful" change attaching
+    the export from somewhere other than a per-timestep result (e.g. the
+    model cache) when no timestep ran -- which would silently widen the
+    contract absence is defined by.
+    """
+    from voxcity.simulator_gpu.solar.integration import building as B
+
+    voxcity, table = small_city_with_override
+    mesh = _fresh_building_mesh(voxcity)
+    mesh.metadata["svf"] = np.full(len(mesh.faces), 0.5, dtype=np.float64)
+    overcast = _weather_df()
+    overcast["DNI"] = 0.0
+
+    # Warm the model cache with a single-timestep run first. Without this the
+    # cache is empty and the exact change this test guards against -- a
+    # fallback that lifts the export off the cache when no timestep ran --
+    # would find nothing to lift, and the test would pass against it instead
+    # of killing it. Warming it is also the realistic consumer sequence.
+    _run(voxcity, surface_override=table)
+
+    real = B.get_building_solar_irradiance
+    calls = {"n": 0}
+
+    def counting(*args, **kwargs):
+        calls["n"] += 1
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(B, "get_building_solar_irradiance", counting)
+    result = B.get_cumulative_building_solar_irradiance(
+        voxcity, mesh, overcast,
+        use_sky_patches=True, surface_override=table, **_SITE)
+
+    # The path really is "no solver call at all" -- otherwise this has rotted
+    # into one of the two neighbouring cases and asserts nothing new.
+    assert calls["n"] == 0, (
+        f"{calls['n']} solver call(s) happened; the SVF shortcut or the "
+        "empty-patch-loop premise no longer holds")
+
+    # The run completed normally: value keys present, and the diffuse
+    # component actually accumulated through the SVF shortcut.
+    for key in ("cumulative_direct", "cumulative_diffuse", "cumulative_global",
+                "direct", "diffuse", "global"):
+        assert key in result.metadata
+    assert np.nanmax(result.metadata["cumulative_diffuse"]) > 0.0
+
+    assert "surface_override_normals" not in result.metadata
+    assert "surface_override_index" not in result.metadata
+
+
 def test_a_later_timestep_that_lost_the_export_does_not_clear_it(
         small_city_with_override, monkeypatch):
     """`if override_export is None`: capture once, from the first result that
