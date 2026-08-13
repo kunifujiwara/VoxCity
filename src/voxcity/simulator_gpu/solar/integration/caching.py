@@ -144,6 +144,12 @@ class CachedBuildingRadiationModel:
     building_svf_mesh: object
     bldg_indices: Optional[np.ndarray] = None
     mesh_to_surface_idx: Optional[np.ndarray] = None
+    # Per-mesh-face true surface normal in scene coordinates, derived from
+    # mesh_to_surface_idx plus the model's own surface normals -- see
+    # get_building_solar_irradiance's surface_override export. Both inputs
+    # live in this same cache object, which is replaced outright whenever
+    # surface_override_signature changes, so this needs no key of its own.
+    mesh_used_normals: Optional[np.ndarray] = None
     mesh_face_centers: Optional[np.ndarray] = None
     mesh_face_normals: Optional[np.ndarray] = None
     mesh_geometry_signature: Optional[object] = None

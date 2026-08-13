@@ -259,29 +259,41 @@ def test_occupancy_built_surfaces_map_identically_old_vs_new(_ti):
 _ROOF_NORMAL_UV = (math.sin(math.radians(20.0)), 0.0, math.cos(math.radians(20.0)))
 _WALL_NORMAL_UV = (math.cos(math.radians(15.0)), math.sin(math.radians(15.0)), 0.0)
 
+# A second table over the identical geometry, differing only in the normals it
+# declares -- and differing in both components on both rows, so serving either
+# run the other's normals is unmistakable.
+_ALT_ROOF_NORMAL_UV = (0.0, math.sin(math.radians(40.0)), math.cos(math.radians(40.0)))
+_ALT_WALL_NORMAL_UV = (math.sin(math.radians(55.0)), math.cos(math.radians(55.0)), 0.0)
 
-def _override_city(_ti):
-    """A 6x6x6 city with one building column at (row, col) = (2, 2), plus a
-    two-row override table on that column: a 20-degree-tilted "roof" on the
-    column's IUP face and an azimuthally rotated "wall" on one IEAST face.
+
+def _override_table(roof_normal, wall_normal):
+    """A two-row table on the building column of the city below: a tilted
+    "roof" on the column's IUP face and an azimuthally rotated "wall" on one
+    IEAST face.
 
     Only two of the five voxel-face directions the staircase mesh actually
     has are covered, so the remaining faces must come back unmapped -- that
     is what keeps the NaN/-1 half of the contract from being vacuous.
     """
-    from tests.simulator._roof_helpers import make_voxcity_with_building
     from voxcity.simulator_gpu.solar.surface_override import SurfaceOverride
 
-    voxcity = make_voxcity_with_building(nx=6, ny=6, nz=6, bh=3)
-    table = SurfaceOverride(
+    return SurfaceOverride(
         cell=np.array([[2, 2, 3], [2, 2, 2]], dtype=np.int32),
         face=np.array([0, 4], dtype=np.int8),          # IUP, IEAST
         origin=np.array([[2.5, 2.5, 4.0], [3.0, 2.5, 2.5]], dtype=np.float32),
-        normal=np.array([_ROOF_NORMAL_UV, _WALL_NORMAL_UV], dtype=np.float32),
+        normal=np.array([roof_normal, wall_normal], dtype=np.float32),
         patch=np.array([0, 1], dtype=np.int32),
         area=np.array([1.0, 1.0], dtype=np.float32),
     )
-    return voxcity, table
+
+
+def _override_city():
+    """A 6x6x6 city with one building column at (row, col) = (2, 2), plus the
+    default override table over that column."""
+    from tests.simulator._roof_helpers import make_voxcity_with_building
+
+    voxcity = make_voxcity_with_building(nx=6, ny=6, nz=6, bh=3)
+    return voxcity, _override_table(_ROOF_NORMAL_UV, _WALL_NORMAL_UV)
 
 
 @pytest.fixture
@@ -289,7 +301,7 @@ def small_city_with_override(_ti):
     from voxcity.simulator_gpu.solar.integration import caching
 
     caching.clear_building_radiation_model_cache()
-    yield _override_city(_ti)
+    yield _override_city()
     caching.clear_building_radiation_model_cache()
 
 
@@ -298,7 +310,7 @@ def small_city_no_override(_ti):
     from voxcity.simulator_gpu.solar.integration import caching
 
     caching.clear_building_radiation_model_cache()
-    yield _override_city(_ti)[0]
+    yield _override_city()[0]
     caching.clear_building_radiation_model_cache()
 
 
@@ -364,9 +376,10 @@ def test_override_run_exports_used_normals(small_city_with_override):
 
 
 def test_override_export_survives_the_mesh_map_cache_hit(small_city_with_override):
-    """The second call reuses the cached mesh->surface mapping, which is the
-    branch that never loads the surface arrays. The export must still be
-    there, and identical -- nothing about the run changed."""
+    """The second call reuses the cached mesh->surface mapping and the cached
+    export derived from it -- the branch that loads no surface arrays at all.
+    The export must still be there, and identical: nothing about the run
+    changed."""
     voxcity, table = small_city_with_override
 
     first = _run(voxcity, surface_override=table)
@@ -377,15 +390,63 @@ def test_override_export_survives_the_mesh_map_cache_hit(small_city_with_overrid
 
     np.testing.assert_array_equal(second.metadata["surface_override_index"],
                                   first_index)
-    np.testing.assert_array_equal(
-        np.isnan(second.metadata["surface_override_normals"]),
-        np.isnan(first_normals))
     np.testing.assert_allclose(second.metadata["surface_override_normals"],
                                first_normals, rtol=0, atol=0, equal_nan=True)
 
 
+def test_a_new_override_table_is_not_served_the_old_normals(small_city_with_override):
+    """The export is cached on CachedBuildingRadiationModel, whose lifetime is
+    keyed to the override signature -- a different table replaces the whole
+    cache object. Nothing in that argument is checked by the cache-hit test
+    above, and getting it wrong is silent: the run would report the previous
+    table's normals for values computed from the new one."""
+    voxcity, table = small_city_with_override
+
+    first = _run(voxcity, surface_override=table)
+    first_normals = first.metadata["surface_override_normals"].copy()
+
+    alt = _override_table(_ALT_ROOF_NORMAL_UV, _ALT_WALL_NORMAL_UV)
+    second = _run(voxcity, surface_override=alt)
+    normals = second.metadata["surface_override_normals"]
+    index = second.metadata["surface_override_index"]
+
+    finite = np.isfinite(normals).all(axis=1)
+    assert finite.any()
+    expected = _scene(np.asarray(alt.normal, dtype=np.float64))
+    np.testing.assert_allclose(normals[finite], expected[index[finite]],
+                               rtol=0, atol=1e-7)
+    # ...and emphatically not the first table's, which the identical geometry
+    # would happily have reused.
+    assert not np.allclose(normals[finite], first_normals[finite], atol=1e-3)
+
+
+def test_the_exported_arrays_are_not_views_on_the_cache(small_city_with_override):
+    """Both exported arrays are handed out as copies. On the cache-hit path
+    the originals are the cache's own buffers, so a consumer writing into what
+    it was handed would corrupt every later timestep -- and the two calls that
+    make the copies (`.copy()`, `.astype()`) both have no-copy spellings that
+    look like harmless tidy-ups."""
+    voxcity, table = small_city_with_override
+
+    first = _run(voxcity, surface_override=table)
+    baseline_normals = first.metadata["surface_override_normals"].copy()
+    baseline_index = first.metadata["surface_override_index"].copy()
+
+    # A consumer scribbles on what it was handed.
+    first.metadata["surface_override_normals"][:] = 0.0
+    first.metadata["surface_override_index"][:] = -99
+
+    second = _run(voxcity, surface_override=table)
+
+    np.testing.assert_array_equal(second.metadata["surface_override_index"],
+                                  baseline_index)
+    np.testing.assert_allclose(second.metadata["surface_override_normals"],
+                               baseline_normals, rtol=0, atol=0, equal_nan=True)
+
+
 def test_no_override_no_keys(small_city_no_override):
-    """Flag-off output is byte-identical: the keys must be ABSENT, not empty."""
+    """Flag-off: the keys must be ABSENT, not present-and-empty, so that a
+    consumer can use their presence as the signal that an override ran."""
     mesh = _run(small_city_no_override)
 
     assert "surface_override_normals" not in mesh.metadata

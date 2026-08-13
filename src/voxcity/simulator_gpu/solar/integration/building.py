@@ -177,9 +177,35 @@ def get_building_solar_irradiance(
             - target_selectors (list): Optional surface selectors limiting returned faces
             - reference_mesh: Optional reference mesh for target selector metadata fast path
             - progress_report (bool): Print progress (default: False)
-    
+            - surface_override: Optional table of true polygon normals (see
+              ``solar.surface_override.SurfaceOverride``). Also gates the
+              surface_override_* metadata described below.
+
     Returns:
-        Trimesh object with irradiance values in metadata
+        Trimesh object with irradiance values in metadata.
+
+        When ``surface_override`` is supplied AND the model has building
+        surfaces, the metadata also carries the join back to the override
+        table. These key names are a wire protocol for consumers projecting
+        these values onto a polygon model; nothing in this package reads
+        them, and there is no import relationship in either direction, so
+        renaming a key is a breaking change.
+
+          surface_override_normals : float64, (n_faces, 3), scene coords
+              The normal the solver actually used for that face -- the true
+              polygon normal, not the staircase mesh's axis normal. NaN row
+              where the face matched no surface.
+          surface_override_index : int64, (n_faces,)
+              Index into the model's surface set; -1 where unmatched.
+
+        Read both with ``.get()``: they are ABSENT (not empty) when there
+        are no building surfaces, so "override supplied" does not imply
+        "keys present". An empty override table does write them, carrying
+        the occupancy-derived axis normals. They are deliberately NOT
+        masked by the boundary / computation / target masks that NaN out
+        the irradiance arrays, so the two sets of arrays have different
+        validity patterns: a face whose irradiance is NaN still reports the
+        real normal that produced it.
     """
     # Handle positional argument order from VoxCity API
     if isinstance(building_svf_mesh, (int, float)):
@@ -364,20 +390,43 @@ def get_building_solar_irradiance(
             # horizontal roof polygon, which then reports more than a
             # horizontal surface can physically receive.
             #
-            # surfaces.normal is read here on both branches above, including
-            # the cached-mapping one -- it is only a .to_numpy(), and caching
-            # it would have to be keyed to the model, since a different
-            # override table rebuilds the model with a different surface set.
-            # uv_domain_points_to_scene is a pure u/v <-> x/y swap, so it is
-            # valid for vectors as well as points (the same assumption
-            # _direction_to_scene_normal_key already makes).
-            surf_normals_scene = uv_domain_points_to_scene(
-                model.surfaces.normal.to_numpy()[:n_surfaces].astype(np.float64))
-            used_normals = np.full((n_mesh_faces, 3), np.nan, dtype=np.float64)
-            used_normals[valid_surface_mask] = (
-                surf_normals_scene[mesh_to_surface_idx[valid_surface_mask]])
-            # A copy, not a view on the cached mapping: -1 marks "this face
-            # matched no surface", pairing with the NaN rows above.
+            # Cached beside mesh_to_surface_idx, and needs no key of its own:
+            # it is a function of that mapping and of the model's surface
+            # normals, and both already live in this cache object, which
+            # get_or_create_building_radiation_model replaces outright (with
+            # mesh_to_surface_idx=None) whenever the override signature
+            # changes. Worth caching because the cumulative-irradiance and
+            # sunlight-hours loops call this function once per timestep, so
+            # an uncached export would re-download surfaces.normal from the
+            # device on every iteration -- on the very branch that exists to
+            # touch no surface arrays at all.
+            if (cache is not None and cache.mesh_used_normals is not None and
+                    len(cache.mesh_used_normals) == n_mesh_faces and
+                    cache_matches_mesh):
+                used_normals = cache.mesh_used_normals
+            else:
+                # uv_domain_points_to_scene swaps the x/y columns of a copy
+                # and translates nothing (see coordinates.py, and its
+                # scene_vectors_to_uv_domain alias), so it is as correct for
+                # normals as it is for the centres above.
+                surf_normals_scene = uv_domain_points_to_scene(
+                    model.surfaces.normal.to_numpy()[:n_surfaces].astype(np.float64))
+                used_normals = np.full((n_mesh_faces, 3), np.nan, dtype=np.float64)
+                used_normals[valid_surface_mask] = (
+                    surf_normals_scene[mesh_to_surface_idx[valid_surface_mask]])
+                if cache is not None:
+                    cache.mesh_used_normals = used_normals
+                    cache.mesh_geometry_signature = mesh_signature
+
+            # Hand out copies, never the cached arrays themselves: on the
+            # cache-hit path both of these ARE the cache's own buffers, and a
+            # consumer that writes into what it was handed would silently
+            # corrupt every later timestep. Keep the .copy() / .astype()
+            # here -- np.asarray(..., dtype=np.int64) or astype(copy=False)
+            # look like equivalent tidy-ups and are not.
+            used_normals = used_normals.copy()
+            # -1 marks "this face matched no surface", pairing with the NaN
+            # rows above.
             used_index = mesh_to_surface_idx.astype(np.int64)
 
         sw_in_direct = np.full(n_mesh_faces, np.nan, dtype=np.float64)
