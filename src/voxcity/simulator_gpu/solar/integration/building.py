@@ -169,10 +169,14 @@ def _capture_override_export(irradiance_mesh, n_faces):
     accumulated into -- the same length guard the value accumulation applies
     around it.
 
-    The arrays are handed on by reference, which is safe because
-    get_building_solar_irradiance already builds each result's pair as fresh
-    copies detached from the model cache; nothing here aliases a cache
-    buffer.
+    The arrays are handed on by reference. That is safe as far as the model
+    cache goes -- get_building_solar_irradiance builds each result's pair as
+    fresh copies detached from it -- but it does leave one alias: that
+    function writes its metadata onto the mesh object it was handed, which
+    here is the caller's own ``building_svf_mesh``, so the returned mesh and
+    the caller's input mesh share these two arrays. Benign, since they hold
+    the same run's values either way, but it is a real alias and not a
+    defensive copy.
     """
     metadata = getattr(irradiance_mesh, 'metadata', None) or {}
     if any(key not in metadata for key in _OVERRIDE_EXPORT_KEYS):
@@ -183,18 +187,39 @@ def _capture_override_export(irradiance_mesh, n_faces):
 
 
 def _drop_override_export(metadata):
-    """Clear an inherited export from a metadata dict when the run that
-    produced it had no override table of its own.
+    """Take ownership of the export keys in the metadata this run will return,
+    by clearing whatever the caller's mesh brought with it.
 
-    Every entry point here starts from the caller's mesh metadata -- the
-    single-timestep function copies the input mesh's dict, the two
-    accumulating ones start from ``building_svf_mesh.copy()``, which copies
+    All three entry points here start from the caller's mesh metadata: the
+    single-timestep function copies the input mesh's dict, and the two
+    accumulating ones return ``building_svf_mesh.copy()``, which copies
     metadata too. A mesh that has already been through an override run
-    carries that run's export, so without this it would ride through a run
-    made *without* a table. Presence of these keys has to keep meaning "this
-    run had an override" or a consumer keying off it reads stale normals with
-    no way to notice.
+    carries that run's export, so without this it rides through a run made
+    *without* a table. Presence of these keys has to keep meaning "this run
+    had an override" or a consumer keying off it reads stale normals with no
+    way to notice.
+
+    Call this once, where the run first takes hold of the metadata it will
+    return -- NOT where the fresh export is attached at the end. The two look
+    equivalent and are not: what a run *captured* says nothing about what its
+    result already *carried*, and a clear at the end has to be repeated at
+    every exit. get_building_sunlight_hours has a second one, for a period
+    with no sunshine at all, and an end-side clear missed it.
+
+    A metadata of None or {} means there is nothing inherited to clear, so
+    callers can pass ``getattr(mesh, 'metadata', None)`` without a guard --
+    some meshes reaching these functions have no metadata attribute at all.
+
+    Only these two keys are claimed. The same inherited-dict habit leaves
+    other conditionally-written keys stale on a reused mesh (a 'dni_threshold'
+    from a PSH run sitting beside a fresh 'min_elevation' after a DSH one, and
+    'svf' likewise), which is deliberately left alone here: no contract
+    attaches meaning to their presence, whereas these two are a wire protocol
+    where presence IS the signal. This entry-clear is the pattern to follow if
+    that ever needs generalising.
     """
+    if not metadata:
+        return
     for key in _OVERRIDE_EXPORT_KEYS:
         metadata.pop(key, None)
 
@@ -568,6 +593,11 @@ def get_building_solar_irradiance(
         total_sw = np.where(target_face_mask, total_sw, np.nan)
 
     metadata = dict(getattr(building_mesh, 'metadata', {}) or {})
+    # Seeded from the input mesh's own dict, and written back onto that same
+    # mesh object below -- so a caller reusing one mesh across runs would
+    # otherwise read an earlier override run's export off a run that had no
+    # table. Clear on the way in; whatever this run produces is added after.
+    _drop_override_export(metadata)
     metadata.update({
         'irradiance_direct': sw_in_direct,
         'irradiance_diffuse': sw_in_diffuse,
@@ -580,12 +610,6 @@ def get_building_solar_irradiance(
     if used_normals is not None:
         metadata['surface_override_normals'] = used_normals
         metadata['surface_override_index'] = used_index
-    else:
-        # `metadata` starts as a copy of the input mesh's own dict, and this
-        # function writes its result back onto that same mesh object -- so a
-        # caller reusing a mesh across runs would otherwise carry the earlier
-        # override run's export into this one. See _drop_override_export.
-        _drop_override_export(metadata)
     building_mesh.metadata = metadata
     if face_svf is not None:
         building_mesh.metadata['svf'] = face_svf
@@ -626,10 +650,22 @@ def get_cumulative_building_solar_irradiance(
         tz: Timezone offset in hours
         direct_normal_irradiance_scaling: Scaling factor for DNI
         diffuse_irradiance_scaling: Scaling factor for DHI
-        **kwargs: Additional parameters
-    
+        **kwargs: Additional parameters, including:
+            - surface_override: Optional table of true polygon normals,
+              forwarded unchanged to every per-timestep
+              get_building_solar_irradiance call. Also gates the
+              surface_override_* metadata described below.
+
     Returns:
-        Trimesh object with cumulative irradiance (Wh/m²) in metadata
+        Trimesh object with cumulative irradiance (Wh/m²) in metadata.
+
+        Under ``surface_override`` the result also carries that function's
+        surface_override_normals / surface_override_index export, lifted from
+        the per-timestep results (the join is the same on every timestep).
+        See get_building_solar_irradiance's ``Returns:`` for the contract --
+        it is the authority on these keys, and they mean exactly the same
+        thing here. Absent when no override table was supplied, including
+        when the input mesh arrives carrying an earlier run's export.
     """
     from datetime import datetime
     import pytz
@@ -658,8 +694,12 @@ def get_cumulative_building_solar_irradiance(
     
     # Initialize
     result_mesh = building_svf_mesh.copy() if hasattr(building_svf_mesh, 'copy') else building_svf_mesh
+    # This copy carries the caller's metadata, and every exit below returns
+    # this same object -- so own the export keys from here rather than at each
+    # exit. See _drop_override_export.
+    _drop_override_export(getattr(result_mesh, 'metadata', None))
     n_faces = len(result_mesh.faces) if hasattr(result_mesh, 'faces') else 0
-    
+
     if n_faces == 0:
         raise ValueError("Building mesh has no faces")
 
@@ -861,8 +901,6 @@ def get_cumulative_building_solar_irradiance(
         result_mesh.metadata['svf'] = face_svf
     if override_export is not None:
         result_mesh.metadata.update(override_export)
-    else:
-        _drop_override_export(result_mesh.metadata)
 
     return result_mesh
 
@@ -897,10 +935,23 @@ def get_building_sunlight_hours(
         lon: Longitude in degrees (optional, extracted from voxcity if not provided)
         lat: Latitude in degrees (optional, extracted from voxcity if not provided)
         tz: Timezone offset in hours (optional, inferred from location if not provided)
-        **kwargs: Additional parameters
-    
+        **kwargs: Additional parameters, including:
+            - surface_override: Optional table of true polygon normals,
+              forwarded unchanged to every per-timestep
+              get_building_solar_irradiance call. Also gates the
+              surface_override_* metadata described below.
+
     Returns:
-        Trimesh object with sunlight hours in metadata
+        Trimesh object with sunlight hours in metadata.
+
+        Under ``surface_override`` the result also carries that function's
+        surface_override_normals / surface_override_index export, lifted from
+        the per-timestep results (the join is the same on every timestep).
+        See get_building_solar_irradiance's ``Returns:`` for the contract --
+        it is the authority on these keys, and they mean exactly the same
+        thing here. Absent when no override table was supplied, and also on
+        the early return for a period with no sunshine at all, which runs no
+        timestep and so has nothing to report a normal for.
     """
     from datetime import datetime
     import pytz
@@ -980,16 +1031,20 @@ def get_building_sunlight_hours(
             raise ImportError("VoxCity geoprocessor.mesh required for mesh creation")
     
     result_mesh = building_svf_mesh.copy() if hasattr(building_svf_mesh, 'copy') else building_svf_mesh
+    # Own the export keys from here: this function has TWO exits -- the
+    # no-sunshine early return below and the normal one -- and both return
+    # this object with the caller's metadata copied into it. See
+    # _drop_override_export.
+    _drop_override_export(getattr(result_mesh, 'metadata', None))
     n_faces = len(result_mesh.faces) if hasattr(result_mesh, 'faces') else 0
-    
+
     if n_faces == 0:
         raise ValueError("Building mesh has no faces")
-    
+
     sunlight_hours = np.zeros(n_faces, dtype=np.float64)
     potential_hours = 0.0
     # Filled from the first per-timestep result that carries it, and attached
-    # to result_mesh at the end -- see _capture_override_export. Stays None on
-    # the no-sunshine early return below, which runs no timestep at all.
+    # to result_mesh at the end -- see _capture_override_export.
     override_export = None
 
     elevation_arr = solar_positions['elevation'].to_numpy()
@@ -1147,8 +1202,6 @@ def get_building_sunlight_hours(
         result_mesh.metadata['min_elevation'] = min_elevation
     if override_export is not None:
         result_mesh.metadata.update(override_export)
-    else:
-        _drop_override_export(result_mesh.metadata)
 
     return result_mesh
 

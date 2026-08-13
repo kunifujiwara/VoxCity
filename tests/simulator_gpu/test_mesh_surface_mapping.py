@@ -533,9 +533,13 @@ def _fresh_building_mesh(voxcity):
     get_building_solar_irradiance.
 
     That function writes its metadata onto the mesh object it is handed, and
-    both accumulating functions start with `building_svf_mesh.copy()` -- so a
-    reused mesh would hand the export to the result via the copy, and the
-    tests below would pass with no implementation at all.
+    both accumulating functions return `building_svf_mesh.copy()` -- so a
+    reused mesh arrives already carrying an export, and a test asserting the
+    result has one would no longer be able to tell the pass-through from the
+    copy. `_drop_override_export` now clears that on the way in, so this is
+    belt-and-braces rather than the only thing standing between these tests
+    and vacuity; `_mesh_carrying_a_stale_export` below is the deliberate
+    inverse, for pinning the clear itself.
     """
     from voxcity.geoprocessor.mesh import create_voxel_mesh
     from voxcity.simulator_gpu.solar.integration.caching import (
@@ -739,6 +743,7 @@ def test_cumulative_no_override_no_keys(small_city_no_override, use_sky_patches)
 
 @pytest.mark.parametrize("use_sky_patches", [False, True])
 def test_sunlight_no_override_no_keys(small_city_no_override, use_sky_patches):
+    """Same as the cumulative case, through both of this function's loops."""
     from voxcity.simulator_gpu.solar.integration.building import (
         get_building_sunlight_hours,
     )
@@ -749,5 +754,29 @@ def test_sunlight_no_override_no_keys(small_city_no_override, use_sky_patches):
         mode='DSH', period_start=_SUMMER_DAY[0], period_end=_SUMMER_DAY[1],
         use_sky_patches=use_sky_patches, **_SITE)
 
+    assert "surface_override_normals" not in result.metadata
+    assert "surface_override_index" not in result.metadata
+
+
+def test_sunlight_no_sunshine_early_return_no_keys(small_city_no_override):
+    """A period with no sunshine at all takes an early return of its own,
+    several hundred lines before the normal one. It is easy to reason that
+    nothing was captured there -- no timestep ran -- and conclude the result
+    is clean, but that result is `building_svf_mesh.copy()`, whose metadata
+    was inherited rather than built. What the run captured says nothing about
+    what the result already carried; only an entry-side clear covers every
+    exit, including this one."""
+    from voxcity.simulator_gpu.solar.integration.building import (
+        get_building_sunlight_hours,
+    )
+
+    voxcity = small_city_no_override
+    result = get_building_sunlight_hours(
+        voxcity, building_svf_mesh=_mesh_carrying_a_stale_export(voxcity),
+        mode='DSH', period_start="06-21 00:00:00", period_end="06-21 02:00:00",
+        **_SITE)
+
+    # The early return really is the path under test.
+    assert result.metadata["potential_sunlight_hours"] == 0.0
     assert "surface_override_normals" not in result.metadata
     assert "surface_override_index" not in result.metadata
