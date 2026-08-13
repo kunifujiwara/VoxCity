@@ -193,10 +193,14 @@ def get_building_solar_irradiance(
 
           surface_override_normals : float64, (n_faces, 3), scene coords
               The normal the solver actually used for that face -- the true
-              polygon normal, not the staircase mesh's axis normal. NaN row
-              where the face matched no surface.
+              polygon normal, not the staircase mesh's axis normal -- as a
+              unit vector. NaN row where the face matched no surface.
+              Scene coords as defined in ``simulator/common/coordinates.py``:
+              x = v/east, y = u/north, z = up.
           surface_override_index : int64, (n_faces,)
-              Index into the model's surface set; -1 where unmatched.
+              Index into the model's surface set; -1 where unmatched. Under
+              an override table this is the table's own row index --
+              ``surfaces_from_override`` emits one surface per row, in order.
 
         Read both with ``.get()``: they are ABSENT (not empty) when there
         are no building surfaces, so "override supplied" does not imply
@@ -342,7 +346,7 @@ def get_building_solar_irradiance(
     # Map palm_solar values to mesh faces
     if len(bldg_indices) > 0:
         if (cache is not None and 
-            cache.mesh_to_surface_idx is not None and 
+            cache.mesh_to_surface_idx is not None and
             len(cache.mesh_to_surface_idx) == n_mesh_faces and
             cache_matches_mesh):
             mesh_to_surface_idx = cache.mesh_to_surface_idx
@@ -395,11 +399,21 @@ def get_building_solar_irradiance(
             # normals, and both already live in this cache object, which
             # get_or_create_building_radiation_model replaces outright (with
             # mesh_to_surface_idx=None) whenever the override signature
-            # changes. Worth caching because the cumulative-irradiance and
-            # sunlight-hours loops call this function once per timestep, so
+            # changes. The surface normals cannot drift under a surviving
+            # cache object either: radiation.py:166-174 makes it a rule that
+            # model.surfaces is assigned only in __init__ ("Injection must
+            # happen HERE and not by assignment after construction"), so a
+            # different surface set means a different model, hence a
+            # different cache object.
+            #
+            # Worth caching because the callers loop over this function and
             # an uncached export would re-download surfaces.normal from the
             # device on every iteration -- on the very branch that exists to
-            # touch no surface arrays at all.
+            # touch no surface arrays at all. The loop length spans ~60x:
+            # get_cumulative_building_solar_irradiance's per-timestep mode
+            # can reach 8760 steps (~38 s of redundant downloads), while its
+            # Tregenza-patch mode loops over ~145 active patches (~0.6 s) and
+            # get_building_sunlight_hours over sunshine timesteps only.
             if (cache is not None and cache.mesh_used_normals is not None and
                     len(cache.mesh_used_normals) == n_mesh_faces and
                     cache_matches_mesh):

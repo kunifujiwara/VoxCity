@@ -395,11 +395,11 @@ def test_override_export_survives_the_mesh_map_cache_hit(small_city_with_overrid
 
 
 def test_a_new_override_table_is_not_served_the_old_normals(small_city_with_override):
-    """The export is cached on CachedBuildingRadiationModel, whose lifetime is
-    keyed to the override signature -- a different table replaces the whole
-    cache object. Nothing in that argument is checked by the cache-hit test
-    above, and getting it wrong is silent: the run would report the previous
-    table's normals for values computed from the new one."""
+    """A run under a second table reports that table's own normals, not the
+    first's -- which the identical geometry would happily have reused. (This
+    pins the cache-*replacement* mechanism only: a new override signature
+    swaps in a fresh cache object with mesh_used_normals=None, so it says
+    nothing about the read guard itself. That is the next test's job.)"""
     voxcity, table = small_city_with_override
 
     first = _run(voxcity, surface_override=table)
@@ -418,6 +418,54 @@ def test_a_new_override_table_is_not_served_the_old_normals(small_city_with_over
     # ...and emphatically not the first table's, which the identical geometry
     # would happily have reused.
     assert not np.allclose(normals[finite], first_normals[finite], atol=1e-3)
+
+
+def test_a_changed_mesh_is_not_served_the_old_normals(small_city_with_override):
+    """`cache_matches_mesh` in the export's read guard. The override signature
+    is not the only thing that can move: a warm refresh keeps the same cache
+    object while the building mesh is rebuilt, so a geometry change that
+    preserves the face count would otherwise be served the stale normals off
+    the surviving cache. Drop that term from the guard and this test reads
+    back the zeros planted below."""
+    from voxcity.simulator_gpu.solar.integration import caching
+
+    voxcity, table = small_city_with_override
+    _run(voxcity, surface_override=table)
+
+    cache = caching.get_building_radiation_model_cache()
+    assert cache is not None and cache.mesh_used_normals is not None
+    # Same face count, so the length check in the guard still passes; only
+    # the signature says "different mesh".
+    cache.mesh_used_normals = np.zeros_like(cache.mesh_used_normals)
+    cache.mesh_geometry_signature = ("not", "this", "mesh")
+
+    again = _run(voxcity, surface_override=table)
+    normals = again.metadata["surface_override_normals"]
+
+    assert np.isfinite(normals).any()
+    assert not np.allclose(np.nan_to_num(normals), 0.0), (
+        "served the stale all-zero normals off the surviving cache object")
+
+
+def test_a_changed_mesh_is_not_served_the_old_face_mapping(small_city_with_override):
+    """The sibling guard on `mesh_to_surface_idx`, which has the identical
+    shape and the identical hole -- same warm-refresh scenario, and a stale
+    mapping would silently re-route every value to the wrong surface."""
+    from voxcity.simulator_gpu.solar.integration import caching
+
+    voxcity, table = small_city_with_override
+    first = _run(voxcity, surface_override=table)
+    assert (first.metadata["surface_override_index"] >= 0).any()
+
+    cache = caching.get_building_radiation_model_cache()
+    assert cache is not None and cache.mesh_to_surface_idx is not None
+    # "Nothing matched anything" -- same length, unmistakably not the truth.
+    cache.mesh_to_surface_idx = np.full_like(cache.mesh_to_surface_idx, -1)
+    cache.mesh_geometry_signature = ("not", "this", "mesh")
+
+    again = _run(voxcity, surface_override=table)
+    assert (again.metadata["surface_override_index"] >= 0).any(), (
+        "served the stale all-unmatched mapping off the surviving cache object")
 
 
 def test_the_exported_arrays_are_not_views_on_the_cache(small_city_with_override):
