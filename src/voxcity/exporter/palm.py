@@ -418,3 +418,76 @@ def _build_buildings_3d(heights, min_heights, meshsize, mask, segment_top_m):
                 # error beats unbounded silent data loss.
                 b3d[0, i, j] = 1
     return b3d
+
+
+def _build_surface_types(land_cover_grid, land_cover_source, building_mask,
+                         canopy_mask, under_tree_vegetation_type, soil_type_code):
+    """Mutually exclusive surface classification per PIDS.
+
+    Precedence per cell: building (all fields stay fill) > canopy (ground
+    under trees becomes ``under_tree_vegetation_type``) > land-cover mapping.
+    A 'building' land-cover class without building height becomes pavement 2
+    (concrete): the surface is sealed but there is no obstacle.
+
+    Returns dict with vegetation_type/pavement_type/water_type/soil_type
+    (int8 (y, x)) and surface_fraction (float32 (3, y, x)).
+    """
+    index_to_assignment, class_names = _build_index_to_palm_map(land_cover_source)
+    ny, nx = land_cover_grid.shape
+
+    vegetation_type = np.full((ny, nx), FILL_BYTE, dtype=np.int8)
+    pavement_type = np.full((ny, nx), FILL_BYTE, dtype=np.int8)
+    water_type = np.full((ny, nx), FILL_BYTE, dtype=np.int8)
+    soil_type = np.full((ny, nx), FILL_BYTE, dtype=np.int8)
+    surface_fraction = np.full((3, ny, nx), FILL_FLOAT, dtype=np.float32)
+
+    category_index = {
+        'vegetation': IDX_VEGETATION,
+        'pavement': IDX_PAVEMENT,
+        'water': IDX_WATER,
+    }
+    mapping_stats = {}
+
+    for i in range(ny):
+        for j in range(nx):
+            if building_mask[i, j]:
+                continue
+            raw_idx = int(land_cover_grid[i, j])
+            if canopy_mask[i, j]:
+                category, code = 'vegetation', int(under_tree_vegetation_type)
+            else:
+                category, code = index_to_assignment.get(raw_idx, DEFAULT_ASSIGNMENT)
+                if category == 'building':
+                    category, code = 'pavement', 2
+
+            if category == 'vegetation':
+                vegetation_type[i, j] = np.int8(code)
+                soil_type[i, j] = np.int8(soil_type_code)
+            elif category == 'pavement':
+                pavement_type[i, j] = np.int8(code)
+                soil_type[i, j] = np.int8(soil_type_code)
+            else:  # water
+                water_type[i, j] = np.int8(code)
+
+            surface_fraction[:, i, j] = 0.0
+            surface_fraction[category_index[category], i, j] = 1.0
+
+            key = (raw_idx, category, code)
+            mapping_stats[key] = mapping_stats.get(key, 0) + 1
+
+    _logger.info("Land cover -> PALM surface classification summary:")
+    total = ny * nx
+    for (raw_idx, category, code), count in sorted(mapping_stats.items()):
+        name = class_names[raw_idx] if 0 <= raw_idx < len(class_names) else 'Unknown'
+        _logger.info(
+            f"  {raw_idx}: {name} -> {category}_type {code}: "
+            f"{count} cells ({count / total * 100:.1f}%)"
+        )
+
+    return {
+        "vegetation_type": vegetation_type,
+        "pavement_type": pavement_type,
+        "water_type": water_type,
+        "soil_type": soil_type,
+        "surface_fraction": surface_fraction,
+    }

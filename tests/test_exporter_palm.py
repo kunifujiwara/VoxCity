@@ -16,6 +16,9 @@ from voxcity.exporter.palm import (
     FILL_BYTE,
     FILL_FLOAT,
     FILL_INT,
+    IDX_PAVEMENT,
+    IDX_VEGETATION,
+    IDX_WATER,
     OEMJ_CLASS_TO_PALM,
     OSM_CLASS_TO_PALM,
     URBANWATCH_CLASS_TO_PALM,
@@ -24,6 +27,7 @@ from voxcity.exporter.palm import (
     _build_buildings_3d,
     _build_georeference,
     _build_index_to_palm_map,
+    _build_surface_types,
     _build_zt,
     _get_source_name_mapping,
     _has_elevated_segments,
@@ -545,3 +549,51 @@ class TestBuildBuildings3d:
             heights, None, meshsize=2.0, mask=mask, segment_top_m=segment_top_m
         )
         assert b3d.shape == (1, 0, 3)
+
+
+class TestBuildSurfaceTypes:
+    def _run(self):
+        # OSM raw indices: 0 Bareland, 8 Water, 11 Road, 12 Building
+        lc = np.array([[0, 8], [11, 12], [0, 12]])
+        building_mask = np.array([[False, False], [False, True], [False, False]])
+        canopy_mask = np.array([[True, False], [False, False], [False, False]])
+        # (1,1): building; (2,1): land cover says Building but no height
+        return _build_surface_types(
+            lc, 'OpenStreetMap', building_mask, canopy_mask,
+            under_tree_vegetation_type=3, soil_type_code=3,
+        )
+
+    def test_categories(self):
+        f = self._run()
+        veg, pav, wat = f["vegetation_type"], f["pavement_type"], f["water_type"]
+        assert veg[0, 0] == 3          # canopy overrides Bareland
+        assert wat[0, 1] == 1          # Water -> lake
+        assert pav[1, 0] == 1          # Road -> asphalt
+        assert veg[2, 0] == 1          # Bareland -> bare soil
+        assert pav[2, 1] == 2          # Building class w/o height -> concrete
+        # building cell: everything fill
+        assert veg[1, 1] == FILL_BYTE
+        assert pav[1, 1] == FILL_BYTE
+        assert wat[1, 1] == FILL_BYTE
+
+    def test_exclusivity(self):
+        f = self._run()
+        set_count = sum(
+            (f[k] != FILL_BYTE).astype(int)
+            for k in ("vegetation_type", "pavement_type", "water_type")
+        )
+        building_mask = np.array([[False, False], [False, True], [False, False]])
+        assert (set_count[~building_mask] == 1).all()
+        assert (set_count[building_mask] == 0).all()
+
+    def test_soil_and_fraction(self):
+        f = self._run()
+        soil, sf = f["soil_type"], f["surface_fraction"]
+        assert soil[2, 0] == 3                      # vegetation -> soil
+        assert soil[1, 0] == 3                      # pavement -> soil
+        assert soil[0, 1] == FILL_BYTE              # water -> no soil
+        assert soil[1, 1] == FILL_BYTE              # building -> no soil
+        assert sf[IDX_VEGETATION, 2, 0] == 1.0
+        assert sf[IDX_PAVEMENT, 2, 0] == 0.0
+        assert sf[IDX_WATER, 0, 1] == 1.0
+        assert sf[:, 1, 1].tolist() == [np.float32(FILL_FLOAT)] * 3
