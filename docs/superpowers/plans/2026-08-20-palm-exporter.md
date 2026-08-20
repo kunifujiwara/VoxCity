@@ -763,11 +763,11 @@ def _build_building_mask(heights, min_heights):
     return mask, segment_top_m
 
 
-def _build_buildings(heights, ids, building_type, mask, segment_top_m):
+def _build_buildings(heights, ids, building_type, segment_top_m, building_mask):
     """LOD1 building fields.
 
     Returns (buildings_2d float32, building_id int32, building_type int8),
-    all (y, x) with PIDS fill values off ``mask`` (see
+    all (y, x) with PIDS fill values off ``building_mask`` (see
     _build_building_mask). ``buildings_2d`` is
     ``max(heights, segment_top_m)`` on the mask, so a cell with LOD2
     geometry but no recorded LOD1 height still gets a height. Cells with no
@@ -777,9 +777,9 @@ def _build_buildings(heights, ids, building_type, mask, segment_top_m):
     effective_h = np.maximum(h, segment_top_m)
 
     buildings_2d = np.full(h.shape, FILL_FLOAT, dtype=np.float32)
-    buildings_2d[mask] = effective_h[mask].astype(np.float32)
+    buildings_2d[building_mask] = effective_h[building_mask].astype(np.float32)
 
-    repaired = mask & (segment_top_m > h)
+    repaired = building_mask & (segment_top_m > h)
     n_repaired = int(repaired.sum())
     if n_repaired:
         max_discrepancy = float((segment_top_m[repaired] - h[repaired]).max())
@@ -799,9 +799,9 @@ def _build_buildings(heights, ids, building_type, mask, segment_top_m):
         ).astype(np.int64)
 
     building_id = np.full(h.shape, FILL_INT, dtype=np.int32)
-    has_id = mask & (ids_arr > 0)
+    has_id = building_mask & (ids_arr > 0)
     building_id[has_id] = ids_arr[has_id].astype(np.int32)
-    missing = mask & (ids_arr <= 0)
+    missing = building_mask & (ids_arr <= 0)
     if missing.any():
         next_id = int(ids_arr.max()) + 1
         building_id[missing] = np.arange(
@@ -809,7 +809,7 @@ def _build_buildings(heights, ids, building_type, mask, segment_top_m):
         )
 
     building_type_arr = np.full(h.shape, FILL_BYTE, dtype=np.int8)
-    building_type_arr[mask] = np.int8(building_type)
+    building_type_arr[building_mask] = np.int8(building_type)
     return buildings_2d, building_id, building_type_arr
 
 
@@ -827,12 +827,12 @@ def _has_elevated_segments(min_heights, meshsize):
     return False
 
 
-def _build_buildings_3d(heights, min_heights, meshsize, mask, segment_top_m):
+def _build_buildings_3d(heights, min_heights, meshsize, segment_top_m, building_mask):
     """LOD2 byte mask (z, y, x) from per-cell [min, max] segments.
 
     Cells without segments fall back to ground extrusion from ``heights``.
-    Aligned to ``mask`` (see _build_building_mask): every masked cell gets
-    at least one filled level.
+    Aligned to ``building_mask`` (see _build_building_mask): every masked
+    cell gets at least one filled level.
     """
     h = _clean_heights(heights)
     ny, nx = h.shape
@@ -875,7 +875,7 @@ def _build_buildings_3d(heights, min_heights, meshsize, mask, segment_top_m):
                 if top_level > 0:
                     b3d[:top_level, i, j] = 1
                     filled = True
-            if not filled and mask[i, j]:
+            if not filled and building_mask[i, j]:
                 # Every masked cell must end up with >=1 level: PALM treats
                 # buildings_3d as authoritative when present, so a sub-voxel
                 # building (e.g. 0.4 m at meshsize=2.0) that rounds to an
@@ -975,20 +975,38 @@ Expected: FAIL — ImportError
 Append to `src/voxcity/exporter/palm.py`:
 
 ```python
-def _build_surface_types(land_cover_grid, land_cover_source, building_mask,
-                         canopy_mask, under_tree_vegetation_type, soil_type_code):
+def _build_surface_types(land_cover_grid, land_cover_source, canopy_mask,
+                         under_tree_vegetation_type, soil_type_code, building_mask):
     """Mutually exclusive surface classification per PIDS.
 
-    Precedence per cell: building (all fields stay fill) > canopy (ground
-    under trees becomes ``under_tree_vegetation_type``) > land-cover mapping.
-    A 'building' land-cover class without building height becomes pavement 2
-    (concrete): the surface is sealed but there is no obstacle.
+    Precedence per cell: building (all fields stay fill) > canopy-over-
+    non-water (ground under trees becomes ``under_tree_vegetation_type``)
+    > land-cover mapping. Canopy over a cell the land-cover mapping
+    resolves to water does NOT override it: overhanging/riparian canopy
+    keeps its water surface (water differs from short grass in albedo,
+    heat capacity, and evaporation by margins that dominate a microclimate
+    result), and the LAD field already represents the trees independently
+    of the surface type below them. A 'building' land-cover class without
+    building height becomes pavement 2 (concrete): the surface is sealed
+    but there is no obstacle.
 
     Returns dict with vegetation_type/pavement_type/water_type/soil_type
     (int8 (y, x)) and surface_fraction (float32 (3, y, x)).
     """
     index_to_assignment, class_names = _build_index_to_palm_map(land_cover_source)
     ny, nx = land_cover_grid.shape
+    if building_mask.shape != (ny, nx) or canopy_mask.shape != (ny, nx):
+        # A shape mismatch (e.g. a stale mask from a different grid) is the
+        # one place in this module that would otherwise produce a wrong
+        # answer quietly: NumPy broadcasting/fancy-indexing on a
+        # differently-shaped boolean mask silently ignores the extra rows
+        # or raises somewhere unrelated, rather than failing at the point
+        # that actually has the wrong input.
+        raise ValueError(
+            "_build_surface_types: building_mask "
+            f"{building_mask.shape} and canopy_mask {canopy_mask.shape} "
+            f"must both match land_cover_grid {(ny, nx)}"
+        )
 
     vegetation_type = np.full((ny, nx), FILL_BYTE, dtype=np.int8)
     pavement_type = np.full((ny, nx), FILL_BYTE, dtype=np.int8)
@@ -1005,15 +1023,23 @@ def _build_surface_types(land_cover_grid, land_cover_source, building_mask,
 
     for i in range(ny):
         for j in range(nx):
+            # Tier 1: building footprint -- the cell stays all-fill (the
+            # building surface takes over); nothing below this applies.
             if building_mask[i, j]:
                 continue
+            # Tier 3 (resolved first so tier 2 can check whether it landed
+            # on water): the land-cover mapping. A raw 'building' class
+            # without recorded height has no obstacle, so it becomes
+            # pavement (concrete) rather than staying an unmapped category.
             raw_idx = int(land_cover_grid[i, j])
-            if canopy_mask[i, j]:
+            category, code = index_to_assignment.get(raw_idx, DEFAULT_ASSIGNMENT)
+            if category == 'building':
+                category, code = 'pavement', 2
+            # Tier 2: canopy over non-water -- ground under trees becomes
+            # vegetation. Skipped when tier 3 resolved to water: overhanging
+            # canopy keeps its water surface (see the docstring).
+            if canopy_mask[i, j] and category != 'water':
                 category, code = 'vegetation', int(under_tree_vegetation_type)
-            else:
-                category, code = index_to_assignment.get(raw_idx, DEFAULT_ASSIGNMENT)
-                if category == 'building':
-                    category, code = 'pavement', 2
 
             if category == 'vegetation':
                 vegetation_type[i, j] = np.int8(code)
@@ -1032,6 +1058,16 @@ def _build_surface_types(land_cover_grid, land_cover_source, building_mask,
 
     _logger.info("Land cover -> PALM surface classification summary:")
     total = ny * nx
+    n_building = int(building_mask.sum())
+    if n_building:
+        # mapping_stats only covers non-building cells, so building_mask's
+        # share is logged as its own line -- otherwise the itemized
+        # percentages below sum to ~80% on a 20%-built domain with nothing
+        # explaining the remainder.
+        _logger.info(
+            f"  {n_building} cell(s) ({n_building / total * 100:.1f}%) are "
+            "buildings (classified separately; not counted below)."
+        )
     for (raw_idx, category, code), count in sorted(mapping_stats.items()):
         name = class_names[raw_idx] if 0 <= raw_idx < len(class_names) else 'Unknown'
         _logger.info(
@@ -1137,26 +1173,20 @@ def _build_lad(canopy_top, canopy_bottom, meshsize, lad_value, building_mask):
     inclusive), and fill above the top; non-vegetated columns are all
     fill. Canopy over buildings is cleared. ``bottom`` needs no clamping:
     a negative bottom already satisfies ``level >= bottom`` for every zlad
-    level (since every level is >= 0), and an inverted crown
-    (``bottom > top``) is handled below by the empty-in_crown fallback,
-    which gives the topmost level at/below top so no tree is lost --
-    exactly the same fallback a crown too thin to catch any level needs.
+    level, since every level is >= 0 (see the empty-crown fallback below
+    for the other edge case this invariant covers).
 
     Returns (lad, zlad) or (None, None) when no canopy remains.
     """
-    # posinf/neginf -> 0.0 (treated as "no canopy here"), matching
-    # _clean_heights and the ids cleaning in _build_buildings. Without the
-    # posinf/neginf args, nan_to_num's default substitutes +-inf with the
-    # largest/smallest *finite* float64 rather than leaving literal
-    # infinity, so int(np.ceil(...)) below does not raise OverflowError as
-    # one might expect -- it succeeds with an astronomically large but
-    # finite n_centres, and np.arange(1, n_centres + 1) then raises
-    # ValueError: Maximum allowed size exceeded (observed directly by
-    # temporarily dropping these two kwargs and running the test suite).
-    # The same applies on the bottom side: an unsanitized +inf bottom would
-    # not be flooded to "no crown" but left as an enormous finite value
-    # that no zlad level can reach, forcing every column into the
-    # single-level fallback instead of filling from the ground.
+    # NaN/inf -> 0.0 ("no canopy here"), matching _clean_heights and the
+    # ids cleaning in _build_buildings. Without posinf/neginf, nan_to_num's
+    # default substitutes +-inf with the largest finite float64 rather than
+    # literal infinity, so n_centres below ends up astronomically large but
+    # finite, and np.arange(1, n_centres + 1) raises ValueError: Maximum
+    # allowed size exceeded -- not the OverflowError int() would raise on
+    # literal infinity. On the bottom side, an unsanitized +inf would leave
+    # bottom far above every zlad level, forcing the single-level fallback
+    # instead of filling from the ground.
     top = np.nan_to_num(
         np.asarray(canopy_top, dtype=np.float64), nan=0.0, posinf=0.0, neginf=0.0
     )
@@ -1188,6 +1218,11 @@ def _build_lad(canopy_top, canopy_bottom, meshsize, lad_value, building_mask):
         col[zlad > t] = FILL_FLOAT
         in_crown = (zlad >= b) & (zlad <= t)
         if not in_crown.any():
+            # Empty crown: either too thin to catch a level (bottom and top
+            # both between two levels) or inverted (bottom > top). Both
+            # fall back to the single topmost level at/below top. `[-1]` is
+            # safe because zlad[0] == 0.0 and t > 0 here (top > 0.0 is the
+            # loop condition above), so `zlad <= t` always has >=1 match.
             in_crown[np.nonzero(zlad <= t)[0][-1]] = True
         col[in_crown] = np.float32(lad_value)
         lad[:, i, j] = col
