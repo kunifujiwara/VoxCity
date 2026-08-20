@@ -6,8 +6,8 @@ the PALM model system (https://palm.muk.uni-hannover.de/).
 
 Notes:
 - Expects raw land cover grids as produced per-source by VoxCity (same
-  contract as the CityLES exporter). Supported sources: 'OpenStreetMap',
-  'Urbanwatch', 'OpenEarthMapJapan', 'ESA WorldCover',
+  contract as the CityLES exporter). Supported sources: 'OpenStreetMap'
+  (alias 'Standard'), 'Urbanwatch', 'OpenEarthMapJapan', 'ESA WorldCover',
   'ESRI 10m Annual Land Cover', 'Dynamic World V1'.
 - Grids are written with no vertical flip: VoxCity's axis contract
   (axis 0 = north, row 0 = south edge; axis 1 = east) equals PALM's (y, x).
@@ -25,6 +25,7 @@ from pathlib import Path
 import numpy as np
 
 from ..models import VoxCity
+from ..utils.lc import get_land_cover_classes
 from ..utils.logging import get_logger
 
 _logger = get_logger(__name__)
@@ -176,17 +177,16 @@ def _build_index_to_palm_map(land_cover_source):
     indices still resolve deterministically.
     """
     try:
-        from ..utils.lc import get_land_cover_classes
-        class_dict = get_land_cover_classes(land_cover_source)
-        class_names = list(class_dict.values()) if class_dict else []
+        class_names = list(get_land_cover_classes(land_cover_source).values())
     except Exception:
-        class_names = []
-    if not class_names:
-        from ..utils.lc import get_land_cover_classes
+        # get_land_cover_classes has no else branch: an unrecognised source
+        # raises rather than returning a default (UnboundLocalError today).
+        # Fall back to the OSM class order so raw indices still resolve.
         class_names = list(get_land_cover_classes('OpenStreetMap').values())
 
     name_to_assignment = _get_source_name_mapping(land_cover_source)
-    index_to_assignment = {}
-    for idx, class_name in enumerate(class_names):
-        index_to_assignment[idx] = name_to_assignment.get(class_name, DEFAULT_ASSIGNMENT)
+    index_to_assignment = {
+        idx: name_to_assignment.get(name, DEFAULT_ASSIGNMENT)
+        for idx, name in enumerate(class_names)
+    }
     return index_to_assignment, class_names

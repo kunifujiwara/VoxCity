@@ -1,20 +1,27 @@
 """Tests for voxcity.exporter.palm (PALM static driver exporter)."""
 
+import logging
+
 import numpy as np
 import pytest
-from pathlib import Path
 
+import voxcity.exporter.palm as palm_module
 from voxcity.exporter.palm import (
-    FILL_FLOAT,
-    FILL_INT,
-    FILL_BYTE,
-    OSM_CLASS_TO_PALM,
-    URBANWATCH_CLASS_TO_PALM,
-    OEMJ_CLASS_TO_PALM,
+    BYTE_RANGES,
+    DEFAULT_ASSIGNMENT,
+    DYNAMIC_WORLD_CLASS_TO_PALM,
     ESA_CLASS_TO_PALM,
     ESRI_CLASS_TO_PALM,
-    DYNAMIC_WORLD_CLASS_TO_PALM,
+    FILL_BYTE,
+    FILL_FLOAT,
+    FILL_INT,
+    OEMJ_CLASS_TO_PALM,
+    OSM_CLASS_TO_PALM,
+    URBANWATCH_CLASS_TO_PALM,
+    _build_index_to_palm_map,
+    _get_source_name_mapping,
 )
+from voxcity.utils.lc import get_land_cover_classes
 
 ALL_TABLES = [
     OSM_CLASS_TO_PALM,
@@ -25,11 +32,29 @@ ALL_TABLES = [
     DYNAMIC_WORLD_CLASS_TO_PALM,
 ]
 
-VALID_RANGES = {"vegetation": (1, 18), "pavement": (1, 15), "water": (1, 5)}
+# Source name -> table, for tests that need to cross-check a table against
+# the live get_land_cover_classes() output for that source.
+SOURCE_TABLE_PAIRS = [
+    ("OpenStreetMap", OSM_CLASS_TO_PALM),
+    ("Urbanwatch", URBANWATCH_CLASS_TO_PALM),
+    ("OpenEarthMapJapan", OEMJ_CLASS_TO_PALM),
+    ("ESA WorldCover", ESA_CLASS_TO_PALM),
+    ("ESRI 10m Annual Land Cover", ESRI_CLASS_TO_PALM),
+    ("Dynamic World V1", DYNAMIC_WORLD_CLASS_TO_PALM),
+]
+
+# BYTE_RANGES is the authority the future validator will use, so the test's
+# valid ranges are derived from it rather than restated by hand.
+VALID_RANGES = {
+    "vegetation": BYTE_RANGES["vegetation_type"],
+    "pavement": BYTE_RANGES["pavement_type"],
+    "water": BYTE_RANGES["water_type"],
+}
 
 
 class TestMappingTables:
     def test_fill_values(self):
+        # PIDS-mandated fill values for the static driver's _FillValue attrs.
         assert FILL_FLOAT == -9999.0
         assert FILL_INT == -9999
         assert FILL_BYTE == -127
@@ -44,10 +69,10 @@ class TestMappingTables:
                 lo, hi = VALID_RANGES[category]
                 assert lo <= code <= hi, f"{name}: {category} code {code} out of range"
 
-    def test_osm_covers_all_standard_classes(self):
-        from voxcity.utils.lc import get_land_cover_classes
-        names = list(get_land_cover_classes("OpenStreetMap").values())
-        assert set(names) == set(OSM_CLASS_TO_PALM.keys())
+    @pytest.mark.parametrize("source_name, table", SOURCE_TABLE_PAIRS)
+    def test_mapping_table_covers_all_source_classes(self, source_name, table):
+        names = list(get_land_cover_classes(source_name).values())
+        assert set(names) == set(table.keys())
 
     def test_spec_pinned_codes(self):
         assert OSM_CLASS_TO_PALM["Road"] == ("pavement", 1)
@@ -61,13 +86,6 @@ class TestMappingTables:
         assert URBANWATCH_CLASS_TO_PALM["Sea"] == ("water", 3)
 
 
-from voxcity.exporter.palm import (
-    _get_source_name_mapping,
-    _build_index_to_palm_map,
-    DEFAULT_ASSIGNMENT,
-)
-
-
 class TestSourceResolution:
     def test_known_sources(self):
         assert _get_source_name_mapping('OpenStreetMap') is OSM_CLASS_TO_PALM
@@ -78,8 +96,11 @@ class TestSourceResolution:
         assert _get_source_name_mapping('ESRI 10m Annual Land Cover') is ESRI_CLASS_TO_PALM
         assert _get_source_name_mapping('Dynamic World V1') is DYNAMIC_WORLD_CLASS_TO_PALM
 
-    def test_unknown_source_falls_back_to_osm(self):
-        assert _get_source_name_mapping('SomeUnknownSource') is OSM_CLASS_TO_PALM
+    def test_unknown_source_falls_back_to_osm(self, caplog, propagate_voxcity_logs):
+        with caplog.at_level(logging.WARNING, logger="voxcity"):
+            result = _get_source_name_mapping('SomeUnknownSource')
+        assert result is OSM_CLASS_TO_PALM
+        assert 'SomeUnknownSource' in caplog.text
 
     def test_index_map_osm(self):
         index_to_assignment, class_names = _build_index_to_palm_map('OpenStreetMap')
@@ -94,3 +115,18 @@ class TestSourceResolution:
     def test_index_map_unknown_source_uses_osm_names(self):
         index_to_assignment, class_names = _build_index_to_palm_map('Nope')
         assert index_to_assignment[0] == ('vegetation', 1)
+
+    def test_default_assignment_used_for_unmapped_class_name(self, monkeypatch):
+        """A class name absent from the resolved table falls back to DEFAULT_ASSIGNMENT.
+
+        All six shipped tables are exhaustive for their source's class list,
+        so this path is unreachable in practice; exercise it directly by
+        stubbing out a table missing an entry the real class list still has.
+        """
+        stub_table = {k: v for k, v in OSM_CLASS_TO_PALM.items() if k != 'Bareland'}
+        monkeypatch.setattr(palm_module, '_get_source_name_mapping', lambda source: stub_table)
+
+        index_to_assignment, class_names = _build_index_to_palm_map('OpenStreetMap')
+
+        assert class_names[0] == 'Bareland'
+        assert index_to_assignment[0] == DEFAULT_ASSIGNMENT
