@@ -219,3 +219,20 @@ def _build_georeference(rectangle_vertices):
         "rotation_angle": rotation_angle,
         "epsg": epsg,
     }
+
+
+def _build_zt(dem_grid):
+    """Terrain height, shifted so its minimum is exactly 0.
+
+    Returns (zt float32 (y, x), origin_z) where origin_z is the subtracted
+    minimum (recorded as the PIDS global attribute ``origin_z``). NaN/inf
+    cells take the grid minimum (i.e. 0 after shifting).
+    """
+    zt = np.asarray(dem_grid, dtype=np.float64).copy()
+    finite = np.isfinite(zt)
+    if not finite.any():
+        return np.zeros(zt.shape, dtype=np.float32), 0.0
+    min_val = float(zt[finite].min())
+    zt[~finite] = min_val
+    zt -= min_val
+    return zt.astype(np.float32), min_val

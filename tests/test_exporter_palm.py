@@ -20,6 +20,7 @@ from voxcity.exporter.palm import (
     URBANWATCH_CLASS_TO_PALM,
     _build_georeference,
     _build_index_to_palm_map,
+    _build_zt,
     _get_source_name_mapping,
 )
 from voxcity.utils.lc import get_land_cover_classes
@@ -152,3 +153,26 @@ class TestGeoreference:
         rect = [(151.2, -33.87), (151.2, -33.86), (151.21, -33.86), (151.21, -33.87)]
         geo = _build_georeference(rect)
         assert geo["epsg"] == 32756  # Sydney, UTM zone 56S
+
+
+class TestBuildZt:
+    def test_shift_to_zero_min(self):
+        dem = np.array([[3.0, 5.0], [4.0, 7.0]])
+        zt, origin_z = _build_zt(dem)
+        assert zt.dtype == np.float32
+        assert origin_z == pytest.approx(3.0)
+        assert zt.min() == pytest.approx(0.0)
+        assert zt[1, 1] == pytest.approx(4.0)
+
+    def test_nan_replaced_with_min_before_shift(self):
+        dem = np.array([[np.nan, 5.0], [4.0, 7.0]])
+        zt, origin_z = _build_zt(dem)
+        assert origin_z == pytest.approx(4.0)
+        assert zt[0, 0] == pytest.approx(0.0)
+        assert np.isfinite(zt).all()
+
+    def test_all_nan_becomes_flat_zero(self):
+        dem = np.full((2, 2), np.nan)
+        zt, origin_z = _build_zt(dem)
+        assert origin_z == 0.0
+        assert (zt == 0.0).all()
