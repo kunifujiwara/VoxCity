@@ -278,6 +278,20 @@ class TestBuildingMask:
         assert mask[0, 0]
         assert segment_top_m[0, 0] == 0.0
 
+    def test_non_finite_segment_top_does_not_crash_and_reads_as_ground(self):
+        # A NaN/inf seg[1] must be sanitized to ground level (0.0), not
+        # reach float()/comparison in a way that silently misclassifies the
+        # cell -- and it must agree with _build_buildings_3d, which routes
+        # the same raw bound through _to_level (see the paired test in
+        # TestBuildBuildings3d).
+        heights = np.array([[0.0], [0.0]])
+        mh = _empty_min_heights(2, 1)
+        mh[0, 0] = [[0.0, np.inf]]
+        mh[1, 0] = [[0.0, np.nan]]
+        mask, segment_top_m = _build_building_mask(heights, mh)
+        assert not mask[0, 0] and segment_top_m[0, 0] == 0.0
+        assert not mask[1, 0] and segment_top_m[1, 0] == 0.0
+
 
 class TestBuildBuildings:
     def test_basic_fields(self):
@@ -348,13 +362,16 @@ class TestBuildBuildings:
     ):
         # A cell with LOD2 geometry but no recorded LOD1 height (h=0) must
         # get buildings_2d raised to the geometry's height, get a generated
-        # id, and get a building_type -- and the repair must be logged so a
-        # malformed input grid is visible rather than silently patched over.
+        # id, and get a building_type -- and the repair must be logged at
+        # WARNING (genuinely inconsistent input) with the discrepancy
+        # magnitude (10.0 m here: segment top 10.0 minus recorded height
+        # 0.0), so a malformed input grid is visible and actionable rather
+        # than silently patched over.
         heights = np.array([[0.0]])
         mh = _empty_min_heights(1, 1)
         mh[0, 0] = [[4.0, 10.0]]
         mask, segment_top_m = _build_building_mask(heights, mh)
-        with caplog.at_level(logging.INFO, logger="voxcity"):
+        with caplog.at_level(logging.WARNING, logger="voxcity"):
             b2d, bid, btype = _build_buildings(
                 heights, None, building_type=1, mask=mask, segment_top_m=segment_top_m
             )
@@ -362,6 +379,8 @@ class TestBuildBuildings:
         assert bid[0, 0] != FILL_INT
         assert btype[0, 0] == 1
         assert "repair" in caplog.text.lower()
+        assert caplog.records[-1].levelname == "WARNING"
+        assert "10.0 m" in caplog.text
 
     def test_infinite_ids_are_cleaned_like_heights(self):
         # heights gets full finite-cleaning via _clean_heights (nan/inf -> 0);
@@ -510,6 +529,24 @@ class TestBuildBuildings3d:
         assert b3d.shape == (5, 1, 2)
         assert list(b3d[:, 0, 0]) == [0, 0, 0, 0, 0]
 
+    def test_segment_present_but_unfilled_falls_back_to_extrusion(self):
+        # Same fully-below-ground segment as the test above, but this time
+        # heights records a real LOD1 height (10 m) for the cell. The
+        # segment loop still fills nothing (k1 <= k0 for [-10, -6]), but
+        # unlike the mask-only case above, the cell IS a building (h > 0),
+        # so it must fall back to extruding from heights instead of
+        # collapsing to the forced single-level fill -- losing 8 of the
+        # recorded 10 m would be a silent, avoidable height loss.
+        heights = np.array([[10.0]])
+        mh = _empty_min_heights(1, 1)
+        mh[0, 0] = [[-10.0, -6.0]]
+        mask, segment_top_m = _build_building_mask(heights, mh)
+        b3d = _build_buildings_3d(
+            heights, mh, meshsize=2.0, mask=mask, segment_top_m=segment_top_m
+        )
+        assert b3d.shape == (5, 1, 1)
+        assert list(b3d[:, 0, 0]) == [1, 1, 1, 1, 1]
+
     def test_sub_voxel_building_gets_at_least_one_level(self):
         # 0.4 m at meshsize=2.0 rounds to level 0 (an empty extrusion range)
         # under the voxelizer's own rounding, but the mask still counts it
@@ -550,6 +587,26 @@ class TestBuildBuildings3d:
             heights, None, meshsize=2.0, mask=mask, segment_top_m=segment_top_m
         )
         assert b3d.shape == (1, 0, 3)
+
+    def test_non_finite_segment_bounds_do_not_crash(self):
+        # Without _clean_segment_bound, a NaN lower bound reaching
+        # _to_level(nan, ...) raises ValueError (int(nan)) and an inf upper
+        # bound raises OverflowError (int(inf)) -- both must instead read as
+        # ground level (0.0), matching _segment_top_m's treatment of the
+        # same raw bounds (see the paired test in TestBuildingMask).
+        heights = np.array([[0.0, 0.0]])
+        mh = _empty_min_heights(1, 2)
+        mh[0, 0] = [[np.nan, 10.0]]
+        mh[0, 1] = [[0.0, np.inf]]
+        mask, segment_top_m = _build_building_mask(heights, mh)
+        b3d = _build_buildings_3d(
+            heights, mh, meshsize=2.0, mask=mask, segment_top_m=segment_top_m
+        )
+        # NaN lower bound -> ground (0): fills the full [0, 10] range
+        assert list(b3d[:, 0, 0]) == [1, 1, 1, 1, 1]
+        # inf upper bound -> ground (0): k1 == k0 == 0, no fill, and mask is
+        # False here so nothing forces a fallback level either
+        assert (b3d[:, 0, 1] == 0).all()
 
 
 class TestBuildSurfaceTypes:
