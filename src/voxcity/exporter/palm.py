@@ -244,6 +244,17 @@ def _clean_heights(heights):
     return np.where(np.isfinite(h), h, 0.0)
 
 
+def _to_level(value, meshsize):
+    """Convert a height in meters to a voxel level index.
+
+    Uses the voxelizer's own rounding (voxelizer.py:_flatten_building_segments
+    uses ``int(seg[0] * inv_vs + 0.5)``): ``int(value / meshsize + 0.5)``.
+    Every height-to-level conversion in this module routes through here so
+    nz-sizing and slice bounds are derived from one rounding rule.
+    """
+    return int(float(value) / meshsize + 0.5)
+
+
 def _build_buildings(heights, ids, building_type):
     """LOD1 building fields.
 
@@ -289,15 +300,15 @@ def _build_buildings(heights, ids, building_type):
 
 
 def _has_elevated_segments(min_heights, meshsize):
-    """True when any building segment starts above ground level (voxelizer
-    rounding: int(h / meshsize + 0.5)) — geometry buildings_2d cannot express."""
+    """True when any building segment starts above ground level after
+    _to_level rounding — geometry buildings_2d cannot express."""
     if min_heights is None:
         return False
     for cell in np.asarray(min_heights, dtype=object).ravel():
         if not cell:
             continue
         for seg in cell:
-            if int(float(seg[0]) / meshsize + 0.5) > 0:
+            if _to_level(seg[0], meshsize) > 0:
                 return True
     return False
 
@@ -317,14 +328,14 @@ def _build_buildings_3d(heights, min_heights, meshsize):
     ny, nx = h.shape
     mh = None if min_heights is None else np.asarray(min_heights, dtype=object)
 
-    height_top = int(float(h.max()) / meshsize + 0.5) if h.size else 0
+    height_top = _to_level(float(h.max()), meshsize) if h.size else 0
     segment_top = 0
     if mh is not None:
         for cell in mh.ravel():
             if not cell:
                 continue
             for seg in cell:
-                k1 = int(float(seg[1]) / meshsize + 0.5)
+                k1 = _to_level(seg[1], meshsize)
                 if k1 > segment_top:
                     segment_top = k1
     nz = max(height_top, segment_top, 1)
@@ -335,11 +346,11 @@ def _build_buildings_3d(heights, min_heights, meshsize):
             segs = mh[i, j] if mh is not None else None
             if segs:
                 for seg in segs:
-                    k0 = int(float(seg[0]) / meshsize + 0.5)
-                    k1 = int(float(seg[1]) / meshsize + 0.5)
+                    k0 = _to_level(seg[0], meshsize)
+                    k1 = _to_level(seg[1], meshsize)
                     k0 = max(0, min(k0, nz))
                     k1 = max(k0, min(k1, nz))
                     b3d[k0:k1, i, j] = 1
             elif h[i, j] > 0.0:
-                b3d[: int(h[i, j] / meshsize + 0.5), i, j] = 1
+                b3d[: _to_level(h[i, j], meshsize), i, j] = 1
     return b3d
