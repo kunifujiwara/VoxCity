@@ -126,10 +126,17 @@ unknown sources fall back to the OSM table with a logged warning.
 Precedence per cell (highest first):
 
 1. Building footprint (`buildings.heights > 0`) → all three types stay fill.
-2. Tree canopy present (and no building) → `vegetation_type =
-   under_tree_vegetation_type` (default 3, short grass): the resolved LAD field
-   represents the trees themselves; the surface below is ground vegetation.
-3. Otherwise → mapped `(category, code)` from land cover.
+2. Tree canopy present (no building, and the land-cover mapping below does
+   not resolve to water) → `vegetation_type = under_tree_vegetation_type`
+   (default 3, short grass): the resolved LAD field represents the trees
+   themselves; the surface below is ground vegetation. Overhanging or
+   riparian canopy over water keeps the water surface (tier 3) instead —
+   water differs from short grass in albedo, heat capacity, and
+   evaporation by margins that dominate a microclimate result, and the
+   LAD field already resolves the trees independently of surface type.
+3. Otherwise → mapped `(category, code)` from land cover (this is also
+   where a water classification under canopy is resolved, per tier 2's
+   exception).
 
 Derived fields:
 

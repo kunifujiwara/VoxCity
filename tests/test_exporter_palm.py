@@ -712,6 +712,28 @@ class TestBuildSurfaceTypes:
         assert f["soil_type"][0, 0] == FILL_BYTE
         assert (f["surface_fraction"][:, 0, 0] == np.float32(FILL_FLOAT)).all()
 
+    def test_canopy_over_water_keeps_water_type(self):
+        # Overhanging/riparian canopy over water must NOT get the
+        # under-tree vegetation override: the water surface stays, since
+        # water differs from short grass in albedo/heat capacity/
+        # evaporation by margins that dominate a microclimate result, and
+        # the LAD field already resolves the trees independently of the
+        # surface type below them.
+        lc = np.array([[8]])  # OSM raw index 8: Water
+        building_mask = np.array([[False]])
+        canopy_mask = np.array([[True]])
+        f = _build_surface_types(
+            lc, 'OpenStreetMap', building_mask, canopy_mask,
+            under_tree_vegetation_type=3, soil_type_code=3,
+        )
+        assert f["water_type"][0, 0] == 1          # lake -- unchanged by canopy
+        assert f["vegetation_type"][0, 0] == FILL_BYTE
+        assert f["soil_type"][0, 0] == FILL_BYTE   # water gets no soil either
+        sf = f["surface_fraction"][:, 0, 0]
+        assert sf[IDX_WATER] == 1.0
+        assert sf[IDX_VEGETATION] == 0.0
+        assert sf[IDX_PAVEMENT] == 0.0
+
 
 class TestBuildLad:
     def test_crown_placement(self):

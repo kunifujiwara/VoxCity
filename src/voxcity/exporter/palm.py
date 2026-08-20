@@ -444,10 +444,16 @@ def _build_surface_types(land_cover_grid, land_cover_source, building_mask,
                          canopy_mask, under_tree_vegetation_type, soil_type_code):
     """Mutually exclusive surface classification per PIDS.
 
-    Precedence per cell: building (all fields stay fill) > canopy (ground
-    under trees becomes ``under_tree_vegetation_type``) > land-cover mapping.
-    A 'building' land-cover class without building height becomes pavement 2
-    (concrete): the surface is sealed but there is no obstacle.
+    Precedence per cell: building (all fields stay fill) > canopy-over-
+    non-water (ground under trees becomes ``under_tree_vegetation_type``)
+    > land-cover mapping. Canopy over a cell the land-cover mapping
+    resolves to water does NOT override it: overhanging/riparian canopy
+    keeps its water surface (water differs from short grass in albedo,
+    heat capacity, and evaporation by margins that dominate a microclimate
+    result), and the LAD field already represents the trees independently
+    of the surface type below them. A 'building' land-cover class without
+    building height becomes pavement 2 (concrete): the surface is sealed
+    but there is no obstacle.
 
     Returns dict with vegetation_type/pavement_type/water_type/soil_type
     (int8 (y, x)) and surface_fraction (float32 (3, y, x)).
@@ -473,12 +479,11 @@ def _build_surface_types(land_cover_grid, land_cover_source, building_mask,
             if building_mask[i, j]:
                 continue
             raw_idx = int(land_cover_grid[i, j])
-            if canopy_mask[i, j]:
+            category, code = index_to_assignment.get(raw_idx, DEFAULT_ASSIGNMENT)
+            if category == 'building':
+                category, code = 'pavement', 2
+            if canopy_mask[i, j] and category != 'water':
                 category, code = 'vegetation', int(under_tree_vegetation_type)
-            else:
-                category, code = index_to_assignment.get(raw_idx, DEFAULT_ASSIGNMENT)
-                if category == 'building':
-                    category, code = 'pavement', 2
 
             if category == 'vegetation':
                 vegetation_type[i, j] = np.int8(code)
