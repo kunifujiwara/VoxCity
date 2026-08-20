@@ -141,7 +141,9 @@ import os
 from pathlib import Path
 
 import numpy as np
+from pyproj import Transformer
 
+from ..geoprocessor.utils import compute_rotation_angle, normalize_rectangle_vertices
 from ..models import VoxCity
 from ..utils.lc import get_land_cover_classes
 from ..utils.logging import get_logger
@@ -440,19 +442,6 @@ Expected: FAIL — ImportError
 
 - [ ] **Step 3: Implement**
 
-`pyproj.Transformer` and `..geoprocessor.utils.{compute_rotation_angle,
-normalize_rectangle_vertices}` are imported once at module scope (alongside
-the module's other imports), not locally inside this function — same
-rationale as the Task 2 hoist: they defer nothing and `geoprocessor.utils`
-does not import from `exporter`, so there is no cycle. Add to the module
-header (see Task 1):
-
-```python
-from pyproj import Transformer
-
-from ..geoprocessor.utils import compute_rotation_angle, normalize_rectangle_vertices
-```
-
 Append to `src/voxcity/exporter/palm.py`:
 
 ```python
@@ -482,6 +471,8 @@ def _build_georeference(rectangle_vertices):
         "epsg": epsg,
     }
 ```
+
+`pyproj.Transformer` and `..geoprocessor.utils.{compute_rotation_angle, normalize_rectangle_vertices}` are imported once at module scope (alongside the module's other imports, see Task 1) rather than locally inside this function — same rationale as the Task 2 hoist: they defer nothing, and `geoprocessor.utils` does not import from `exporter`, so there is no cycle.
 
 - [ ] **Step 4: Run tests to verify they pass**
 
@@ -1785,6 +1776,12 @@ class PalmExporter:
             domain_name=base_filename,
             **kwargs,
         )
+```
+
+Now that `export_palm` and `PalmExporter` both exist, remove the forward-declaration `# noqa: F822` comment from the module's `__all__` line (added by code review during Unit 2, once `ruff check src` started flagging the forward-declared names as undefined) — it was only needed while those names were undefined, and leaving it in place would silently hide any future genuine `F822`/undefined-name error in this module:
+
+```python
+__all__ = ["PalmExporter", "export_palm"]
 ```
 
 - [ ] **Step 4: Register in the exporter package**
