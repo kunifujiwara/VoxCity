@@ -416,6 +416,8 @@ export_palm(
 
 [PALM](https://palm.muk.uni-hannover.de/) is an open-source large-eddy simulation (LES) model widely used for atmospheric boundary-layer and urban-climate research. `export_palm` writes a single PIDS-conformant NetCDF `<domain_name>_static` file — terrain, buildings (2D + optional 3D), surface classification, and leaf area density — validated against PALM's documented consistency rules before it's written.
 
+**Namelist note:** building footprints are deliberately left without a ground surface class (matching PALM's own reference drivers), so a domain with buildings needs the urban surface model enabled in your `_p3d` (`&urban_surface_parameters`, alongside `&land_surface_parameters` and a radiation scheme). Running with only the land surface model makes PALM reject the driver with `DRV0021` at those footprint cells. Dynamics-only runs (no surface-energy namelists at all) accept the driver as plain topography.
+
 </details>
 
 <details>

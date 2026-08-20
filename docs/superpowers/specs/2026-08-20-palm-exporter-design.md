@@ -338,3 +338,21 @@ exit 0) and the output was checked against the input city:
   288.9 K, plaza 289.1 K, grass 289.9 K warmest at summer noon +20 s), so
   the corrected `pavement_type` codes and the water classification reach
   PALM's energy balance as intended.
+
+**Scale validation (same day):** a real 1 km x 1 km Tokyo model built by
+VoxCityGML from PLATEAU LOD2 (500x500 cells at 2 m, 136,133 building cells,
+tallest 237.6 m, 21,847 cells with elevated LOD2 segments, OpenEarthMapJapan
+land cover) exported in 1.9 s to a 2.2 MiB compressed driver and ran in PALM
+(500x500x141 grid, dynamics + plant canopy, 21 timesteps to t = 4 s, exit 0).
+The output's solid fraction matches the input exactly at ground sections
+(0.998 = 0.998 at zu = 3 m including terrain) and within terrain-rounding at
+height (0.420 vs 0.373 at 23 m; 0.102 vs 0.096 at 119 m).
+
+**Namelist interaction discovered by the scale run:** building footprints
+carry no ground surface class (deliberately -- PALM's own reference driver
+does the same, all 100 of its building cells unclassified). With the LSM
+enabled but the USM off, PALM rejects such a driver with DRV0021 at every
+footprint cell. A domain with buildings therefore needs the urban surface
+model enabled alongside the LSM and a radiation scheme; dynamics-only
+namelists accept the driver as plain topography. Recorded in the README's
+PALM section and the module docstring.

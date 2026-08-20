@@ -12,7 +12,14 @@ Notes:
 - Grids are written with no vertical flip: VoxCity's axis contract
   (axis 0 = north, row 0 = south edge; axis 1 = east) equals PALM's (y, x).
 - Automated validation covers the file format plus PALM's documented runtime
-  consistency rules; an actual PALM run is a separate follow-up validation.
+  consistency rules; the exporter has additionally been validated end-to-end
+  against real PALM v25.04 runs (see the design doc's validation record).
+- Building footprints carry no ground surface class, matching PALM's own
+  reference drivers. Consequence for the _p3d namelist: a domain with
+  buildings needs the urban surface model enabled (with the land surface
+  model and a radiation scheme); LSM alone makes PALM reject the driver
+  with DRV0021 at the footprint cells, while a dynamics-only namelist
+  accepts it as plain topography.
   Design: docs/superpowers/specs/2026-08-20-palm-exporter-design.md
 """
 
