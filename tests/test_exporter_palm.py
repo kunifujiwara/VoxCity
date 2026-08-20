@@ -299,7 +299,7 @@ class TestBuildBuildings:
         ids = np.array([[0, 7], [0, 0]])
         mask, segment_top_m = _build_building_mask(heights, None)
         b2d, bid, btype = _build_buildings(
-            heights, ids, building_type=3, mask=mask, segment_top_m=segment_top_m
+            heights, ids, building_type=3, segment_top_m=segment_top_m, building_mask=mask
         )
         assert b2d.dtype == np.float32
         assert b2d[0, 0] == np.float32(FILL_FLOAT)
@@ -317,7 +317,7 @@ class TestBuildBuildings:
         heights = np.array([[5.0, 0.0]])
         mask, segment_top_m = _build_building_mask(heights, None)
         b2d, bid, btype = _build_buildings(
-            heights, None, building_type=2, mask=mask, segment_top_m=segment_top_m
+            heights, None, building_type=2, segment_top_m=segment_top_m, building_mask=mask
         )
         assert bid[0, 0] >= 1
         assert bid[0, 1] == FILL_INT
@@ -330,7 +330,7 @@ class TestBuildBuildings:
         ids = np.array([[0, 10, 0], [5, 0, 0]])
         mask, segment_top_m = _build_building_mask(heights, None)
         b2d, bid, btype = _build_buildings(
-            heights, ids, building_type=1, mask=mask, segment_top_m=segment_top_m
+            heights, ids, building_type=1, segment_top_m=segment_top_m, building_mask=mask
         )
         non_fill_ids = bid[mask].tolist()
         assert len(non_fill_ids) == len(set(non_fill_ids)), non_fill_ids
@@ -352,7 +352,7 @@ class TestBuildBuildings:
         heights_orig = heights.copy()
         ids_orig = ids.copy()
         _build_buildings(
-            heights, ids, building_type=1, mask=mask, segment_top_m=segment_top_m
+            heights, ids, building_type=1, segment_top_m=segment_top_m, building_mask=mask
         )
         assert np.array_equal(heights, heights_orig, equal_nan=True)
         assert np.array_equal(ids, ids_orig, equal_nan=True)
@@ -373,7 +373,7 @@ class TestBuildBuildings:
         mask, segment_top_m = _build_building_mask(heights, mh)
         with caplog.at_level(logging.WARNING, logger="voxcity"):
             b2d, bid, btype = _build_buildings(
-                heights, None, building_type=1, mask=mask, segment_top_m=segment_top_m
+                heights, None, building_type=1, segment_top_m=segment_top_m, building_mask=mask
             )
         assert b2d[0, 0] == np.float32(10.0)
         assert bid[0, 0] != FILL_INT
@@ -393,7 +393,7 @@ class TestBuildBuildings:
         with warnings.catch_warnings():
             warnings.simplefilter("error")
             b2d, bid, btype = _build_buildings(
-                heights, ids, building_type=1, mask=mask, segment_top_m=segment_top_m
+                heights, ids, building_type=1, segment_top_m=segment_top_m, building_mask=mask
             )
         # both inf ids are cleaned to 0 (treated as "no id"), so both cells
         # get generated ids, and those generated ids must still be unique.
@@ -409,7 +409,7 @@ class TestBuildBuildings:
         ids = np.array([[0, 99]])
         mask, segment_top_m = _build_building_mask(heights, None)
         b2d, bid, btype = _build_buildings(
-            heights, ids, building_type=1, mask=mask, segment_top_m=segment_top_m
+            heights, ids, building_type=1, segment_top_m=segment_top_m, building_mask=mask
         )
         assert bid[0, 1] == FILL_INT
         assert bid[0, 0] == 100
@@ -465,7 +465,7 @@ class TestBuildBuildings3d:
         mh[0, 0] = [[4.0, 10.0]]
         mask, segment_top_m = _build_building_mask(heights, mh)
         b3d = _build_buildings_3d(
-            heights, mh, meshsize=2.0, mask=mask, segment_top_m=segment_top_m
+            heights, mh, meshsize=2.0, segment_top_m=segment_top_m, building_mask=mask
         )
         assert b3d.dtype == np.int8
         assert b3d.shape == (5, 1, 2)  # nz = round(10/2)
@@ -478,7 +478,7 @@ class TestBuildBuildings3d:
         mh = _empty_min_heights(1, 1)
         mask, segment_top_m = _build_building_mask(heights, mh)
         b3d = _build_buildings_3d(
-            heights, mh, meshsize=2.0, mask=mask, segment_top_m=segment_top_m
+            heights, mh, meshsize=2.0, segment_top_m=segment_top_m, building_mask=mask
         )
         assert list(b3d[:, 0, 0]) == [1, 1, 1]
 
@@ -490,7 +490,7 @@ class TestBuildBuildings3d:
         mh[0, 0] = [[0.0, 4.0], [8.0, 12.0]]
         mask, segment_top_m = _build_building_mask(heights, mh)
         b3d = _build_buildings_3d(
-            heights, mh, meshsize=2.0, mask=mask, segment_top_m=segment_top_m
+            heights, mh, meshsize=2.0, segment_top_m=segment_top_m, building_mask=mask
         )
         assert list(b3d[:, 0, 0]) == [1, 1, 0, 0, 1, 1]
 
@@ -503,7 +503,7 @@ class TestBuildBuildings3d:
         mh[0, 0] = [[0.0, 20.0]]
         mask, segment_top_m = _build_building_mask(heights, mh)
         b3d = _build_buildings_3d(
-            heights, mh, meshsize=2.0, mask=mask, segment_top_m=segment_top_m
+            heights, mh, meshsize=2.0, segment_top_m=segment_top_m, building_mask=mask
         )
         assert b3d.shape == (10, 1, 1)  # nz from the segment top (20/2=10), not heights.max()
         assert list(b3d[:, 0, 0]) == [1] * 10
@@ -518,7 +518,7 @@ class TestBuildBuildings3d:
         mh[0, 0] = [[-6.0, 8.0]]
         mask, segment_top_m = _build_building_mask(heights, mh)
         b3d = _build_buildings_3d(
-            heights, mh, meshsize=2.0, mask=mask, segment_top_m=segment_top_m
+            heights, mh, meshsize=2.0, segment_top_m=segment_top_m, building_mask=mask
         )
         assert b3d.shape == (5, 1, 1)
         assert list(b3d[:, 0, 0]) == [1, 1, 1, 1, 0]
@@ -535,7 +535,7 @@ class TestBuildBuildings3d:
         mh[0, 0] = [[-10.0, -6.0]]
         mask, segment_top_m = _build_building_mask(heights, mh)
         b3d = _build_buildings_3d(
-            heights, mh, meshsize=2.0, mask=mask, segment_top_m=segment_top_m
+            heights, mh, meshsize=2.0, segment_top_m=segment_top_m, building_mask=mask
         )
         assert b3d.shape == (5, 1, 2)
         assert list(b3d[:, 0, 0]) == [0, 0, 0, 0, 0]
@@ -553,7 +553,7 @@ class TestBuildBuildings3d:
         mh[0, 0] = [[-10.0, -6.0]]
         mask, segment_top_m = _build_building_mask(heights, mh)
         b3d = _build_buildings_3d(
-            heights, mh, meshsize=2.0, mask=mask, segment_top_m=segment_top_m
+            heights, mh, meshsize=2.0, segment_top_m=segment_top_m, building_mask=mask
         )
         assert b3d.shape == (5, 1, 1)
         assert list(b3d[:, 0, 0]) == [1, 1, 1, 1, 1]
@@ -565,7 +565,7 @@ class TestBuildBuildings3d:
         heights = np.array([[0.4]])
         mask, segment_top_m = _build_building_mask(heights, None)
         b3d = _build_buildings_3d(
-            heights, None, meshsize=2.0, mask=mask, segment_top_m=segment_top_m
+            heights, None, meshsize=2.0, segment_top_m=segment_top_m, building_mask=mask
         )
         assert b3d.shape[0] >= 1
         assert b3d[0, 0, 0] == 1
@@ -577,7 +577,7 @@ class TestBuildBuildings3d:
         heights = np.array([[6.0]])
         mask, segment_top_m = _build_building_mask(heights, None)
         b3d = _build_buildings_3d(
-            heights, None, meshsize=2.0, mask=mask, segment_top_m=segment_top_m
+            heights, None, meshsize=2.0, segment_top_m=segment_top_m, building_mask=mask
         )
         assert list(b3d[:, 0, 0]) == [1, 1, 1]
 
@@ -585,7 +585,7 @@ class TestBuildBuildings3d:
         heights = np.array([[3.0, np.nan]])
         mask, segment_top_m = _build_building_mask(heights, None)
         b3d = _build_buildings_3d(
-            heights, None, meshsize=2.0, mask=mask, segment_top_m=segment_top_m
+            heights, None, meshsize=2.0, segment_top_m=segment_top_m, building_mask=mask
         )
         assert not mask[0, 1]
         assert (b3d[:, 0, 1] == 0).all()
@@ -595,7 +595,7 @@ class TestBuildBuildings3d:
         heights = np.zeros((0, 3))
         mask, segment_top_m = _build_building_mask(heights, None)
         b3d = _build_buildings_3d(
-            heights, None, meshsize=2.0, mask=mask, segment_top_m=segment_top_m
+            heights, None, meshsize=2.0, segment_top_m=segment_top_m, building_mask=mask
         )
         assert b3d.shape == (1, 0, 3)
 
@@ -611,7 +611,7 @@ class TestBuildBuildings3d:
         mh[0, 1] = [[0.0, np.inf]]
         mask, segment_top_m = _build_building_mask(heights, mh)
         b3d = _build_buildings_3d(
-            heights, mh, meshsize=2.0, mask=mask, segment_top_m=segment_top_m
+            heights, mh, meshsize=2.0, segment_top_m=segment_top_m, building_mask=mask
         )
         # NaN lower bound -> ground (0): fills the full [0, 10] range
         assert list(b3d[:, 0, 0]) == [1, 1, 1, 1, 1]
@@ -628,8 +628,8 @@ class TestBuildSurfaceTypes:
         canopy_mask = np.array([[True, False], [False, False], [False, False]])
         # (1,1): building; (2,1): land cover says Building but no height
         return _build_surface_types(
-            lc, 'OpenStreetMap', building_mask, canopy_mask,
-            under_tree_vegetation_type=3, soil_type_code=3,
+            lc, 'OpenStreetMap', canopy_mask,
+            under_tree_vegetation_type=3, soil_type_code=3, building_mask=building_mask,
         )
 
     def test_categories(self):
@@ -687,8 +687,8 @@ class TestBuildSurfaceTypes:
         building_mask = np.zeros((1, 2), dtype=bool)
         canopy_mask = np.zeros((1, 2), dtype=bool)
         f = _build_surface_types(
-            lc, 'OpenStreetMap', building_mask, canopy_mask,
-            under_tree_vegetation_type=3, soil_type_code=3,
+            lc, 'OpenStreetMap', canopy_mask,
+            under_tree_vegetation_type=3, soil_type_code=3, building_mask=building_mask,
         )
         category, code = DEFAULT_ASSIGNMENT
         assert category == 'vegetation'
@@ -703,8 +703,8 @@ class TestBuildSurfaceTypes:
         building_mask = np.zeros((1, 1), dtype=bool)
         canopy_mask = np.zeros((1, 1), dtype=bool)
         f = _build_surface_types(
-            lc, 'TotallyUnknownSource', building_mask, canopy_mask,
-            under_tree_vegetation_type=3, soil_type_code=3,
+            lc, 'TotallyUnknownSource', canopy_mask,
+            under_tree_vegetation_type=3, soil_type_code=3, building_mask=building_mask,
         )
         assert f["vegetation_type"][0, 0] == 1  # Bareland -> bare soil (OSM table)
 
@@ -715,8 +715,8 @@ class TestBuildSurfaceTypes:
         building_mask = np.array([[True]])
         canopy_mask = np.array([[True]])
         f = _build_surface_types(
-            lc, 'OpenStreetMap', building_mask, canopy_mask,
-            under_tree_vegetation_type=3, soil_type_code=3,
+            lc, 'OpenStreetMap', canopy_mask,
+            under_tree_vegetation_type=3, soil_type_code=3, building_mask=building_mask,
         )
         assert f["vegetation_type"][0, 0] == FILL_BYTE
         assert f["pavement_type"][0, 0] == FILL_BYTE
@@ -735,8 +735,8 @@ class TestBuildSurfaceTypes:
         building_mask = np.array([[False]])
         canopy_mask = np.array([[True]])
         f = _build_surface_types(
-            lc, 'OpenStreetMap', building_mask, canopy_mask,
-            under_tree_vegetation_type=3, soil_type_code=3,
+            lc, 'OpenStreetMap', canopy_mask,
+            under_tree_vegetation_type=3, soil_type_code=3, building_mask=building_mask,
         )
         assert f["water_type"][0, 0] == 1          # lake -- unchanged by canopy
         assert f["vegetation_type"][0, 0] == FILL_BYTE
@@ -758,8 +758,8 @@ class TestBuildSurfaceTypes:
         building_mask = np.zeros((1, 2), dtype=bool)
         canopy_mask = np.array([[True, False]])
         f = _build_surface_types(
-            lc, 'OpenStreetMap', building_mask, canopy_mask,
-            under_tree_vegetation_type=7, soil_type_code=5,
+            lc, 'OpenStreetMap', canopy_mask,
+            under_tree_vegetation_type=7, soil_type_code=5, building_mask=building_mask,
         )
         assert f["vegetation_type"][0, 0] == 7  # not Bareland's own code (1)
         assert f["soil_type"][0, 0] == 5         # vegetation-branch soil write
