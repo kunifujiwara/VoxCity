@@ -646,6 +646,43 @@ def _validate_static_fields(fields):
 
     A violation is an exporter bug (the builders should never produce one),
     so this raises RuntimeError rather than silently correcting.
+
+    Enforced:
+    - Every field's in-memory dtype matches its _FIELD_SPECS declaration
+      (the same table _write_static_driver writes from).
+    - zt is finite, and its minimum is (within 1e-4 m) exactly 0.
+    - buildings_2d is finite: a NaN/inf height is otherwise invisible to
+      every rule below it -- `bld = buildings_2d != FILL_FLOAT` is True
+      for NaN (NaN != anything is True), so a non-finite height silently
+      counts as "this cell is a building" and would go on to satisfy
+      every downstream presence rule rather than getting caught.
+    - Every non-building cell has exactly one of vegetation_type/
+      pavement_type/water_type set; every building cell has none.
+    - soil_type is set exactly where vegetation_type or pavement_type is,
+      in both directions.
+    - surface_fraction has exactly 3 leading slices (vegetation/pavement/
+      water) and sums to 1 on every classified cell.
+    - Every building cell has a building_id and a building_type, and,
+      unconditionally (not only when buildings_3d is present -- the
+      buildings_3d="auto" default means most exports never build one),
+      neither is set on a non-building cell.
+    - Byte-coded fields (BYTE_RANGES) fall within their documented PIDS
+      class range, both bounds.
+    - When buildings_3d is present, its per-cell column presence agrees
+      with buildings_2d/building_id/building_type in both directions.
+      This deliberately never compares magnitudes: a buildings_2d height
+      may legitimately exceed a shorter 3D column's top (e.g. 20 m next
+      to a single [0, 4] segment is valid LOD2 data).
+    - lad values (where not fill) are finite and non-negative.
+
+    Deliberately not enforced here (spec's validation section lists both;
+    neither is silently dropped):
+    - "LAD values only within [bottom, top] layers": this function
+      receives only the final lad array, not the canopy top/bottom inputs
+      _build_lad placed it from, so it has no independent reference to
+      re-derive the expected layer range against -- that placement is
+      _build_lad's own contract, not something a downstream consumer of
+      its output can re-verify.
     """
     problems = []
 
@@ -668,10 +705,16 @@ def _validate_static_fields(fields):
     elif abs(float(zt.min())) > 1e-4:
         problems.append(f"zt minimum is {float(zt.min())}, expected 0")
 
+    b2d_raw = fields["buildings_2d"]
+    if not np.isfinite(b2d_raw).all():
+        problems.append("buildings_2d contains non-finite values")
+
     veg = fields["vegetation_type"] != FILL_BYTE
     pav = fields["pavement_type"] != FILL_BYTE
     wat = fields["water_type"] != FILL_BYTE
-    bld = fields["buildings_2d"] != np.float32(FILL_FLOAT)
+    bld = b2d_raw != np.float32(FILL_FLOAT)
+    has_id = fields["building_id"] != FILL_INT
+    has_type = fields["building_type"] != FILL_BYTE
 
     n_types = veg.astype(int) + pav.astype(int) + wat.astype(int)
     if (n_types[~bld] != 1).any():
@@ -684,14 +727,28 @@ def _validate_static_fields(fields):
         problems.append("soil_type must be set exactly where vegetation or pavement is")
 
     sf = fields["surface_fraction"]
+    if sf.shape[0] != 3:
+        problems.append(
+            f"surface_fraction leading dimension must be 3, got {sf.shape[0]}"
+        )
     classified = veg | pav | wat
     if classified.any() and not np.allclose(sf.sum(axis=0)[classified], 1.0):
         problems.append("surface_fraction must sum to 1 on classified cells")
 
-    if (bld & (fields["building_id"] == FILL_INT)).any():
+    # Both id/type presence directions are checked unconditionally (not
+    # only inside the buildings_3d block below): a stray building_id or
+    # building_type on a non-building cell is just as invalid whether or
+    # not a 3D mask happens to be present, and buildings_3d="auto" means
+    # most exports never build one -- LOD1-only is the common path, not
+    # an edge case, so this cannot be deferred to the buildings_3d branch.
+    if (bld & ~has_id).any():
         problems.append("building cells missing building_id")
-    if (bld & (fields["building_type"] == FILL_BYTE)).any():
+    if (bld & ~has_type).any():
         problems.append("building cells missing building_type")
+    if (~bld & has_id).any():
+        problems.append("building_id present on a non-building cell")
+    if (~bld & has_type).any():
+        problems.append("building_type present on a non-building cell")
 
     for name, (lo, hi) in BYTE_RANGES.items():
         arr = fields[name]
@@ -709,8 +766,6 @@ def _validate_static_fields(fields):
     b3d = fields.get("buildings_3d")
     if b3d is not None:
         col = b3d.astype(bool).any(axis=0)
-        has_id = fields["building_id"] != FILL_INT
-        has_type = fields["building_type"] != FILL_BYTE
         presence_checks = (
             (col & ~bld, "buildings_3d column present without a buildings_2d height"),
             (bld & ~col, "buildings_2d height present without a buildings_3d column"),
@@ -733,6 +788,8 @@ def _validate_static_fields(fields):
         raise RuntimeError(
             "PALM static driver consistency check failed: " + "; ".join(problems)
         )
+
+
 
 
 def _write_static_driver(path, fields, coords, attrs):

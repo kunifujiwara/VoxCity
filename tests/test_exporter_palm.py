@@ -1172,6 +1172,14 @@ class TestValidatorBuildings3dPresence:
     sibling direction's test (e.g. the original col-without-2d case above
     also happens to leave building_id/building_type unset, so on its own it
     would not prove those two directions are independently reachable).
+
+    Isolated only among these six: three of the combos below (bld=False)
+    also trip the always-on "stray building_id/building_type on a
+    non-building cell" checks (see TestValidatorStrayPresenceWithoutBuildings3d),
+    since those run unconditionally now, not only when buildings_3d is
+    present. That is expected and correct, not a leak -- match= still
+    finds each test's own target message regardless of what else is also
+    reported alongside it.
     """
 
     def test_buildings_3d_column_without_2d_fails(self):
@@ -1382,6 +1390,102 @@ class TestValidatorRemainingRuleDirections:
         f = _valid_fields()
         f["vegetation_type"][0, 0] = 0
         with pytest.raises(RuntimeError, match="vegetation_type"):
+            _validate_static_fields(f)
+
+
+class TestValidatorBuildings2dFinite:
+    """buildings_2d had no NaN/inf check at all, though the spec's
+    validation section lists "all written arrays free of NaN/inf" -- and
+    it compounds badly here specifically: `bld = buildings_2d !=
+    FILL_FLOAT` is True for NaN (NaN != anything is True, including
+    FILL_FLOAT), so an unsanitized NaN height would count as a building
+    and go on to satisfy every downstream presence rule rather than
+    getting caught anywhere. Unreachable today because _clean_heights
+    sanitizes upstream in the real builder pipeline, but this function's
+    stated purpose is to be the backstop for exactly that.
+    """
+
+    def test_nan_height_fails(self):
+        f = _valid_fields()
+        f["buildings_2d"][0, 1] = np.nan
+        with pytest.raises(RuntimeError, match="buildings_2d contains non-finite"):
+            _validate_static_fields(f)
+
+    def test_inf_height_fails(self):
+        f = _valid_fields()
+        f["buildings_2d"][0, 1] = np.inf
+        with pytest.raises(RuntimeError, match="buildings_2d contains non-finite"):
+            _validate_static_fields(f)
+
+
+class TestValidatorStrayPresenceWithoutBuildings3d:
+    """All six LOD1/LOD2 presence directions live inside `if b3d is not
+    None:`. Outside it -- the common path, since buildings_3d="auto"
+    means most exports never build one -- only "building cell missing
+    building_id/building_type" was checked; a stray building_id or
+    building_type sitting on a non-building cell was accepted. Both new
+    fixtures use _valid_fields() with buildings_3d left at its default
+    None, exercising exactly the regime every other non-presence test in
+    this module already runs in.
+    """
+
+    def test_stray_building_id_without_buildings_3d_fails(self):
+        f = _valid_fields()
+        assert f["buildings_3d"] is None
+        f["building_id"][0, 0] = 42  # cell (0,0) is not a building
+        with pytest.raises(RuntimeError, match="building_id present on a non-building cell"):
+            _validate_static_fields(f)
+
+    def test_stray_building_type_without_buildings_3d_fails(self):
+        f = _valid_fields()
+        assert f["buildings_3d"] is None
+        f["building_type"][0, 0] = 3
+        with pytest.raises(RuntimeError, match="building_type present on a non-building cell"):
+            _validate_static_fields(f)
+
+
+class TestValidatorZtTolerance:
+    def test_small_offset_above_tolerance_still_fails(self):
+        # test_zt_min_nonzero_fails (TestValidator, above) shifts by a
+        # full +1.0 m, so it cannot distinguish the documented 1e-4 m
+        # tolerance from anything up to just under 1.0 m -- changing
+        # `> 1e-4` to `> 0.999` passes that test unchanged. 2e-4 is safely
+        # above 1e-4 but far below a mistaken ~1 m tolerance, so this
+        # pins the constant itself rather than merely "some threshold".
+        f = _valid_fields()
+        f["zt"] = f["zt"] + np.float32(2e-4)
+        with pytest.raises(RuntimeError, match="zt"):
+            _validate_static_fields(f)
+
+
+class TestValidatorErrorAggregation:
+    def test_multiple_problems_all_reported(self):
+        # Confirms _validate_static_fields reports every problem it finds
+        # in one exception, not just the first (or last). Two rules
+        # trip here from independent causes -- zt's minimum and the
+        # surface-type exclusivity rule -- and the exception message
+        # must name both, not just one of them.
+        f = _valid_fields()
+        f["zt"] = f["zt"] + 1.0
+        f["pavement_type"][0, 0] = 1  # cell now veg AND pavement
+        with pytest.raises(RuntimeError) as exc_info:
+            _validate_static_fields(f)
+        message = str(exc_info.value)
+        assert "zt" in message
+        assert "exactly one" in message
+
+
+class TestValidatorSurfaceFractionShape:
+    def test_wrong_leading_dimension_fails(self):
+        # A (2, y, x) surface_fraction (e.g. a missing water slice) sums
+        # fine along axis 0 regardless of how many slices it has, so the
+        # existing sum-to-1 check does not catch this on its own -- it
+        # needs its own explicit shape check. Without one, this reaches
+        # the writer, which fails on a raw broadcast/shape error instead
+        # of the clean RuntimeError every other malformed input gets here.
+        f = _valid_fields()
+        f["surface_fraction"] = f["surface_fraction"][:2]
+        with pytest.raises(RuntimeError, match="surface_fraction"):
             _validate_static_fields(f)
 
 
