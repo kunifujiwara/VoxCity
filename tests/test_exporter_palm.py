@@ -18,10 +18,13 @@ from voxcity.exporter.palm import (
     OEMJ_CLASS_TO_PALM,
     OSM_CLASS_TO_PALM,
     URBANWATCH_CLASS_TO_PALM,
+    _build_buildings,
+    _build_buildings_3d,
     _build_georeference,
     _build_index_to_palm_map,
     _build_zt,
     _get_source_name_mapping,
+    _has_elevated_segments,
 )
 from voxcity.utils.lc import get_land_cover_classes
 
@@ -227,3 +230,74 @@ class TestBuildZt:
         original = dem.copy()
         _build_zt(dem)
         assert np.array_equal(dem, original)
+
+
+def _empty_min_heights(ny, nx):
+    mh = np.empty((ny, nx), dtype=object)
+    for i in range(ny):
+        for j in range(nx):
+            mh[i, j] = []
+    return mh
+
+
+class TestBuildBuildings:
+    def test_basic_fields(self):
+        heights = np.array([[0.0, 10.0], [6.0, np.nan]])
+        ids = np.array([[0, 7], [0, 0]])
+        b2d, bid, btype = _build_buildings(heights, ids, building_type=3)
+        assert b2d.dtype == np.float32
+        assert b2d[0, 0] == np.float32(FILL_FLOAT)
+        assert b2d[1, 1] == np.float32(FILL_FLOAT)  # NaN height -> no building
+        assert b2d[0, 1] == np.float32(10.0)
+        assert bid.dtype == np.int32
+        assert bid[0, 1] == 7
+        # (1,0) has height but id 0 -> generated id > existing max
+        assert bid[1, 0] > 7
+        assert btype.dtype == np.int8
+        assert btype[0, 1] == 3
+        assert btype[0, 0] == FILL_BYTE
+
+    def test_none_ids_all_generated(self):
+        heights = np.array([[5.0, 0.0]])
+        b2d, bid, btype = _build_buildings(heights, None, building_type=2)
+        assert bid[0, 0] >= 1
+        assert bid[0, 1] == FILL_INT
+
+
+class TestElevatedSegments:
+    def test_no_segments(self):
+        assert not _has_elevated_segments(None, 2.0)
+        assert not _has_elevated_segments(_empty_min_heights(2, 2), 2.0)
+
+    def test_ground_based_only(self):
+        mh = _empty_min_heights(2, 2)
+        mh[0, 0] = [[0.0, 10.0]]
+        assert not _has_elevated_segments(mh, 2.0)
+
+    def test_elevated_segment_detected(self):
+        mh = _empty_min_heights(2, 2)
+        mh[0, 0] = [[4.0, 10.0]]  # starts 2 voxels above ground
+        assert _has_elevated_segments(mh, 2.0)
+
+    def test_sub_voxel_min_rounds_to_ground(self):
+        mh = _empty_min_heights(1, 1)
+        mh[0, 0] = [[0.4, 10.0]]  # rounds to level 0 with meshsize 2.0
+        assert not _has_elevated_segments(mh, 2.0)
+
+
+class TestBuildBuildings3d:
+    def test_overhang_column(self):
+        heights = np.array([[10.0, 0.0]])
+        mh = _empty_min_heights(1, 2)
+        mh[0, 0] = [[4.0, 10.0]]
+        b3d = _build_buildings_3d(heights, mh, meshsize=2.0)
+        assert b3d.dtype == np.int8
+        assert b3d.shape == (5, 1, 2)  # nz = round(10/2)
+        col = b3d[:, 0, 0]
+        assert list(col) == [0, 0, 1, 1, 1]  # levels 2..4 filled
+        assert (b3d[:, 0, 1] == 0).all()
+
+    def test_extrusion_fallback_when_no_segments(self):
+        heights = np.array([[6.0]])
+        b3d = _build_buildings_3d(heights, _empty_min_heights(1, 1), meshsize=2.0)
+        assert list(b3d[:, 0, 0]) == [1, 1, 1]

@@ -236,3 +236,79 @@ def _build_zt(dem_grid):
     zt[~finite] = min_val
     zt -= min_val
     return zt.astype(np.float32), min_val
+
+
+def _clean_heights(heights):
+    """Heights with NaN/inf treated as 'no building'."""
+    h = np.asarray(heights, dtype=np.float64)
+    return np.where(np.isfinite(h), h, 0.0)
+
+
+def _build_buildings(heights, ids, building_type):
+    """LOD1 building fields.
+
+    Returns (buildings_2d float32, building_id int32, building_type int8),
+    all (y, x) with PIDS fill values off the building mask. Cells with a
+    height but no positive id receive generated ids above the existing max.
+    """
+    h = _clean_heights(heights)
+    mask = h > 0.0
+
+    buildings_2d = np.full(h.shape, FILL_FLOAT, dtype=np.float32)
+    buildings_2d[mask] = h[mask].astype(np.float32)
+
+    if ids is None:
+        ids_arr = np.zeros(h.shape, dtype=np.int64)
+    else:
+        ids_arr = np.nan_to_num(
+            np.asarray(ids, dtype=np.float64), nan=0.0
+        ).astype(np.int64)
+
+    building_id = np.full(h.shape, FILL_INT, dtype=np.int32)
+    has_id = mask & (ids_arr > 0)
+    building_id[has_id] = ids_arr[has_id].astype(np.int32)
+    missing = mask & (ids_arr <= 0)
+    if missing.any():
+        next_id = int(ids_arr.max()) + 1
+        building_id[missing] = np.arange(
+            next_id, next_id + int(missing.sum()), dtype=np.int32
+        )
+
+    building_type_arr = np.full(h.shape, FILL_BYTE, dtype=np.int8)
+    building_type_arr[mask] = np.int8(building_type)
+    return buildings_2d, building_id, building_type_arr
+
+
+def _has_elevated_segments(min_heights, meshsize):
+    """True when any building segment starts above ground level (voxelizer
+    rounding: int(h / meshsize + 0.5)) — geometry buildings_2d cannot express."""
+    if min_heights is None:
+        return False
+    for cell in np.asarray(min_heights, dtype=object).ravel():
+        if not cell:
+            continue
+        for seg in cell:
+            if int(float(seg[0]) / meshsize + 0.5) > 0:
+                return True
+    return False
+
+
+def _build_buildings_3d(heights, min_heights, meshsize):
+    """LOD2 byte mask (z, y, x) from per-cell [min, max] segments (metres
+    above ground). Cells without segments fall back to ground extrusion."""
+    h = _clean_heights(heights)
+    ny, nx = h.shape
+    nz = max(int(float(h.max()) / meshsize + 0.5), 1)
+    b3d = np.zeros((nz, ny, nx), dtype=np.int8)
+    mh = None if min_heights is None else np.asarray(min_heights, dtype=object)
+    for i in range(ny):
+        for j in range(nx):
+            segs = mh[i, j] if mh is not None else None
+            if segs:
+                for seg in segs:
+                    k0 = int(float(seg[0]) / meshsize + 0.5)
+                    k1 = int(float(seg[1]) / meshsize + 0.5)
+                    b3d[k0:k1, i, j] = 1
+            elif h[i, j] > 0.0:
+                b3d[: int(h[i, j] / meshsize + 0.5), i, j] = 1
+    return b3d
