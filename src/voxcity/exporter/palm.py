@@ -491,3 +491,43 @@ def _build_surface_types(land_cover_grid, land_cover_source, building_mask,
         "soil_type": soil_type,
         "surface_fraction": surface_fraction,
     }
+
+
+def _build_lad(canopy_top, canopy_bottom, meshsize, lad_value, building_mask):
+    """Leaf area density field lad(zlad, y, x).
+
+    zlad levels are [0, (k - 0.5) * dz ...] up to the highest canopy top
+    (palm_csd convention: surface level plus cell centres). Vegetated
+    columns carry 0.0 below the crown, ``lad_value`` inside
+    [bottom, top], and fill above the top; non-vegetated columns are all
+    fill. Canopy over buildings is cleared. A crown too thin to catch any
+    level gets the topmost level at/below its top so no tree is lost.
+
+    Returns (lad, zlad) or (None, None) when no canopy remains.
+    """
+    top = np.nan_to_num(np.asarray(canopy_top, dtype=np.float64), nan=0.0)
+    top = np.where(np.asarray(building_mask, dtype=bool), 0.0, top)
+    bottom = np.nan_to_num(np.asarray(canopy_bottom, dtype=np.float64), nan=0.0)
+    bottom = np.clip(bottom, 0.0, top)
+
+    max_top = float(top.max()) if top.size else 0.0
+    if max_top <= 0.0:
+        return None, None
+
+    n_centres = max(int(np.ceil(max_top / meshsize - 0.5)), 1)
+    zlad = np.concatenate(
+        ([0.0], (np.arange(1, n_centres + 1) - 0.5) * meshsize)
+    ).astype(np.float32)
+
+    ny, nx = top.shape
+    lad = np.full((zlad.size, ny, nx), FILL_FLOAT, dtype=np.float32)
+    for i, j in zip(*np.nonzero(top > 0.0)):
+        t, b = top[i, j], bottom[i, j]
+        col = np.zeros(zlad.size, dtype=np.float32)
+        col[zlad > t] = FILL_FLOAT
+        in_crown = (zlad >= b) & (zlad <= t)
+        if not in_crown.any():
+            in_crown[np.nonzero(zlad <= t)[0][-1]] = True
+        col[in_crown] = np.float32(lad_value)
+        lad[:, i, j] = col
+    return lad, zlad

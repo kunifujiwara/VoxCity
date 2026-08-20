@@ -27,6 +27,7 @@ from voxcity.exporter.palm import (
     _build_buildings_3d,
     _build_georeference,
     _build_index_to_palm_map,
+    _build_lad,
     _build_surface_types,
     _build_zt,
     _get_source_name_mapping,
@@ -597,3 +598,43 @@ class TestBuildSurfaceTypes:
         assert sf[IDX_PAVEMENT, 2, 0] == 0.0
         assert sf[IDX_WATER, 0, 1] == 1.0
         assert sf[:, 1, 1].tolist() == [np.float32(FILL_FLOAT)] * 3
+
+
+class TestBuildLad:
+    def test_crown_placement(self):
+        top = np.array([[6.0, 0.0]])
+        bottom = np.array([[1.8, 0.0]])
+        building = np.zeros((1, 2), dtype=bool)
+        lad, zlad = _build_lad(top, bottom, meshsize=2.0, lad_value=1.0,
+                               building_mask=building)
+        # zlad: surface 0, then centres 1, 3, 5 (max top 6, dz 2)
+        assert zlad.tolist() == [0.0, 1.0, 3.0, 5.0]
+        col = lad[:, 0, 0]
+        assert col[0] == 0.0     # surface, below crown
+        assert col[1] == 0.0     # z=1 < bottom 1.8
+        assert col[2] == 1.0     # z=3 in crown
+        assert col[3] == 1.0     # z=5 in crown
+        # non-vegetated column: all fill
+        assert (lad[:, 0, 1] == np.float32(FILL_FLOAT)).all()
+
+    def test_building_clears_canopy(self):
+        top = np.array([[6.0]])
+        bottom = np.array([[1.8]])
+        building = np.array([[True]])
+        lad, zlad = _build_lad(top, bottom, meshsize=2.0, lad_value=1.0,
+                               building_mask=building)
+        assert lad is None and zlad is None  # nothing left to resolve
+
+    def test_thin_crown_gets_one_layer(self):
+        # bottom == top == 2.0 with dz 2: the topmost level at/below top is forced
+        top = np.array([[2.0]])
+        bottom = np.array([[2.0]])
+        lad, zlad = _build_lad(top, bottom, meshsize=2.0, lad_value=0.5,
+                               building_mask=np.array([[False]]))
+        assert (lad[:, 0, 0] == 0.5).sum() == 1
+
+    def test_no_canopy_returns_none(self):
+        lad, zlad = _build_lad(np.zeros((2, 2)), np.zeros((2, 2)),
+                               meshsize=1.0, lad_value=1.0,
+                               building_mask=np.zeros((2, 2), dtype=bool))
+        assert lad is None and zlad is None
