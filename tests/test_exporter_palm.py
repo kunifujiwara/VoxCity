@@ -180,6 +180,10 @@ class TestGeoreference:
         # Built directly in Web Mercator space (the space compute_rotation_angle
         # itself uses) by rotating a rectangle 30 deg clockwise from north
         # around the Tokyo SW corner, then projecting back to WGS84.
+        # The rectangle is 900 m x 1000 m, anchored at the Tokyo SW corner,
+        # constructed in EPSG:3857 (so regenerating it means: build a
+        # 900x1000 m axis-aligned box in EPSG:3857 at that corner, rotate it
+        # 30 deg clockwise, then reproject to WGS84).
         # Empirically confirmed: compute_rotation_angle(rect) == 30.0 exactly
         # for this fixture (verified by direct call before pinning here).
         rotated_rect = [
@@ -263,6 +267,31 @@ class TestBuildBuildings:
         assert bid[0, 0] >= 1
         assert bid[0, 1] == FILL_INT
 
+    def test_generated_ids_unique_and_no_collision_with_existing(self):
+        # Three id-less buildings alongside two pre-existing ids (5 and 10).
+        # The real contract is uniqueness across the whole grid, not merely
+        # "greater than the max existing id at that one cell".
+        heights = np.array([[3.0, 4.0, 5.0], [6.0, 0.0, 7.0]])
+        ids = np.array([[0, 10, 0], [5, 0, 0]])
+        b2d, bid, btype = _build_buildings(heights, ids, building_type=1)
+        mask = heights > 0.0
+        non_fill_ids = bid[mask].tolist()
+        assert len(non_fill_ids) == len(set(non_fill_ids)), non_fill_ids
+        assert 5 in non_fill_ids
+        assert 10 in non_fill_ids
+        generated = [i for i in non_fill_ids if i not in (5, 10)]
+        assert len(generated) == 3
+        assert all(i > 10 for i in generated)
+
+    def test_does_not_mutate_inputs(self):
+        heights = np.array([[3.0, 0.0], [6.0, np.nan]], dtype=np.float64)
+        ids = np.array([[0, 0], [5, 0]], dtype=np.int64)
+        heights_orig = heights.copy()
+        ids_orig = ids.copy()
+        _build_buildings(heights, ids, building_type=1)
+        assert np.array_equal(heights, heights_orig, equal_nan=True)
+        assert np.array_equal(ids, ids_orig)
+
 
 class TestElevatedSegments:
     def test_no_segments(self):
@@ -284,6 +313,17 @@ class TestElevatedSegments:
         mh[0, 0] = [[0.4, 10.0]]  # rounds to level 0 with meshsize 2.0
         assert not _has_elevated_segments(mh, 2.0)
 
+    def test_elevated_segment_in_later_cell_after_empty_and_ground_cells(self):
+        # Earlier cells are empty or ground-based (each hits the loop's
+        # `continue`/false branch); only the last cell is elevated. Pins
+        # that the scan keeps going rather than stopping at the first cell.
+        mh = _empty_min_heights(2, 2)
+        mh[0, 0] = []
+        mh[0, 1] = [[0.0, 5.0]]
+        mh[1, 0] = []
+        mh[1, 1] = [[4.0, 10.0]]
+        assert _has_elevated_segments(mh, 2.0)
+
 
 class TestBuildBuildings3d:
     def test_overhang_column(self):
@@ -300,4 +340,26 @@ class TestBuildBuildings3d:
     def test_extrusion_fallback_when_no_segments(self):
         heights = np.array([[6.0]])
         b3d = _build_buildings_3d(heights, _empty_min_heights(1, 1), meshsize=2.0)
+        assert list(b3d[:, 0, 0]) == [1, 1, 1]
+
+    def test_multiple_disjoint_segments_leave_a_real_gap(self):
+        # A bridge/overhang case: two segments in one cell with empty space
+        # between them. Pins that the gap levels stay 0, not filled in.
+        heights = np.array([[12.0]])
+        mh = _empty_min_heights(1, 1)
+        mh[0, 0] = [[0.0, 4.0], [8.0, 12.0]]
+        b3d = _build_buildings_3d(heights, mh, meshsize=2.0)
+        assert list(b3d[:, 0, 0]) == [1, 1, 0, 0, 1, 1]
+
+    def test_segment_extends_above_2d_derived_nz_is_silently_truncated(self):
+        # A segment's upper bound (20 m) exceeds heights.max() (5 m), so the
+        # derived nz is too small to hold it. Numpy slice assignment clips
+        # the out-of-range stop index rather than raising -- this pins that
+        # current (accepted) truncation behavior: no exception, and every
+        # level the undersized grid actually has gets set.
+        heights = np.array([[5.0]])
+        mh = _empty_min_heights(1, 1)
+        mh[0, 0] = [[0.0, 20.0]]
+        b3d = _build_buildings_3d(heights, mh, meshsize=2.0)
+        assert b3d.shape == (3, 1, 1)  # nz from heights.max()=5.0, not the segment
         assert list(b3d[:, 0, 0]) == [1, 1, 1]
