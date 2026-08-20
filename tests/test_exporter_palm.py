@@ -23,6 +23,7 @@ from voxcity.exporter.palm import (
     OEMJ_CLASS_TO_PALM,
     OSM_CLASS_TO_PALM,
     URBANWATCH_CLASS_TO_PALM,
+    _FIELD_SPECS,
     _build_building_mask,
     _build_buildings,
     _build_buildings_3d,
@@ -1633,6 +1634,113 @@ class TestWriter:
             assert nc2.dimensions["x"].size == 2
             assert nc2.dimensions["nsurface_fraction"].size == 3
 
+    def test_fill_value_declared_and_observed_via_auto_mask(self, tmp_path):
+        # test_round_trip_values_and_fill_placement above reads with
+        # nc.set_auto_mask(False), which returns the raw stored values
+        # and therefore cannot observe whether the file actually
+        # DECLARES a _FillValue attribute for each variable -- it only
+        # confirms the literal sentinel landed in the right cells, which
+        # is independent of the declaration PALM itself honours. Leaving
+        # auto-mask ON (the default, not touched here) is what exercises
+        # the declared _FillValue: netCDF4 substitutes a masked entry
+        # only where a value matches the variable's own _FillValue.
+        path = self._write(tmp_path, with_3d=True, with_lad=True)
+        with Dataset(path) as nc:
+            assert np.ma.getmaskarray(nc.variables["buildings_2d"][:]).tolist() == [[True, False]]
+            assert np.ma.getmaskarray(nc.variables["building_id"][:]).tolist() == [[True, False]]
+            assert np.ma.getmaskarray(nc.variables["building_type"][:]).tolist() == [[True, False]]
+            assert np.ma.getmaskarray(nc.variables["vegetation_type"][:]).tolist() == [[False, True]]
+            assert np.ma.getmaskarray(nc.variables["soil_type"][:]).tolist() == [[False, True]]
+            sf_mask = np.ma.getmaskarray(nc.variables["surface_fraction"][:])
+            assert sf_mask[:, 0, 0].tolist() == [False, False, False]
+            assert sf_mask[:, 0, 1].tolist() == [True, True, True]
+            lad_mask = np.ma.getmaskarray(nc.variables["lad"][:])
+            assert lad_mask[:, 0, 0].tolist() == [False, False]
+            assert lad_mask[:, 0, 1].tolist() == [True, True]
+
+
+def _write_sample_driver(tmp_path, with_3d=True, with_lad=True):
+    """Write a small static driver exercising every field, for tests that
+    need a real file on disk without going through TestWriter's own
+    fixture method (kept separate so TestWriter's given _write stays
+    untouched -- see Task 9's Step 1 test block)."""
+    fields = _valid_fields()
+    if with_3d:
+        b3d = np.zeros((2, 1, 2), dtype=np.int8)
+        b3d[:, 0, 1] = 1
+        fields["buildings_3d"] = b3d
+    if with_lad:
+        fields["lad"] = np.full((2, 1, 2), FILL_FLOAT, dtype=np.float32)
+        fields["lad"][:, 0, 0] = [0.0, 1.0]
+    coords = {
+        "x": np.array([1.0, 3.0], dtype=np.float32),
+        "y": np.array([1.0], dtype=np.float32),
+    }
+    if with_3d:
+        coords["z"] = np.array([1.0, 3.0], dtype=np.float32)
+    if with_lad:
+        coords["zlad"] = np.array([0.0, 1.0], dtype=np.float32)
+    attrs = {
+        "Conventions": "CF-1.7",
+        "origin_time": "2000-01-01 00:00:00 +00",
+        "origin_lon": 139.7, "origin_lat": 35.68,
+        "origin_x": 382000.0, "origin_y": 3949000.0,
+        "origin_z": 0.0, "rotation_angle": 0.0,
+    }
+    path = tmp_path / "dom_static"
+    _write_static_driver(path, fields, coords, attrs)
+    return path
+
+
+class TestWriterFieldSpecs:
+    """Drive dtype/_FillValue/dims/units/long_name/lod assertions directly
+    off _FIELD_SPECS, the same table _write_static_driver iterates (see
+    the field-declaration consolidation) -- so a new field, or a changed
+    declaration for an existing one, cannot ship without its on-disk
+    contract being pinned. test_variable_attributes and
+    test_dims_dtypes_and_fills above spot-check a hand-picked subset
+    (originally ~10 of ~30 (variable, attribute) pairs, missing long_name
+    for 5 of the 11 fields entirely); this is exhaustive over all 11
+    fields x 5 properties by construction, not by manual upkeep.
+    """
+
+    @pytest.mark.parametrize("name", sorted(_FIELD_SPECS))
+    def test_field_matches_its_spec(self, tmp_path, name):
+        spec = _FIELD_SPECS[name]
+        path = _write_sample_driver(tmp_path)
+        with Dataset(path) as nc:
+            nc.set_auto_mask(False)
+            var = nc.variables[name]
+            assert var.dtype == np.dtype(spec.nc_type)
+            assert var.dimensions == spec.dims
+            assert var._FillValue == np.dtype(spec.nc_type).type(spec.fill)
+            assert var.units == spec.units
+            assert var.long_name == spec.long_name
+            if spec.lod is not None:
+                assert var.lod == spec.lod
+            else:
+                assert not hasattr(var, "lod")
+
+    def test_coordinate_and_index_variable_dtypes(self, tmp_path):
+        # _FIELD_SPECS covers the 11 data fields; x/y/z/zlad and
+        # nsurface_fraction are structurally different (dimension-
+        # defining coordinate/index variables built by the separate
+        # coord()/nsf special-case code, not the write() loop) and so
+        # were never in scope for that table -- but their on-disk dtype
+        # was just as unpinned.
+        path = _write_sample_driver(tmp_path)
+        with Dataset(path) as nc:
+            nc.set_auto_mask(False)
+            for name in ("x", "y", "z", "zlad"):
+                assert nc.variables[name].dtype == np.float32
+                assert nc.variables[name].units == "m"
+            assert nc.variables["nsurface_fraction"].dtype == np.int32
+
+    def test_file_format_is_netcdf4(self, tmp_path):
+        path = _write_sample_driver(tmp_path)
+        with Dataset(path) as nc:
+            assert nc.data_model == "NETCDF4"
+
 
 class TestWriterAttrsGuard:
     def test_none_valued_attr_is_skipped(self, tmp_path):
@@ -1653,6 +1761,58 @@ class TestWriterAttrsGuard:
         with Dataset(path) as nc:
             assert "author" not in nc.ncattrs()
             assert nc.Conventions == "CF-1.7"
+
+
+class TestWriterCompression:
+    def test_compression_enabled_and_shrinks_a_sparse_array(self, tmp_path):
+        # Measured independently (see the commit message): a 50x200x200
+        # buildings_3d array with one small contiguous building block is
+        # ~1961 KiB uncompressed and ~13 KiB with zlib's default
+        # complevel=4 -- real buildings_3d arrays are exactly this
+        # profile (overwhelmingly zero) and real domains are larger, so
+        # this is not a synthetic worst case. This array must be large
+        # enough that its own compressed size dominates the file (fixed
+        # per-file/per-variable netCDF4 overhead from the other ten
+        # small fields written alongside it, ~40 KiB, would otherwise
+        # swamp the comparison at a much smaller array size).
+        fields = _valid_fields()
+        nz, ny, nx = 50, 150, 150
+        b3d = np.zeros((nz, ny, nx), dtype=np.int8)
+        b3d[:5, 10:13, 10:13] = 1  # one small contiguous "building"
+        fields["buildings_2d"] = np.full((ny, nx), FILL_FLOAT, dtype=np.float32)
+        fields["buildings_2d"][10:13, 10:13] = 5.0
+        fields["building_id"] = np.full((ny, nx), FILL_INT, dtype=np.int32)
+        fields["building_id"][10:13, 10:13] = 1
+        fields["building_type"] = np.full((ny, nx), FILL_BYTE, dtype=np.int8)
+        fields["building_type"][10:13, 10:13] = 3
+        fields["vegetation_type"] = np.full((ny, nx), FILL_BYTE, dtype=np.int8)
+        fields["pavement_type"] = np.full((ny, nx), FILL_BYTE, dtype=np.int8)
+        fields["water_type"] = np.full((ny, nx), FILL_BYTE, dtype=np.int8)
+        fields["soil_type"] = np.full((ny, nx), FILL_BYTE, dtype=np.int8)
+        fields["surface_fraction"] = np.full((3, ny, nx), FILL_FLOAT, dtype=np.float32)
+        fields["zt"] = np.zeros((ny, nx), dtype=np.float32)
+        fields["buildings_3d"] = b3d
+        coords = {
+            "x": np.arange(nx, dtype=np.float32),
+            "y": np.arange(ny, dtype=np.float32),
+            "z": np.arange(nz, dtype=np.float32),
+        }
+        attrs = {"Conventions": "CF-1.7"}
+        path = tmp_path / "dom_static"
+        _write_static_driver(path, fields, coords, attrs)
+
+        raw_size = b3d.nbytes  # nz*ny*nx bytes, uncompressed int8 data
+        on_disk = path.stat().st_size
+        assert on_disk < raw_size / 5, (
+            f"expected substantial compression on a sparse array: "
+            f"{on_disk} bytes on disk vs {raw_size} bytes of raw data"
+        )
+
+        with Dataset(path) as nc:
+            assert nc.variables["buildings_3d"].filters()["zlib"] is True
+            nc.set_auto_mask(False)
+            assert (nc.variables["buildings_3d"][:5, 10:13, 10:13] == 1).all()
+            assert (nc.variables["buildings_3d"][5:, :, :] == 0).all()
 
 
 class TestWriterOverwrite:

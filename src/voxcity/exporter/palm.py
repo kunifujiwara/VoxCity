@@ -790,8 +790,6 @@ def _validate_static_fields(fields):
         )
 
 
-
-
 def _write_static_driver(path, fields, coords, attrs):
     """Write the PIDS static driver NetCDF file (NETCDF4 format).
 
@@ -823,7 +821,7 @@ def _write_static_driver(path, fields, coords, attrs):
         nsf[:] = [IDX_VEGETATION, IDX_PAVEMENT, IDX_WATER]
 
         def write(name, data, dims, dtype, fill, **var_attrs):
-            var = nc.createVariable(name, dtype, dims, fill_value=fill)
+            var = nc.createVariable(name, dtype, dims, fill_value=fill, zlib=True)
             var[:] = data
             for k, v in var_attrs.items():
                 setattr(var, k, v)
