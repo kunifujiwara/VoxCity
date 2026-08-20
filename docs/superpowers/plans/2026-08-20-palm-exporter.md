@@ -674,12 +674,27 @@ def _clean_heights(heights):
 def _to_level(value, meshsize):
     """Convert a height in meters to a voxel level index.
 
-    Uses the voxelizer's own rounding (voxelizer.py:_flatten_building_segments
-    uses ``int(seg[0] * inv_vs + 0.5)``): ``int(value / meshsize + 0.5)``.
-    Every height-to-level conversion in this module routes through here so
+    Uses the same rounding rule as the voxelizer
+    (voxelizer.py:_flatten_building_segments uses
+    ``int(seg[0] * inv_vs + 0.5)``): ``int(value / meshsize + 0.5)``. Every
+    height-to-level conversion in this module routes through here so
     nz-sizing and slice bounds are derived from one rounding rule.
     """
     return int(float(value) / meshsize + 0.5)
+
+
+def _clean_segment_bound(value):
+    """A single LOD2 segment bound with NaN/inf treated as ground level (0.0).
+
+    Segment bounds are otherwise the one input in this module not routed
+    through finite-cleaning (heights via _clean_heights, ids via
+    nan_to_num in _build_buildings): without this, _segment_top_m would
+    silently drop a non-finite bound to 0 while _build_buildings_3d's
+    _to_level call on the same raw value raised ValueError/OverflowError --
+    the two builders disagreeing about whether the segment exists.
+    """
+    v = float(value)
+    return v if np.isfinite(v) else 0.0
 
 
 def _segment_top_m(min_heights, shape):
@@ -700,9 +715,11 @@ def _segment_top_m(min_heights, shape):
                 continue
             cell_top = 0.0
             for seg in segs:
-                # Floor at 0: a segment entirely below ground (seg[1] <= 0)
-                # must not register as a building with a negative height.
-                t = max(0.0, float(seg[1]))
+                # The max(0.0, ...) is redundant with the cell_top = 0.0
+                # initialization above (t > cell_top already excludes any
+                # t <= 0, so cell_top can never go negative either way);
+                # kept so the floor survives a refactor of this loop.
+                t = max(0.0, _clean_segment_bound(seg[1]))
                 if t > cell_top:
                     cell_top = t
             top[i, j] = cell_top
@@ -743,10 +760,11 @@ def _build_buildings(heights, ids, building_type, mask, segment_top_m):
     repaired = mask & (segment_top_m > h)
     n_repaired = int(repaired.sum())
     if n_repaired:
-        _logger.info(
+        max_discrepancy = float((segment_top_m[repaired] - h[repaired]).max())
+        _logger.warning(
             f"{n_repaired} cell(s) had LOD2 segment geometry taller than "
             "the recorded LOD1 height; buildings_2d was raised to match "
-            "(orphan-segment repair)."
+            f"(orphan-segment repair) (max discrepancy {max_discrepancy:.1f} m)."
         )
 
     if ids is None:
@@ -816,19 +834,21 @@ def _build_buildings_3d(heights, min_heights, meshsize, mask, segment_top_m):
             filled = False
             if segs:
                 for seg in segs:
-                    # Clamp both bounds to [0, nz] independently: an
-                    # unclamped k0 lets a below-ground minimum wrap to the
-                    # top of the column via negative-index slicing, and an
-                    # unclamped k1 lets a fully-below-ground segment (both
-                    # bounds negative) spuriously fill from level 0 up to a
-                    # wrapped stop index -- the `k1 > k0` check below is what
-                    # then makes such a segment a no-op instead.
-                    k0 = max(0, min(_to_level(seg[0], meshsize), nz))
-                    k1 = max(0, min(_to_level(seg[1], meshsize), nz))
+                    # Clamp both bounds to [0, nz] independently -- see
+                    # TestBuildBuildings3d.test_negative_segment_min_clamps_to_ground
+                    # and .test_fully_below_ground_segment_does_not_spuriously_fill
+                    # for the negative-index wraparound this avoids.
+                    k0 = max(0, min(_to_level(_clean_segment_bound(seg[0]), meshsize), nz))
+                    k1 = max(0, min(_to_level(_clean_segment_bound(seg[1]), meshsize), nz))
                     if k1 > k0:
                         b3d[k0:k1, i, j] = 1
                         filled = True
-            elif h[i, j] > 0.0:
+            if not filled and h[i, j] > 0.0:
+                # Segments present but none of them filled (e.g. all
+                # entirely below ground) must still fall back to extrusion
+                # from heights, the same as a cell with no segments at all --
+                # otherwise a recorded LOD1 height is silently dropped in
+                # favor of the forced single-level fill below.
                 top_level = _to_level(h[i, j], meshsize)
                 if top_level > 0:
                     b3d[:top_level, i, j] = 1
@@ -1097,15 +1117,29 @@ def _build_lad(canopy_top, canopy_bottom, meshsize, lad_value, building_mask):
 
     Returns (lad, zlad) or (None, None) when no canopy remains.
     """
-    top = np.nan_to_num(np.asarray(canopy_top, dtype=np.float64), nan=0.0)
+    # posinf/neginf -> 0.0 (treated as "no canopy here"), matching
+    # _clean_heights and the ids cleaning in _build_buildings: an infinite
+    # top left unsanitized would otherwise reach int(np.ceil(...)) below and
+    # raise OverflowError.
+    top = np.nan_to_num(
+        np.asarray(canopy_top, dtype=np.float64), nan=0.0, posinf=0.0, neginf=0.0
+    )
     top = np.where(np.asarray(building_mask, dtype=bool), 0.0, top)
-    bottom = np.nan_to_num(np.asarray(canopy_bottom, dtype=np.float64), nan=0.0)
+    bottom = np.nan_to_num(
+        np.asarray(canopy_bottom, dtype=np.float64), nan=0.0, posinf=0.0, neginf=0.0
+    )
     bottom = np.clip(bottom, 0.0, top)
 
     max_top = float(top.max()) if top.size else 0.0
     if max_top <= 0.0:
         return None, None
 
+    # Cell-centre convention (palm_csd), not the edge convention _to_level
+    # implements: level k covers a slab centred on (k - 0.5) * dz, so the
+    # centre count is ceil(max_top / dz - 0.5), not the int(x / dz + 0.5)
+    # nearest-edge rounding used everywhere else in this module. This is a
+    # genuinely different rule, not an inline duplicate of _to_level's -- do
+    # not "fix" it to route through _to_level.
     n_centres = max(int(np.ceil(max_top / meshsize - 0.5)), 1)
     zlad = np.concatenate(
         ([0.0], (np.arange(1, n_centres + 1) - 0.5) * meshsize)
