@@ -2379,6 +2379,99 @@ git add src/voxcity/exporter/palm.py tests/test_exporter_palm.py
 git commit -m "test(palm): pin the orchestrator parameter surface and sentinel precedence"
 ```
 
+- [x] **Step 9 (second post-review amendment): mutation-testing gaps in the
+  builder-to-writer assembly step**
+
+A mutation-testing pass (76 mutants, 42% survival) found the gap the wiring
+tests didn't reach: the flat `attrs` dict, derived coordinates, and a few
+remaining unchecked user inputs -- confirmed as real defects (not just
+missing coverage) for four of them, split into two commits per the review's
+own request.
+
+**Behaviour commit** (`bda4224`) -- four real defects, fixed:
+- `building_type`/`soil_type`/`under_tree_vegetation_type` outside their
+  PIDS range, and a negative/non-finite `lad`, reached
+  `_validate_static_fields` and raised `RuntimeError` (exporter-is-broken)
+  for what was actually bad user input; `building_type=200` specifically
+  raised a raw `OverflowError` from the `np.int8` cast. All now raise
+  `ValueError` from a new `_check_export_inputs` (the pre-check block
+  extracted into its own function, since it is the one part of
+  `export_palm` with an independently testable contract).
+- `meshsize=0` raised `ZeroDivisionError`; `meshsize<0` exported
+  "successfully" with negative coordinates. Both now raise `ValueError`.
+- `buildings_3d="yes"`/`"Auto"`/`1` silently exported with no 3D mask and no
+  warning. Now validated against exactly `True`/`False`/`"auto"` via
+  `isinstance(x, bool)` -- NOT `x in (True, False, "auto")`, which would
+  have silently accepted `buildings_3d=1` too (`1 == True`); confirmed
+  directly before switching to the `isinstance` form.
+- A failed write no longer destroys a prior good file: `export_palm` writes
+  to a temp sibling and `os.replace()`s it into place only on success,
+  instead of writing `Dataset(out_path, "w")` directly (which truncates its
+  target immediately).
+
+**Test commit** (`f1cffd6`) -- coverage only, no behavior change:
+- `TestExportPalmGlobalAttributes`: the entire PIDS global-attribute block
+  was unpinned, including `origin_x`/`origin_y` (swapping them relocates
+  the PALM domain by ~3.5 million metres for the Tokyo fixture and passed
+  all 177 prior tests -- the adjacent `origin_lon`/`origin_lat` swap WAS
+  already caught, which is what made this look like an oversight).
+  Parametrized against an independently computed
+  `Transformer.from_crs(...).transform(...)` value, plus a completeness
+  check over every attribute actually present in the file.
+- `z`'s own coordinate values were pinned (only the dimension's existence
+  was checked before, despite `z`/`zlad` deliberately using different
+  vertical conventions).
+- `make_city` gained a `with_orphan_segment` flag and a dedicated test: the
+  shared `building_mask`/`segment_top_m` predicate had no end-to-end test,
+  since every existing fixture building already had height >= its segment
+  top.
+- `TestExportPalmShapePreChecksParametrized`: parametrizes over
+  `_SHAPE_CHECKED_GRID_ACCESSORS` (introduced by the behaviour commit's
+  pre-check extraction) instead of one-off tests, closing a 2-of-6 gap
+  (`land_cover`, `canopy_top` had no dedicated shape-mismatch test at all).
+- Cheap items: `test_registered_in_package` now checks
+  `ex.export_palm is export_palm`, not just `__all__` membership (dropping
+  the name from `palm.py`'s own `__all__` survived without this, since
+  `exporter/__init__.py`'s `__all__` is a separate hardcoded literal); a
+  named `_DEFAULT_TRUNK_HEIGHT_RATIO` constant asserted directly; the
+  `'Standard'` land-cover fallback and `city.extras or {}`/`is None`
+  guards; `canopy_present`'s `nan_to_num` sanitization; `city.tree_canopy
+  is None`; `makedirs` keyed on `out_path.parent` (fixes `domain_name`
+  containing a path separator); and a `PalmExporter` docstring correction.
+
+Two vacuity gaps were caught and fixed while tamper-verifying the test
+commit's own new tests, before either commit landed:
+- A `NaN`-based canopy-top test for the `nan_to_num` sanitization passed
+  even with the sanitization removed, because `np.nan > 0.0` is already
+  `False` in plain numpy -- the test could not distinguish "sanitized" from
+  "no-op". Replaced with `+inf` (`np.inf > 0.0` is `True`), which does
+  distinguish the two.
+- A `land_cover`-shape mutation in the parametrized shape-check test was
+  masked by a coincidentally-overlapping error message from an unrelated
+  downstream guard (`_build_surface_types`' own internal shape check, whose
+  message happens to contain the substring `land_cover_grid`). Tightened
+  the match pattern from the bare grid name to the pre-check's own exact
+  `"<name> grid shape"` prefix.
+
+Every tamper used a file-based patcher (the `Edit` tool plus `cp`/`diff`
+snapshot-and-restore) rather than shell-quoted `sed`, per the review's own
+finding that `conda run` silently rejects arguments containing newlines and
+the working tree is CRLF against LF-oriented shell tooling.
+
+Result: `tests/test_exporter_palm.py` -- 221 passed (194 after the
+behaviour commit + 27 more in the test commit). Full fast suite
+(`tests/ -m "not slow and not integration and not gee"`) -- 4 failed (the
+same pre-existing, unrelated failures), 2868 passed, 10 skipped, 5
+deselected. `ruff check src` clean throughout.
+
+```powershell
+git add src/voxcity/exporter/palm.py tests/test_exporter_palm.py
+git commit -m "fix(palm): reject invalid class codes, meshsize, and buildings_3d values; make writes atomic"
+# then, after restoring the remaining coverage-only changes:
+git add src/voxcity/exporter/palm.py tests/test_exporter_palm.py
+git commit -m "test(palm): pin the global-attribute block, z coordinates, and segment_top_m wiring"
+```
+
 
 ### Task 11: Final verification
 
@@ -2387,15 +2480,17 @@ git commit -m "test(palm): pin the orchestrator parameter surface and sentinel p
 - [x] **Step 1: Run the whole fast test suite**
 
 Run: `& "C:\Users\kunih\miniconda3\Scripts\conda.exe" run -n voxcity python -m pytest tests/ -m "not slow and not integration and not gee" -q`
-Result: `4 failed, 2810 passed, 10 skipped, 5 deselected`. The 4 failures are
-exactly the pre-existing, unrelated ones measured before this unit started
+Result (re-run after Step 9's mutation-testing fixes, since items in the
+behaviour commit changed production code paths): `4 failed, 2868 passed, 10
+skipped, 5 deselected`. The 4 failures are exactly the pre-existing,
+unrelated ones measured before this unit started
 (`tests/importer/test_voxelize_meshlib.py::test_meshlib_matches_trimesh_on_cube`,
 and three in `tests/test_readme_demo_gif.py`: `test_parse_args_overrides`,
 `test_parse_args_webp_overrides`, `test_download_maps_align_with_voxel_footprint`)
-— no fifth failure appeared. The pass count is higher than the
-pre-work baseline (2672) because Units 1-5 and this unit's own 18 new tests
-both landed on this branch since that baseline was measured; the fixed
-4-failure set is what was being checked here, not the raw pass count.
+— no fifth failure appeared. The pass count keeps climbing across
+verification rounds (2672 baseline -> 2810 -> 2868) purely because tests
+keep landing on this branch; the fixed 4-failure set is what was being
+checked at every round, not the raw pass count.
 
 - [x] **Step 2: Verify the module imports cleanly from the package root**
 
