@@ -648,9 +648,12 @@ class TestBuildBuildings3d:
             heights, mh, meshsize=2.0, segment_top_m=segment_top_m, building_mask=mask
         )
         assert b3d.dtype == np.int8
-        assert b3d.shape == (5, 1, 2)  # nz = round(10/2)
+        # zu levels [0, 1, 3, 5, 7, 9]: surface + 5 centres (10 m at dz=2)
+        assert b3d.shape == (6, 1, 2)
         col = b3d[:, 0, 0]
-        assert list(col) == [0, 0, 1, 1, 1]  # levels 2..4 filled
+        # segment [4, 10] contains zu heights 5, 7, 9 -> levels 3..5; the
+        # surface and the 1/3 m levels stay open (air under the overhang)
+        assert list(col) == [0, 0, 0, 1, 1, 1]
         assert (b3d[:, 0, 1] == 0).all()
 
     def test_extrusion_fallback_when_no_segments(self):
@@ -660,7 +663,8 @@ class TestBuildBuildings3d:
         b3d = _build_buildings_3d(
             heights, mh, meshsize=2.0, segment_top_m=segment_top_m, building_mask=mask
         )
-        assert list(b3d[:, 0, 0]) == [1, 1, 1]
+        # zu levels [0, 1, 3, 5] all lie at or below the 6 m top
+        assert list(b3d[:, 0, 0]) == [1, 1, 1, 1]
 
     def test_multiple_disjoint_segments_leave_a_real_gap(self):
         # A bridge/overhang case: two segments in one cell with empty space
@@ -672,7 +676,9 @@ class TestBuildBuildings3d:
         b3d = _build_buildings_3d(
             heights, mh, meshsize=2.0, segment_top_m=segment_top_m, building_mask=mask
         )
-        assert list(b3d[:, 0, 0]) == [1, 1, 0, 0, 1, 1]
+        # zu levels [0, 1, 3, 5, 7, 9, 11]: [0, 4] holds 0/1/3, [8, 12]
+        # holds 9/11, and the 5/7 m levels in between stay open
+        assert list(b3d[:, 0, 0]) == [1, 1, 1, 0, 0, 1, 1]
 
     def test_segment_extending_above_heights_grows_nz_instead_of_truncating(self):
         # A segment's upper bound (20 m) exceeds heights.max() (5 m). nz is
@@ -685,14 +691,18 @@ class TestBuildBuildings3d:
         b3d = _build_buildings_3d(
             heights, mh, meshsize=2.0, segment_top_m=segment_top_m, building_mask=mask
         )
-        assert b3d.shape == (10, 1, 1)  # nz from the segment top (20/2=10), not heights.max()
-        assert list(b3d[:, 0, 0]) == [1] * 10
+        # 10 centres from the segment top (20 m at dz=2), not heights.max(),
+        # plus the surface level
+        assert b3d.shape == (11, 1, 1)
+        assert list(b3d[:, 0, 0]) == [1] * 11
 
-    def test_negative_segment_min_clamps_to_ground(self):
-        # A segment starting below ground (e.g. CityGML LOD2 geometry dipping
-        # below the terrain datum) must clamp to level 0, not wrap via a
-        # negative-index slice. Unclamped: k0 = int(-6/2 + 0.5) = -2, so
-        # b3d[-2:4] would set only index 3 (wrap-around), not levels 0..3.
+    def test_negative_segment_min_starts_at_the_surface(self):
+        # A segment straddling ground (e.g. CityGML LOD2 geometry dipping
+        # below the terrain datum) marks the surface level and every zu
+        # level up to its top, and nothing above. The boolean level
+        # selection makes the old negative-index wraparound structurally
+        # impossible, but the surface-inclusion and above-top-exclusion
+        # behavior still needs pinning.
         heights = np.array([[10.0]])
         mh = _empty_min_heights(1, 1)
         mh[0, 0] = [[-6.0, 8.0]]
@@ -700,16 +710,14 @@ class TestBuildBuildings3d:
         b3d = _build_buildings_3d(
             heights, mh, meshsize=2.0, segment_top_m=segment_top_m, building_mask=mask
         )
-        assert b3d.shape == (5, 1, 1)
-        assert list(b3d[:, 0, 0]) == [1, 1, 1, 1, 0]
+        # zu levels [0, 1, 3, 5, 7, 9]: [-6, 8] holds all but the 9 m level
+        assert b3d.shape == (6, 1, 1)
+        assert list(b3d[:, 0, 0]) == [1, 1, 1, 1, 1, 0]
 
     def test_fully_below_ground_segment_does_not_spuriously_fill(self):
-        # Segment entirely below ground: seg[1] = -6.0 rounds to k1 = -2 (not
-        # -1 or 0, per int(-2.5) == -2). If k1's lower bound isn't clamped
-        # independently of k0, b3d[k0:k1] normalizes the negative stop index
-        # and spuriously fills levels 0..2 instead of contributing nothing.
-        # A second, taller building establishes nz=5 so the array is long
-        # enough for that wraparound to be visible if the clamp regresses.
+        # Segment entirely below ground contributes nothing: no zu level
+        # (all >= 0) lies within [-10, -6]. A second, taller building
+        # establishes nz=6 so any spurious fill would be visible.
         heights = np.array([[0.0, 10.0]])
         mh = _empty_min_heights(1, 2)
         mh[0, 0] = [[-10.0, -6.0]]
@@ -717,17 +725,17 @@ class TestBuildBuildings3d:
         b3d = _build_buildings_3d(
             heights, mh, meshsize=2.0, segment_top_m=segment_top_m, building_mask=mask
         )
-        assert b3d.shape == (5, 1, 2)
-        assert list(b3d[:, 0, 0]) == [0, 0, 0, 0, 0]
+        assert b3d.shape == (6, 1, 2)
+        assert list(b3d[:, 0, 0]) == [0, 0, 0, 0, 0, 0]
 
     def test_segment_present_but_unfilled_falls_back_to_extrusion(self):
         # Same fully-below-ground segment as the test above, but this time
         # heights records a real LOD1 height (10 m) for the cell. The
-        # segment loop still fills nothing (k1 <= k0 for [-10, -6]), but
-        # unlike the mask-only case above, the cell IS a building (h > 0),
-        # so it must fall back to extruding from heights instead of
-        # collapsing to the forced single-level fill -- losing 8 of the
-        # recorded 10 m would be a silent, avoidable height loss.
+        # segment loop still selects nothing for [-10, -6], but unlike the
+        # mask-only case above, the cell IS a building (h > 0), so it must
+        # fall back to extruding from heights instead of collapsing to the
+        # forced single-level fill -- losing 8 of the recorded 10 m would
+        # be a silent, avoidable height loss.
         heights = np.array([[10.0]])
         mh = _empty_min_heights(1, 1)
         mh[0, 0] = [[-10.0, -6.0]]
@@ -735,13 +743,13 @@ class TestBuildBuildings3d:
         b3d = _build_buildings_3d(
             heights, mh, meshsize=2.0, segment_top_m=segment_top_m, building_mask=mask
         )
-        assert b3d.shape == (5, 1, 1)
-        assert list(b3d[:, 0, 0]) == [1, 1, 1, 1, 1]
+        assert b3d.shape == (6, 1, 1)
+        assert list(b3d[:, 0, 0]) == [1, 1, 1, 1, 1, 1]
 
     def test_sub_voxel_building_gets_at_least_one_level(self):
-        # 0.4 m at meshsize=2.0 rounds to level 0 (an empty extrusion range)
-        # under the voxelizer's own rounding, but the mask still counts it
-        # as a building, so buildings_3d must not drop the column entirely.
+        # 0.4 m at meshsize=2.0 reaches no zu centre, but zl[0] = 0.0 means
+        # the extrusion naturally marks the surface level, so the column is
+        # never dropped.
         heights = np.array([[0.4]])
         mask, segment_top_m = _build_building_mask(heights, None)
         b3d = _build_buildings_3d(
@@ -749,6 +757,23 @@ class TestBuildBuildings3d:
         )
         assert b3d.shape[0] >= 1
         assert b3d[0, 0, 0] == 1
+
+    def test_degenerate_aloft_segment_still_gets_one_level(self):
+        # A segment sitting entirely between two zu levels ([2.5, 2.6] at
+        # dz=2 falls between the 1 m and 3 m levels) selects nothing and has
+        # no height to extrude from, yet the mask counts the cell as a
+        # building (segment_top_m = 2.6 > 0) -- the forced surface-level
+        # fill is the only thing keeping it in the LOD2 mask.
+        heights = np.array([[0.0]])
+        mh = _empty_min_heights(1, 1)
+        mh[0, 0] = [[2.5, 2.6]]
+        mask, segment_top_m = _build_building_mask(heights, mh)
+        assert mask[0, 0]
+        b3d = _build_buildings_3d(
+            heights, mh, meshsize=2.0, segment_top_m=segment_top_m, building_mask=mask
+        )
+        assert b3d[0, 0, 0] == 1
+        assert (b3d[1:, 0, 0] == 0).all()
 
     def test_none_min_heights_extrudes_from_heights_directly(self):
         # Distinct from the "no segments" tests above, which pass an object
@@ -759,7 +784,7 @@ class TestBuildBuildings3d:
         b3d = _build_buildings_3d(
             heights, None, meshsize=2.0, segment_top_m=segment_top_m, building_mask=mask
         )
-        assert list(b3d[:, 0, 0]) == [1, 1, 1]
+        assert list(b3d[:, 0, 0]) == [1, 1, 1, 1]
 
     def test_nan_height_cell_produces_empty_column(self):
         heights = np.array([[3.0, np.nan]])
@@ -777,12 +802,13 @@ class TestBuildBuildings3d:
         b3d = _build_buildings_3d(
             heights, None, meshsize=2.0, segment_top_m=segment_top_m, building_mask=mask
         )
-        assert b3d.shape == (1, 0, 3)
+        # surface level + the minimum single centre
+        assert b3d.shape == (2, 0, 3)
 
     def test_non_finite_segment_bounds_do_not_crash(self):
-        # Without _clean_segment_bound, a NaN lower bound reaching
-        # _to_level(nan, ...) raises ValueError (int(nan)) and an inf upper
-        # bound raises OverflowError (int(inf)) -- both must instead read as
+        # Without _clean_segment_bound, a NaN or inf bound reaching the
+        # level comparison would poison the selection (NaN compares False
+        # everywhere; inf selects everything) -- both must instead read as
         # ground level (0.0), matching _segment_top_m's treatment of the
         # same raw bounds (see the paired test in TestBuildingMask).
         heights = np.array([[0.0, 0.0]])
@@ -793,10 +819,12 @@ class TestBuildBuildings3d:
         b3d = _build_buildings_3d(
             heights, mh, meshsize=2.0, segment_top_m=segment_top_m, building_mask=mask
         )
-        # NaN lower bound -> ground (0): fills the full [0, 10] range
-        assert list(b3d[:, 0, 0]) == [1, 1, 1, 1, 1]
-        # inf upper bound -> ground (0): k1 == k0 == 0, no fill, and mask is
-        # False here so nothing forces a fallback level either
+        # NaN lower bound -> ground (0): fills surface + all centres <= 10
+        assert list(b3d[:, 0, 0]) == [1, 1, 1, 1, 1, 1]
+        # inf upper bound -> ground (0): the segment collapses to [0, 0],
+        # whose top is not above ground, so it is not geometry -- and the
+        # mask agrees (segment_top_m is 0 after cleaning), so the column
+        # must stay empty or it would break the presence invariant
         assert (b3d[:, 0, 1] == 0).all()
 
 
@@ -2212,17 +2240,35 @@ class TestExportPalm:
             assert b3d.lod == 2
             assert "z" in nc.dimensions
             col = b3d[:, 2, 2]
-            assert col[0] == 0 and col[1] == 0  # below the overhang
-            assert col[2] == 1                  # level 2 (4-6 m)
-            # z's own values were previously unpinned (only its dimension's
-            # existence was checked): z and zlad deliberately use different
-            # vertical conventions (z is edge-based, cell index * meshsize;
-            # zlad is cell-centre-based -- see _build_lad's docstring), so
-            # the one place the two could be confused had only one side
-            # (zlad, via test_file_contract) actually pinned to exact
-            # values. nz=5 here (heights.max()=10 and the tallest segment
-            # top 10 m both give level 5 at meshsize=2.0).
-            assert nc.variables["z"][:].tolist() == [1.0, 3.0, 5.0, 7.0, 9.0]
+            # zu levels [0, 1, 3, 5, 7, 9]: the [4, 6] overhang segment
+            # holds only the 5 m level (index 3); air below and above
+            assert list(col) == [0, 0, 0, 1, 0, 0]
+            # z must equal PALM's zu grid (surface level at 0, then cell
+            # centres) or PALM aborts on read with PAC0337 -- verified
+            # against PALM v25.04, whose topography_mod compares z against
+            # zu within 0.001 * dz. Same construction as zlad, via
+            # _zu_levels. nz = 5 centres here (heights.max() = 10 m and the
+            # tallest segment top 10 m both give 5 centres at meshsize=2.0).
+            assert nc.variables["z"][:].tolist() == [0.0, 1.0, 3.0, 5.0, 7.0, 9.0]
+
+    def test_z_and_zlad_share_the_zu_convention(self, tmp_path):
+        # PALM checks BOTH coordinates against its zu grid (surface level
+        # at 0.0, then cell centres at (k - 0.5) * dz) and aborts on
+        # mismatch, so the two must share one construction. This is the
+        # regression test for the PAC0337 rejection an actual PALM run
+        # produced: z was written as pure cell centres [1, 3, 5, ...] with
+        # no surface level while zlad was already correct.
+        out = export_palm(make_city(with_overhang=True),
+                          output_directory=str(tmp_path))
+        with Dataset(out) as nc:
+            nc.set_auto_mask(False)
+            for name in ("z", "zlad"):
+                v = nc.variables[name][:]
+                assert v[0] == 0.0, f"{name} must start at the surface (0.0)"
+                assert v[1] == pytest.approx(1.0), f"{name}[1] must be dz/2"
+                assert np.allclose(np.diff(v)[1:], 2.0), (
+                    f"{name} centres must be spaced by dz"
+                )
 
     def test_buildings_3d_forced_off(self, tmp_path):
         out = export_palm(make_city(with_overhang=True), buildings_3d=False,

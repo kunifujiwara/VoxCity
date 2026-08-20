@@ -827,12 +827,32 @@ def _has_elevated_segments(min_heights, meshsize):
     return False
 
 
+def _zu_levels(n_centres, meshsize):
+    """PALM's scalar-grid heights ``zu(0:n_centres)``: a surface level at
+    0.0, then cell centres ``(k - 0.5) * dz``.
+
+    PALM checks the static driver's ``z`` coordinate (topography_mod,
+    error PAC0337) and ``zlad`` coordinate (plant_canopy_model_mod)
+    against its own zu grid within 0.001 * dz on read and aborts on any
+    mismatch, so both coordinates must come from this one constructor.
+    Verified against PALM v25.04 and its urban_environment reference
+    static driver (z = [0, 1, 3, 5, ...] at dz = 2).
+    """
+    return np.concatenate(
+        ([0.0], (np.arange(1, n_centres + 1) - 0.5) * meshsize)
+    ).astype(np.float32)
+
+
 def _build_buildings_3d(heights, min_heights, meshsize, segment_top_m, building_mask):
     """LOD2 byte mask (z, y, x) from per-cell [min, max] segments.
 
-    Cells without segments fall back to ground extrusion from ``heights``.
-    Aligned to ``building_mask`` (see _build_building_mask): every masked
-    cell gets at least one filled level.
+    Levels follow PALM's zu grid (see _zu_levels): level 0 is the surface,
+    level k >= 1 sits at (k - 0.5) * dz. A level is building when its
+    height lies inside a segment's [min, max] -- the same "level inside
+    geometry" rule _build_lad uses for crowns. Cells without segments fall
+    back to ground extrusion from ``heights``. Aligned to
+    ``building_mask`` (see _build_building_mask): every masked cell gets
+    at least one filled level.
     """
     h = _clean_heights(heights)
     ny, nx = h.shape
@@ -843,11 +863,15 @@ def _build_buildings_3d(heights, min_heights, meshsize, segment_top_m, building_
     # _to_level is monotonic on non-negative inputs, so converting the
     # array-wide max once is equivalent to converting every segment
     # individually and taking the max of the resulting levels -- no second
-    # scan of min_heights needed here.
+    # scan of min_heights needed here. _to_level also equals the count of
+    # zu centres at or below a height ((k - 0.5) * dz <= top iff
+    # k <= top / dz + 0.5), so it doubles as the centre count here.
     segment_top_level = (
         _to_level(float(segment_top_m.max()), meshsize) if segment_top_m.size else 0
     )
-    nz = max(height_top, segment_top_level, 1)
+    n_centres = max(height_top, segment_top_level, 1)
+    zl = _zu_levels(n_centres, meshsize).astype(np.float64)
+    nz = zl.size
 
     b3d = np.zeros((nz, ny, nx), dtype=np.int8)
     for i in range(ny):
@@ -856,33 +880,49 @@ def _build_buildings_3d(heights, min_heights, meshsize, segment_top_m, building_
             filled = False
             if segs:
                 for seg in segs:
-                    # Clamp both bounds to [0, nz] independently -- see
-                    # TestBuildBuildings3d.test_negative_segment_min_clamps_to_ground
-                    # and .test_fully_below_ground_segment_does_not_spuriously_fill
-                    # for the negative-index wraparound this avoids.
-                    k0 = max(0, min(_to_level(_clean_segment_bound(seg[0]), meshsize), nz))
-                    k1 = max(0, min(_to_level(_clean_segment_bound(seg[1]), meshsize), nz))
-                    if k1 > k0:
-                        b3d[k0:k1, i, j] = 1
+                    # Boolean level selection, not index slicing: a
+                    # fully-below-ground segment selects no level and a
+                    # straddling one starts at the surface, with no
+                    # negative-index arithmetic to clamp (the wraparound
+                    # bug class the old slice-based fill needed guards
+                    # for). A segment sitting entirely between two levels
+                    # (e.g. [2.5, 2.6] at dz=2) selects nothing and falls
+                    # through to the guarantees below.
+                    lo = _clean_segment_bound(seg[0])
+                    hi = _clean_segment_bound(seg[1])
+                    if hi <= 0.0:
+                        # Mirrors _segment_top_m's contribution rule: a
+                        # segment topping out at or below ground is not
+                        # geometry, and letting it select the surface
+                        # level (zl[0] = 0.0 lies inside e.g. [-5, 0])
+                        # would fill a 3D column on a cell the shared
+                        # mask says is not a building -- breaking the
+                        # presence invariant the validator enforces.
+                        continue
+                    sel = (zl >= lo) & (zl <= hi)
+                    if sel.any():
+                        b3d[sel, i, j] = 1
                         filled = True
             if not filled and h[i, j] > 0.0:
                 # Segments present but none of them filled (e.g. all
                 # entirely below ground) must still fall back to extrusion
                 # from heights, the same as a cell with no segments at all --
                 # otherwise a recorded LOD1 height is silently dropped in
-                # favor of the forced single-level fill below.
-                top_level = _to_level(h[i, j], meshsize)
-                if top_level > 0:
-                    b3d[:top_level, i, j] = 1
-                    filled = True
+                # favor of the forced single-level fill below. zl[0] is 0.0,
+                # so any positive height marks at least the surface level.
+                b3d[zl <= h[i, j], i, j] = 1
+                filled = True
             if not filled and building_mask[i, j]:
                 # Every masked cell must end up with >=1 level: PALM treats
-                # buildings_3d as authoritative when present, so a sub-voxel
-                # building (e.g. 0.4 m at meshsize=2.0) that rounds to an
-                # empty level range must not vanish from the LOD2 mask while
-                # still holding a building_id in buildings_2d -- that would
-                # silently delete a building the user asked to export.
-                # Rounding up overstates height by less than one dz (the
+                # buildings_3d as authoritative when present, so a cell the
+                # mask counts as a building whose geometry selects no zu
+                # level (only reachable via a degenerate aloft segment
+                # sitting entirely between two levels, since any positive
+                # height already marks the surface level above) must not
+                # vanish from the LOD2 mask while still holding a
+                # building_id in buildings_2d -- that would silently delete
+                # a building the user asked to export. Placing it at the
+                # surface misstates position by less than one dz (the
                 # vertical resolution limit anyway): a bounded, explainable
                 # error beats unbounded silent data loss.
                 b3d[0, i, j] = 1
@@ -1199,16 +1239,14 @@ def _build_lad(canopy_top, canopy_bottom, meshsize, lad_value, building_mask):
     if max_top <= 0.0:
         return None, None
 
-    # Cell-centre convention (palm_csd), not the edge convention _to_level
-    # implements: level k covers a slab centred on (k - 0.5) * dz, so the
-    # centre count is ceil(max_top / dz - 0.5), not the int(x / dz + 0.5)
-    # nearest-edge rounding used everywhere else in this module. This is a
-    # genuinely different rule, not an inline duplicate of _to_level's -- do
-    # not "fix" it to route through _to_level.
+    # zu-grid convention (see _zu_levels), not the edge convention _to_level
+    # implements: level k sits at height (k - 0.5) * dz, so the centre
+    # count is ceil(max_top / dz - 0.5), not the int(x / dz + 0.5)
+    # nearest-edge rounding used for slab sizing elsewhere. This is a
+    # genuinely different rule, not an inline duplicate of _to_level's --
+    # do not "fix" it to route through _to_level.
     n_centres = max(int(np.ceil(max_top / meshsize - 0.5)), 1)
-    zlad = np.concatenate(
-        ([0.0], (np.arange(1, n_centres + 1) - 0.5) * meshsize)
-    ).astype(np.float32)
+    zlad = _zu_levels(n_centres, meshsize)
 
     ny, nx = top.shape
     lad = np.full((zlad.size, ny, nx), FILL_FLOAT, dtype=np.float32)
@@ -1227,6 +1265,15 @@ def _build_lad(canopy_top, canopy_bottom, meshsize, lad_value, building_mask):
         col[in_crown] = np.float32(lad_value)
         lad[:, i, j] = col
     return lad, zlad
+
+
+# Single source of truth for every static-driver field: the validator
+# asserts dtype from this table, the writer takes dims/fill/units/
+# long_name/lod from it too, so the two can no longer independently
+# drift. nc_type is a netCDF4 createVariable type code, and numpy
+# understands the same codes (np.dtype("f4") == float32, "i4" == int32,
+# "b" == int8), so it also serves as the expected in-memory dtype.
+_FieldSpec = namedtuple("_FieldSpec", "dims nc_type fill units long_name lod optional")
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**

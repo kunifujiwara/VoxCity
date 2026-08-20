@@ -81,9 +81,20 @@ Internal structure, top to bottom of the module:
 - Dimensions `x`, `y`; coordinate variables are cell centers
   `(index + 0.5) * meshsize`, `dx = dy = dz = meshsize` (uniform, from
   `city.voxels.meta.meshsize`).
-- `z` (for `buildings_3d`) and `zlad` (for `lad`) are cell-center height
-  coordinates. Per PIDS, `zlad` covers ground to the highest canopy layer; `z`
-  covers ground to the highest building layer.
+- `z` (for `buildings_3d`) and `zlad` (for `lad`) both follow PALM's zu-grid
+  convention: a surface level at 0.0, then cell centres `(k - 0.5) * dz` —
+  one shared constructor (`_zu_levels`) produces both. This is a hard PALM
+  requirement, not a style choice: PALM compares each coordinate against its
+  own `zu` grid within `0.001 * dz` on read (`topography_mod`, error
+  PAC0337, and `plant_canopy_model_mod`) and aborts on mismatch. Verified
+  against a real PALM v25.04 run: an earlier draft wrote `z` as pure cell
+  centres `[1, 3, 5, ...]` with no surface level and PALM rejected the file
+  at topography setup. A `buildings_3d` level is set when its zu height lies
+  inside a building segment's `[min, max]` — the same "level inside
+  geometry" rule the LAD field uses for crowns, matching the reference
+  driver's convention (a 10 m building at dz = 2 is `[1,1,1,1,1,1]`:
+  surface + centres 1..9 m). `zlad` covers ground to the highest canopy
+  layer; `z` covers ground to the highest building layer.
 - Global attributes actually written: `Conventions = "CF-1.7"`, `title`,
   `source = "VoxCity"`, `origin_time`, `creation_time`, `origin_lon`,
   `origin_lat`, `origin_x`, `origin_y`, `origin_z`, `rotation_angle`,
@@ -295,7 +306,35 @@ the cityles/envimet tests):
 - `_p3d` namelist, dynamic driver, `palm_csd`-style child domains / nesting.
 - Street types (`street_type`), surface albedo/emissivity pars
   (`building_pars`, `vegetation_pars`, ...), water temperature pars.
-- Running PALM itself within this implementation; automated validation is
-  format-level plus encoded consistency rules. A real PALM run on an exported
-  static driver is planned as a follow-up end-to-end validation once the
-  exporter lands — findings from that run feed back as fixes/tests here.
+- Running PALM inside the automated test suite; automated validation is
+  format-level plus encoded consistency rules.
+
+## End-to-end PALM validation (performed 2026-08-21)
+
+The planned real-PALM validation was carried out against **PALM v25.04**
+(WSL2 Ubuntu, gfortran + OpenMPI + netCDF-Fortran, `palmrun -X4`) using a
+synthetic 20x20-cell city exported by `export_palm` (four building blocks,
+an elevated walkway, roads, a water pond, a plaza, street trees, sloped
+terrain) and a minimal `_p3d` namelist (no dynamic driver, clear-sky
+radiation, LSM + USM + plant canopy from file).
+
+**It caught one real bug**: the `z` coordinate was written as pure cell
+centres `[1, 3, 5, ...]`, and PALM aborted at topography setup with error
+PAC0337 — its `topography_mod` requires `z` to equal PALM's own zu grid
+(surface level 0.0, then centres) within `0.001 * dz`. `zlad` already
+used the correct convention. Fixed by giving both coordinates one shared
+constructor (`_zu_levels`) and rebuilding the LOD2 mask on zu levels
+(a level is building when its height lies inside a segment), matching the
+reference driver's convention. See the grid-geometry section above.
+
+After the fix, PALM ran the case to completion (27 timesteps, t = 20 s,
+exit 0) and the output was checked against the input city:
+
+- `u` is topography-masked inside the 18 m building and ~2 m/s above roof.
+- `pcm_lad` has exactly 36 nonzero cells = 12 trees x 3 crown levels, at
+  the exported LAD value 1.0; the header shows the canopy profile
+  `[0.00, 1.00, 1.00, 1.00]` read from file.
+- Surface temperatures order physically (water 283.9 K coolest, road
+  288.9 K, plaza 289.1 K, grass 289.9 K warmest at summer noon +20 s), so
+  the corrected `pavement_type` codes and the water classification reach
+  PALM's energy balance as intended.
