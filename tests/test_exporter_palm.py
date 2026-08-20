@@ -2355,3 +2355,117 @@ class TestExportPalmAdditionalShapeChecks:
             export_palm(make_city(), canopy_bottom_height_grid=np.zeros((2, 2)),
                         output_directory=str(tmp_path))
         assert list(tmp_path.iterdir()) == []
+
+
+class TestExportPalmUserInputValueChecks:
+    """building_type/soil_type/under_tree_vegetation_type/lad/meshsize/
+    buildings_3d previously escaped the ValueError pre-check boundary
+    entirely: an out-of-range class code either reached
+    _validate_static_fields (a RuntimeError telling the user the exporter
+    itself is broken, when they typed the bad value) or, for
+    building_type=200 specifically, raised a raw OverflowError from the
+    np.int8 cast -- exactly the class of confusing failure the pre-check
+    block exists to eliminate. meshsize=0 raised ZeroDivisionError and
+    meshsize<0 exported "successfully" with negative coordinates.
+    """
+
+    @pytest.mark.parametrize("kwarg, value", [
+        ("building_type", 99),
+        ("building_type", 200),   # the exact OverflowError case reported
+        ("building_type", 0),     # below range, not just above
+        ("soil_type", 99),
+        ("under_tree_vegetation_type", 99),
+    ])
+    def test_out_of_range_class_code_raises_value_error(self, tmp_path, kwarg, value):
+        with pytest.raises(ValueError, match=f"{kwarg}={value}"):
+            export_palm(make_city(), output_directory=str(tmp_path), **{kwarg: value})
+        assert list(tmp_path.iterdir()) == []
+
+    def test_negative_lad_raises(self, tmp_path):
+        with pytest.raises(ValueError, match="lad"):
+            export_palm(make_city(), output_directory=str(tmp_path), lad=-1.0)
+        assert list(tmp_path.iterdir()) == []
+
+    def test_non_finite_lad_raises(self, tmp_path):
+        with pytest.raises(ValueError, match="lad"):
+            export_palm(make_city(), output_directory=str(tmp_path), lad=float("nan"))
+        assert list(tmp_path.iterdir()) == []
+
+    def test_zero_meshsize_raises_instead_of_zero_division(self, tmp_path):
+        city = make_city()
+        city.voxels.meta.meshsize = 0.0
+        with pytest.raises(ValueError, match="meshsize"):
+            export_palm(city, output_directory=str(tmp_path))
+        assert list(tmp_path.iterdir()) == []
+
+    def test_negative_meshsize_raises_instead_of_exporting(self, tmp_path):
+        city = make_city()
+        city.voxels.meta.meshsize = -2.0
+        with pytest.raises(ValueError, match="meshsize"):
+            export_palm(city, output_directory=str(tmp_path))
+        assert list(tmp_path.iterdir()) == []
+
+    @pytest.mark.parametrize("bad_value", ["yes", "Auto", "AUTO", 1, 0])
+    def test_unrecognised_buildings_3d_value_raises(self, tmp_path, bad_value):
+        # 1 and 0 specifically: `buildings_3d in (True, False, "auto")`
+        # would silently accept both (bool is an int subtype, so 1 == True
+        # and 0 == False) -- confirmed directly before this was written as
+        # an isinstance-based check instead. Without the fix, buildings_3d
+        #="yes"/"Auto" already export with no 3D mask and no warning
+        # (`"Auto" is True` is False), directly contradicting the loud-
+        # failure stance PalmExporter's own docstring argues for.
+        with pytest.raises(ValueError, match="buildings_3d"):
+            export_palm(make_city(), output_directory=str(tmp_path),
+                        buildings_3d=bad_value)
+        assert list(tmp_path.iterdir()) == []
+
+    def test_valid_buildings_3d_values_still_work(self, tmp_path):
+        # Sanity check alongside the invalid-value tests above: True,
+        # False, and "auto" must NOT raise.
+        for value in (True, False, "auto"):
+            out_dir = tmp_path / str(value)
+            export_palm(make_city(), output_directory=str(out_dir),
+                        buildings_3d=value)  # must not raise
+
+
+class TestExportPalmAtomicWrite:
+    """netCDF4's Dataset(path, "w") truncates its target immediately, so a
+    failure partway through a re-export would previously destroy a
+    previously-valid, stable <domain_name>_static file -- replacing good
+    data with something that opens cleanly as NetCDF4 but has zero
+    variables. export_palm now writes to a temp sibling and os.replace()s
+    it into place only on success.
+    """
+
+    def test_failed_write_does_not_destroy_existing_good_file(self, tmp_path, monkeypatch):
+        good_out = export_palm(make_city(), output_directory=str(tmp_path))
+        original_bytes = Path(good_out).read_bytes()
+
+        def crash_mid_write(path, fields, coords, attrs):
+            # Simulates netCDF4 crashing after creating the file but before
+            # finishing writing it -- the exact failure mode the reviewer
+            # reproduced (a 3 KB file that opens as valid, empty NetCDF4).
+            Path(path).write_bytes(b"garbage-partial-write")
+            raise RuntimeError("simulated mid-write crash")
+
+        monkeypatch.setattr(palm_module, "_write_static_driver", crash_mid_write)
+        with pytest.raises(RuntimeError, match="simulated mid-write crash"):
+            export_palm(make_city(), output_directory=str(tmp_path))
+
+        # The previously-written good file must be completely untouched.
+        assert Path(good_out).read_bytes() == original_bytes
+        # No stray temp file left behind either.
+        assert list(Path(tmp_path).glob("*.tmp")) == []
+
+    def test_failed_write_on_first_export_leaves_no_stray_file(self, tmp_path, monkeypatch):
+        # Same crash, but with no prior good file: the directory must end
+        # up completely clean, not holding a partial/garbage file under
+        # the final <domain_name>_static name or any temp name.
+        def crash_mid_write(path, fields, coords, attrs):
+            Path(path).write_bytes(b"garbage-partial-write")
+            raise RuntimeError("simulated mid-write crash")
+
+        monkeypatch.setattr(palm_module, "_write_static_driver", crash_mid_write)
+        with pytest.raises(RuntimeError, match="simulated mid-write crash"):
+            export_palm(make_city(), output_directory=str(tmp_path))
+        assert list(tmp_path.iterdir()) == []

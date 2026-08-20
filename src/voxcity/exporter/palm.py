@@ -841,6 +841,116 @@ def _write_static_driver(path, fields, coords, attrs):
 
 _TRUNK_RATIO_SENTINEL = object()  # internal sentinel -- never pass this
 
+# (name, accessor) pairs for every grid export_palm must shape-check
+# against building heights before any builder runs. A single source of
+# truth for _check_export_inputs' named_grids loop below, so a newly
+# added grid is covered by construction rather than by remembering to
+# add an `if x is not None: named_grids[...] = x` line. accessor takes
+# (city, canopy_bottom_height_grid) and returns the grid or None (grid
+# absent -- nothing to check).
+_SHAPE_CHECKED_GRID_ACCESSORS = (
+    ("land_cover", lambda city, _cbhg: city.land_cover.classes),
+    ("dem", lambda city, _cbhg: city.dem.elevation),
+    ("canopy_top", lambda city, _cbhg: (
+        city.tree_canopy.top if city.tree_canopy is not None else None)),
+    ("buildings.ids", lambda city, _cbhg: city.buildings.ids),
+    ("buildings.min_heights", lambda city, _cbhg: city.buildings.min_heights),
+    ("canopy_bottom_height_grid", lambda _city, cbhg: cbhg),
+)
+
+
+def _check_export_inputs(city, meshsize, building_type, soil_type,
+                          under_tree_vegetation_type, lad, buildings_3d,
+                          canopy_bottom_height_grid):
+    """Validate export_palm's user-supplied inputs before any builder runs.
+
+    Every failure here is a ValueError naming the offending input: bad user
+    data, not an exporter bug (contrast _validate_static_fields, whose
+    failures are always exporter bugs -- see its own docstring). This
+    function has no side effects (no I/O, no mutation of its arguments):
+    it only raises or returns, so it is independently testable without
+    exercising the rest of export_palm.
+
+    Left unchecked, each of these fails somewhere confusing instead of
+    naming the offending input -- confirmed directly: a mismatched
+    buildings.ids raises a raw numpy broadcast ValueError inside
+    _build_buildings; a mismatched buildings.min_heights or
+    canopy_bottom_height_grid each raise IndexError (not even ValueError)
+    deep inside _build_buildings_3d/_build_lad's per-cell loops; an
+    out-of-range building_type/soil_type/under_tree_vegetation_type either
+    raises OverflowError (np.int8 cast) or reaches
+    _validate_static_fields, producing a RuntimeError that tells the user
+    the exporter is broken when they typed the bad value; meshsize=0
+    raises ZeroDivisionError inside _to_level, and meshsize<0 exports
+    "successfully" with negative coordinates and a negative dx. A
+    mismatched zt specifically would otherwise pass _validate_static_fields
+    silently, since that function only checks zt for finiteness/minimum,
+    never against the other fields' shapes.
+
+    Returns (rect, extras, heights, shape, ids, min_heights, canopy_top).
+    """
+    extras = city.extras or {}
+    rect = extras.get("rectangle_vertices")
+    if rect is None:
+        raise ValueError(
+            "city.extras['rectangle_vertices'] is required for PALM export "
+            "(georeferencing); refusing to write an unreferenced static driver"
+        )
+
+    heights = city.buildings.heights
+    shape = heights.shape
+    ids = city.buildings.ids
+    min_heights = city.buildings.min_heights
+    canopy_top = city.tree_canopy.top if city.tree_canopy is not None else None
+
+    named_grids = {}
+    for name, accessor in _SHAPE_CHECKED_GRID_ACCESSORS:
+        grid = accessor(city, canopy_bottom_height_grid)
+        if grid is not None:
+            named_grids[name] = grid
+    for name, grid in named_grids.items():
+        if grid.shape != shape:
+            raise ValueError(
+                f"{name} grid shape {grid.shape} does not match building "
+                f"heights shape {shape}"
+            )
+    if city.voxels.classes.shape[:2] != shape:
+        raise ValueError(
+            f"voxel grid horizontal shape {city.voxels.classes.shape[:2]} "
+            f"does not match building heights shape {shape}"
+        )
+
+    if not (np.isfinite(meshsize) and meshsize > 0):
+        raise ValueError(f"meshsize must be a positive, finite number, got {meshsize}")
+
+    for name, value in (
+        ("building_type", building_type),
+        ("soil_type", soil_type),
+        ("under_tree_vegetation_type", under_tree_vegetation_type),
+    ):
+        # under_tree_vegetation_type is a vegetation_type value by PIDS
+        # definition (see _build_surface_types), so it shares that range.
+        lo, hi = BYTE_RANGES["vegetation_type" if name == "under_tree_vegetation_type"
+                              else name]
+        if not (lo <= value <= hi):
+            raise ValueError(
+                f"{name}={value} is outside the valid PIDS class range [{lo}, {hi}]"
+            )
+
+    if not (np.isfinite(lad) and lad >= 0):
+        raise ValueError(f"lad must be a finite, non-negative number, got {lad}")
+
+    # isinstance(..., bool), not `buildings_3d in (True, False, "auto")`:
+    # `in` compares with `==`, and bool is an int subtype, so 1 == True and
+    # 0 == False -- an `in`-based check would silently accept
+    # buildings_3d=1 (confirmed: it did, before this was caught).
+    if not (isinstance(buildings_3d, bool) or buildings_3d == "auto"):
+        raise ValueError(
+            f"buildings_3d must be True, False, or 'auto', got {buildings_3d!r}"
+        )
+
+    return rect, extras, heights, shape, ids, min_heights, canopy_top
+
 
 def export_palm(city: VoxCity,
                 output_directory: str = "output/palm",
@@ -912,61 +1022,27 @@ def export_palm(city: VoxCity,
     Raises
     ------
     ValueError
-        For bad user input, checked before anything is written to disk:
-        a missing ``city.extras['rectangle_vertices']``, or a 2D grid
-        (land cover, DEM, canopy top) or the voxel grid's horizontal
-        shape disagreeing with the building heights grid's shape.
+        For bad user input, checked before anything is written to disk
+        (see _check_export_inputs): a missing
+        ``city.extras['rectangle_vertices']``; a 2D grid (land cover, DEM,
+        canopy top, buildings.ids, buildings.min_heights,
+        canopy_bottom_height_grid) or the voxel grid's horizontal shape
+        disagreeing with the building heights grid's shape; a non-positive
+        or non-finite *meshsize*; *building_type*/*soil_type*/
+        *under_tree_vegetation_type* outside their PIDS class range
+        (``BYTE_RANGES``); a negative or non-finite *lad*; or a
+        *buildings_3d* value other than ``True``/``False``/``"auto"``.
     RuntimeError
         If the assembled fields fail PALM's documented consistency rules
         (see _validate_static_fields) -- an exporter bug rather than a
-        user-data problem, also raised before anything is written.
+        user-data problem (every user-input violation above is a
+        ValueError instead), also raised before anything is written.
     """
-    extras = city.extras or {}
-    rect = extras.get("rectangle_vertices")
-    if rect is None:
-        raise ValueError(
-            "city.extras['rectangle_vertices'] is required for PALM export "
-            "(georeferencing); refusing to write an unreferenced static driver"
-        )
-
-    heights = city.buildings.heights
-    shape = heights.shape
-    ids = city.buildings.ids
-    min_heights = city.buildings.min_heights
-    canopy_top = city.tree_canopy.top if city.tree_canopy is not None else None
-    # ValueError pre-checks run before anything downstream (including
-    # _validate_static_fields): a shape mismatch here is bad user input, not
-    # an exporter bug, and left unchecked each one fails somewhere confusing
-    # instead of naming the offending grid -- confirmed directly for all
-    # three optional grids below: buildings.ids raises a raw numpy broadcast
-    # ValueError inside _build_buildings, buildings.min_heights and
-    # canopy_bottom_height_grid both raise IndexError (not even ValueError)
-    # deep inside _build_buildings_3d/_build_lad's per-cell loops. A
-    # mismatched zt specifically would otherwise pass validation silently,
-    # since _validate_static_fields only checks zt for finiteness/minimum,
-    # never against the other fields' shapes.
-    named_grids = {"land_cover": city.land_cover.classes, "dem": city.dem.elevation}
-    if canopy_top is not None:
-        named_grids["canopy_top"] = canopy_top
-    if ids is not None:
-        named_grids["buildings.ids"] = ids
-    if min_heights is not None:
-        named_grids["buildings.min_heights"] = min_heights
-    if canopy_bottom_height_grid is not None:
-        named_grids["canopy_bottom_height_grid"] = canopy_bottom_height_grid
-    for name, grid in named_grids.items():
-        if grid.shape != shape:
-            raise ValueError(
-                f"{name} grid shape {grid.shape} does not match building "
-                f"heights shape {shape}"
-            )
-    if city.voxels.classes.shape[:2] != shape:
-        raise ValueError(
-            f"voxel grid horizontal shape {city.voxels.classes.shape[:2]} "
-            f"does not match building heights shape {shape}"
-        )
-
     meshsize = float(city.voxels.meta.meshsize)
+    rect, extras, heights, shape, ids, min_heights, canopy_top = _check_export_inputs(
+        city, meshsize, building_type, soil_type, under_tree_vegetation_type,
+        lad, buildings_3d, canopy_bottom_height_grid,
+    )
     land_cover_source = land_cover_source or extras.get("land_cover_source", "Standard")
     _logger.info(f"Exporting PALM static driver (source: {land_cover_source})")
 
@@ -1080,7 +1156,23 @@ def export_palm(city: VoxCity,
     # makedirs the output location before writing for the same reason.
     os.makedirs(output_directory, exist_ok=True)
     out_path = Path(output_directory) / f"{domain_name}_static"
-    _write_static_driver(out_path, fields, coords, attrs)
+
+    # Write to a temp sibling and rename into place on success, rather than
+    # writing out_path directly: netCDF4's Dataset(path, "w") truncates the
+    # target immediately, so a failure partway through a re-export would
+    # otherwise destroy a previously valid, stable <domain_name>_static
+    # file that users re-export to repeatedly -- replacing good data with
+    # a file that opens cleanly as NetCDF4 but has zero variables.
+    # os.replace only ever swaps in a completely-written file, and is
+    # atomic on both POSIX and Windows for a same-directory rename.
+    tmp_out_path = out_path.with_name(out_path.name + ".tmp")
+    try:
+        _write_static_driver(tmp_out_path, fields, coords, attrs)
+    except Exception:
+        if tmp_out_path.exists():
+            tmp_out_path.unlink()
+        raise
+    os.replace(tmp_out_path, out_path)
 
     _logger.info(
         f"PALM static driver written: {out_path} "
