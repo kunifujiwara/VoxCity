@@ -59,3 +59,38 @@ class TestMappingTables:
         assert OSM_CLASS_TO_PALM["Water"] == ("water", 1)
         assert OSM_CLASS_TO_PALM["Building"] == ("building", None)
         assert URBANWATCH_CLASS_TO_PALM["Sea"] == ("water", 3)
+
+
+from voxcity.exporter.palm import (
+    _get_source_name_mapping,
+    _build_index_to_palm_map,
+    DEFAULT_ASSIGNMENT,
+)
+
+
+class TestSourceResolution:
+    def test_known_sources(self):
+        assert _get_source_name_mapping('OpenStreetMap') is OSM_CLASS_TO_PALM
+        assert _get_source_name_mapping('Standard') is OSM_CLASS_TO_PALM
+        assert _get_source_name_mapping('Urbanwatch') is URBANWATCH_CLASS_TO_PALM
+        assert _get_source_name_mapping('OpenEarthMapJapan') is OEMJ_CLASS_TO_PALM
+        assert _get_source_name_mapping('ESA WorldCover') is ESA_CLASS_TO_PALM
+        assert _get_source_name_mapping('ESRI 10m Annual Land Cover') is ESRI_CLASS_TO_PALM
+        assert _get_source_name_mapping('Dynamic World V1') is DYNAMIC_WORLD_CLASS_TO_PALM
+
+    def test_unknown_source_falls_back_to_osm(self):
+        assert _get_source_name_mapping('SomeUnknownSource') is OSM_CLASS_TO_PALM
+
+    def test_index_map_osm(self):
+        index_to_assignment, class_names = _build_index_to_palm_map('OpenStreetMap')
+        # OSM raw order: 0 Bareland ... 5 Tree ... 8 Water, 11 Road, 12 Building
+        assert class_names[0] == 'Bareland'
+        assert index_to_assignment[0] == ('vegetation', 1)
+        assert index_to_assignment[5] == ('vegetation', 7)
+        assert index_to_assignment[8] == ('water', 1)
+        assert index_to_assignment[11] == ('pavement', 1)
+        assert index_to_assignment[12] == ('building', None)
+
+    def test_index_map_unknown_source_uses_osm_names(self):
+        index_to_assignment, class_names = _build_index_to_palm_map('Nope')
+        assert index_to_assignment[0] == ('vegetation', 1)

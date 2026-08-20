@@ -145,3 +145,48 @@ DYNAMIC_WORLD_CLASS_TO_PALM = {
 
 # Fallback assignment when a raw index has no name entry
 DEFAULT_ASSIGNMENT = ('vegetation', 3)
+
+
+def _get_source_name_mapping(land_cover_source):
+    """Return the class-name -> (category, PALM code) table for a source."""
+    if land_cover_source in ('OpenStreetMap', 'Standard'):
+        return OSM_CLASS_TO_PALM
+    if land_cover_source == 'Urbanwatch':
+        return URBANWATCH_CLASS_TO_PALM
+    if land_cover_source == 'OpenEarthMapJapan':
+        return OEMJ_CLASS_TO_PALM
+    if land_cover_source == 'ESA WorldCover':
+        return ESA_CLASS_TO_PALM
+    if land_cover_source == 'ESRI 10m Annual Land Cover':
+        return ESRI_CLASS_TO_PALM
+    if land_cover_source == 'Dynamic World V1':
+        return DYNAMIC_WORLD_CLASS_TO_PALM
+    _logger.warning(
+        f"Unknown land cover source {land_cover_source!r}; "
+        "falling back to the OpenStreetMap/Standard mapping"
+    )
+    return OSM_CLASS_TO_PALM
+
+
+def _build_index_to_palm_map(land_cover_source):
+    """Map raw per-source 0-based index -> (category, PALM code).
+
+    Uses the source's class-name order from get_land_cover_classes, exactly
+    like the CityLES exporter. Unknown sources use the OSM name list so raw
+    indices still resolve deterministically.
+    """
+    try:
+        from ..utils.lc import get_land_cover_classes
+        class_dict = get_land_cover_classes(land_cover_source)
+        class_names = list(class_dict.values()) if class_dict else []
+    except Exception:
+        class_names = []
+    if not class_names:
+        from ..utils.lc import get_land_cover_classes
+        class_names = list(get_land_cover_classes('OpenStreetMap').values())
+
+    name_to_assignment = _get_source_name_mapping(land_cover_source)
+    index_to_assignment = {}
+    for idx, class_name in enumerate(class_names):
+        index_to_assignment[idx] = name_to_assignment.get(class_name, DEFAULT_ASSIGNMENT)
+    return index_to_assignment, class_names
