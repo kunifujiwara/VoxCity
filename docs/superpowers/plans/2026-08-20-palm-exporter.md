@@ -1341,32 +1341,38 @@ Expected: FAIL — ImportError
 - [ ] **Step 3: Implement**
 
 Superseded during implementation (see the "REQUIRED CHANGES" this task actually
-shipped with): the LOD1/LOD2 presence check below is bidirectional across all
-four of buildings_3d/buildings_2d/building_id/building_type (not the
-one-directional `col & ~bld` check originally sketched here), and every
-field's dtype is asserted explicitly. Append to `src/voxcity/exporter/palm.py`:
+shipped with, and the subsequent spec-review fixup rounds): the LOD1/LOD2
+presence check is bidirectional across all four of
+buildings_3d/buildings_2d/building_id/building_type (not the one-directional
+`col & ~bld` check originally sketched here), those two presence directions
+run unconditionally (not only when buildings_3d is present), every field's
+dtype is asserted from a single `_FIELD_SPECS` table shared with the writer
+(not two independent per-field dtype dicts), and buildings_2d/surface_fraction
+carry their own extra checks (NaN/inf, leading-dimension-3). Append to
+`src/voxcity/exporter/palm.py`:
 
 ```python
-# dtype the writer must produce for each field (see _write_static_driver):
-# an int8<->int16 slip here is a silently non-PIDS-conformant file (`byte`
-# vs `short`), so this is asserted explicitly rather than left to the
-# writer's netCDF4 calls to fail loudly (they wouldn't -- netCDF4 happily
-# casts on write).
-_REQUIRED_DTYPES = {
-    "zt": np.float32,
-    "buildings_2d": np.float32,
-    "surface_fraction": np.float32,
-    "building_id": np.int32,
-    "building_type": np.int8,
-    "vegetation_type": np.int8,
-    "pavement_type": np.int8,
-    "water_type": np.int8,
-    "soil_type": np.int8,
-}
-# Optional fields (may be None): checked only when present.
-_OPTIONAL_DTYPES = {
-    "buildings_3d": np.int8,
-    "lad": np.float32,
+# Single source of truth for every static-driver field: the validator
+# asserts dtype from this table, the writer takes dims/fill/units/
+# long_name/lod from it too, so the two can no longer independently
+# drift. nc_type is a netCDF4 createVariable type code, and numpy
+# understands the same codes (np.dtype("f4") == float32, "i4" == int32,
+# "b" == int8), so it also serves as the expected in-memory dtype.
+_FieldSpec = namedtuple("_FieldSpec", "dims nc_type fill units long_name lod optional")
+
+_FIELD_SPECS = {
+    "zt": _FieldSpec(("y", "x"), "f4", FILL_FLOAT, "m", "terrain height", None, False),
+    "buildings_2d": _FieldSpec(("y", "x"), "f4", FILL_FLOAT, "m", "building height", 1, False),
+    "building_id": _FieldSpec(("y", "x"), "i4", FILL_INT, "1", "building id numbers", None, False),
+    "building_type": _FieldSpec(("y", "x"), "b", FILL_BYTE, "1", "building type classification", None, False),
+    "vegetation_type": _FieldSpec(("y", "x"), "b", FILL_BYTE, "1", "vegetation type classification", None, False),
+    "pavement_type": _FieldSpec(("y", "x"), "b", FILL_BYTE, "1", "pavement type classification", None, False),
+    "water_type": _FieldSpec(("y", "x"), "b", FILL_BYTE, "1", "water type classification", None, False),
+    "soil_type": _FieldSpec(("y", "x"), "b", FILL_BYTE, "1", "soil type classification", 1, False),
+    "surface_fraction": _FieldSpec(
+        ("nsurface_fraction", "y", "x"), "f4", FILL_FLOAT, "1", "surface fraction", None, False),
+    "buildings_3d": _FieldSpec(("z", "y", "x"), "b", FILL_BYTE, "1", "building structure in 3d", 2, True),
+    "lad": _FieldSpec(("zlad", "y", "x"), "f4", FILL_FLOAT, "m2 m-3", "leaf area density", None, True),
 }
 
 
@@ -1375,20 +1381,57 @@ def _validate_static_fields(fields):
 
     A violation is an exporter bug (the builders should never produce one),
     so this raises RuntimeError rather than silently correcting.
+
+    Enforced:
+    - Every field's in-memory dtype matches its _FIELD_SPECS declaration
+      (the same table _write_static_driver writes from).
+    - zt is finite, and its minimum is (within 1e-4 m) exactly 0.
+    - buildings_2d is finite: a NaN/inf height is otherwise invisible to
+      every rule below it -- `bld = buildings_2d != FILL_FLOAT` is True
+      for NaN (NaN != anything is True), so a non-finite height silently
+      counts as "this cell is a building" and would go on to satisfy
+      every downstream presence rule rather than getting caught.
+    - Every non-building cell has exactly one of vegetation_type/
+      pavement_type/water_type set; every building cell has none.
+    - soil_type is set exactly where vegetation_type or pavement_type is,
+      in both directions.
+    - surface_fraction has exactly 3 leading slices (vegetation/pavement/
+      water) and sums to 1 on every classified cell.
+    - Every building cell has a building_id and a building_type, and,
+      unconditionally (not only when buildings_3d is present -- the
+      buildings_3d="auto" default means most exports never build one),
+      neither is set on a non-building cell.
+    - Byte-coded fields (BYTE_RANGES) fall within their documented PIDS
+      class range, both bounds.
+    - When buildings_3d is present, its per-cell column presence agrees
+      with buildings_2d/building_id/building_type in both directions.
+      This deliberately never compares magnitudes: a buildings_2d height
+      may legitimately exceed a shorter 3D column's top (e.g. 20 m next
+      to a single [0, 4] segment is valid LOD2 data).
+    - lad values (where not fill) are finite and non-negative.
+
+    Deliberately not enforced here (spec's validation section lists both;
+    neither is silently dropped):
+    - "LAD values only within [bottom, top] layers": this function
+      receives only the final lad array, not the canopy top/bottom inputs
+      _build_lad placed it from, so it has no independent reference to
+      re-derive the expected layer range against -- that placement is
+      _build_lad's own contract, not something a downstream consumer of
+      its output can re-verify.
     """
     problems = []
 
-    for name, dtype in _REQUIRED_DTYPES.items():
-        arr = fields[name]
-        if arr.dtype != dtype:
+    for name, spec in _FIELD_SPECS.items():
+        if spec.optional:
+            arr = fields.get(name)
+            if arr is None:
+                continue
+        else:
+            arr = fields[name]
+        expected_dtype = np.dtype(spec.nc_type)
+        if arr.dtype != expected_dtype:
             problems.append(
-                f"{name} has dtype {arr.dtype}, expected {np.dtype(dtype)}"
-            )
-    for name, dtype in _OPTIONAL_DTYPES.items():
-        arr = fields.get(name)
-        if arr is not None and arr.dtype != dtype:
-            problems.append(
-                f"{name} has dtype {arr.dtype}, expected {np.dtype(dtype)}"
+                f"{name} has dtype {arr.dtype}, expected {expected_dtype}"
             )
 
     zt = fields["zt"]
@@ -1397,10 +1440,16 @@ def _validate_static_fields(fields):
     elif abs(float(zt.min())) > 1e-4:
         problems.append(f"zt minimum is {float(zt.min())}, expected 0")
 
+    b2d_raw = fields["buildings_2d"]
+    if not np.isfinite(b2d_raw).all():
+        problems.append("buildings_2d contains non-finite values")
+
     veg = fields["vegetation_type"] != FILL_BYTE
     pav = fields["pavement_type"] != FILL_BYTE
     wat = fields["water_type"] != FILL_BYTE
-    bld = fields["buildings_2d"] != np.float32(FILL_FLOAT)
+    bld = b2d_raw != np.float32(FILL_FLOAT)
+    has_id = fields["building_id"] != FILL_INT
+    has_type = fields["building_type"] != FILL_BYTE
 
     n_types = veg.astype(int) + pav.astype(int) + wat.astype(int)
     if (n_types[~bld] != 1).any():
@@ -1413,14 +1462,28 @@ def _validate_static_fields(fields):
         problems.append("soil_type must be set exactly where vegetation or pavement is")
 
     sf = fields["surface_fraction"]
+    if sf.shape[0] != 3:
+        problems.append(
+            f"surface_fraction leading dimension must be 3, got {sf.shape[0]}"
+        )
     classified = veg | pav | wat
     if classified.any() and not np.allclose(sf.sum(axis=0)[classified], 1.0):
         problems.append("surface_fraction must sum to 1 on classified cells")
 
-    if (bld & (fields["building_id"] == FILL_INT)).any():
+    # Both id/type presence directions are checked unconditionally (not
+    # only inside the buildings_3d block below): a stray building_id or
+    # building_type on a non-building cell is just as invalid whether or
+    # not a 3D mask happens to be present, and buildings_3d="auto" means
+    # most exports never build one -- LOD1-only is the common path, not
+    # an edge case, so this cannot be deferred to the buildings_3d branch.
+    if (bld & ~has_id).any():
         problems.append("building cells missing building_id")
-    if (bld & (fields["building_type"] == FILL_BYTE)).any():
+    if (bld & ~has_type).any():
         problems.append("building cells missing building_type")
+    if (~bld & has_id).any():
+        problems.append("building_id present on a non-building cell")
+    if (~bld & has_type).any():
+        problems.append("building_type present on a non-building cell")
 
     for name, (lo, hi) in BYTE_RANGES.items():
         arr = fields[name]
@@ -1438,8 +1501,6 @@ def _validate_static_fields(fields):
     b3d = fields.get("buildings_3d")
     if b3d is not None:
         col = b3d.astype(bool).any(axis=0)
-        has_id = fields["building_id"] != FILL_INT
-        has_type = fields["building_type"] != FILL_BYTE
         presence_checks = (
             (col & ~bld, "buildings_3d column present without a buildings_2d height"),
             (bld & ~col, "buildings_2d height present without a buildings_3d column"),
@@ -1473,8 +1534,15 @@ bidirectional presence directions, via a `_presence_fields(bld, col,
 has_id, has_type)` helper), `TestValidatorAgainstRealBuilders` (builds
 fields from the real `_build_*` functions for a small synthetic city and
 asserts the validator accepts them, proving builders and validator agree),
-and `TestValidatorLadRange` (the `lad` negative/non-finite rule had no
-coverage in the original Step-1 block).
+`TestValidatorLadRange` (the `lad` negative/non-finite rule had no
+coverage in the original Step-1 block), `TestValidatorRemainingRuleDirections`
+(zt non-finite, the building_type twin of test_building_without_id_fails,
+both directions of soil coverage and of the exactly-one-surface-type rule,
+and the BYTE_RANGES lower bound -- all found with zero coverage by a later
+spec-review pass), `TestValidatorBuildings2dFinite`,
+`TestValidatorStrayPresenceWithoutBuildings3d`, `TestValidatorZtTolerance`
+(pins the 1e-4 constant itself, not just "some threshold"),
+`TestValidatorErrorAggregation`, and `TestValidatorSurfaceFractionShape`.
 
 - [ ] **Step 4: Run tests to verify they pass**
 
@@ -1592,8 +1660,14 @@ anywhere in this package, so there is no import-time cost to avoid and no
 existing deferred-import pattern to match: `voxcity/exporter/netcdf.py` never
 imports `netCDF4` directly at all (it defers the *optional* `xarray`
 dependency behind a `try/except`, and only ever names `netcdf4` as a string
-passed to `xr.Dataset.to_netcdf(engine=...)`), so it is not the precedent this
-task originally assumed it was. Append to `src/voxcity/exporter/palm.py`:
+passed to `xr.Dataset.to_netcdf(engine=...)`, so it is not the precedent this
+task originally assumed it was. The per-field `write()` calls are also
+superseded: they are a loop over the `_FIELD_SPECS` table defined in Task 8
+(shared with the validator's dtype check, closing a defect spec review found:
+the writer's per-field dtype was an independent literal for 5 of 11 fields,
+connected to nothing the validator checked), and `zlib=True` compression was
+added to the `write()` helper (measured ~150x smaller on a realistic sparse
+`buildings_3d` array). Append to `src/voxcity/exporter/palm.py`:
 
 ```python
 def _write_static_driver(path, fields, coords, attrs):
@@ -1627,41 +1701,22 @@ def _write_static_driver(path, fields, coords, attrs):
         nsf[:] = [IDX_VEGETATION, IDX_PAVEMENT, IDX_WATER]
 
         def write(name, data, dims, dtype, fill, **var_attrs):
-            var = nc.createVariable(name, dtype, dims, fill_value=fill)
+            var = nc.createVariable(name, dtype, dims, fill_value=fill, zlib=True)
             var[:] = data
             for k, v in var_attrs.items():
                 setattr(var, k, v)
 
-        yx = ("y", "x")
-        write("zt", fields["zt"], yx, "f4", np.float32(FILL_FLOAT),
-              units="m", long_name="terrain height")
-        write("buildings_2d", fields["buildings_2d"], yx, "f4",
-              np.float32(FILL_FLOAT), units="m", long_name="building height",
-              lod=np.int32(1))
-        write("building_id", fields["building_id"], yx, "i4", np.int32(FILL_INT),
-              units="1", long_name="building id numbers")
-        write("building_type", fields["building_type"], yx, "b",
-              np.int8(FILL_BYTE), units="1", long_name="building type classification")
-        write("vegetation_type", fields["vegetation_type"], yx, "b",
-              np.int8(FILL_BYTE), units="1", long_name="vegetation type classification")
-        write("pavement_type", fields["pavement_type"], yx, "b",
-              np.int8(FILL_BYTE), units="1", long_name="pavement type classification")
-        write("water_type", fields["water_type"], yx, "b",
-              np.int8(FILL_BYTE), units="1", long_name="water type classification")
-        write("soil_type", fields["soil_type"], yx, "b",
-              np.int8(FILL_BYTE), units="1", long_name="soil type classification",
-              lod=np.int32(1))
-        write("surface_fraction", fields["surface_fraction"],
-              ("nsurface_fraction", "y", "x"), "f4", np.float32(FILL_FLOAT),
-              units="1", long_name="surface fraction")
-        if fields.get("buildings_3d") is not None:
-            write("buildings_3d", fields["buildings_3d"], ("z", "y", "x"), "b",
-                  np.int8(FILL_BYTE), units="1",
-                  long_name="building structure in 3d", lod=np.int32(2))
-        if fields.get("lad") is not None:
-            write("lad", fields["lad"], ("zlad", "y", "x"), "f4",
-                  np.float32(FILL_FLOAT), units="m2 m-3",
-                  long_name="leaf area density")
+        # Declared from the same _FIELD_SPECS table the validator's dtype
+        # check reads (defined above _validate_static_fields).
+        for name, spec in _FIELD_SPECS.items():
+            data = fields.get(name) if spec.optional else fields[name]
+            if data is None:
+                continue
+            var_attrs = {"units": spec.units, "long_name": spec.long_name}
+            if spec.lod is not None:
+                var_attrs["lod"] = np.int32(spec.lod)
+            fill = np.dtype(spec.nc_type).type(spec.fill)
+            write(name, data, spec.dims, spec.nc_type, fill, **var_attrs)
 ```
 
 Note, corrected during implementation: `var.set_auto_mask(False)` at *write*
@@ -1687,12 +1742,23 @@ fill placement, not just structure/dtypes), `test_variable_attributes`
 reads `lod` to decide how to interpret buildings), `test_reopenable_and_
 self_consistent` (`nsurface_fraction`'s own values match `IDX_*`, coordinate
 values round-trip, and a second independent `Dataset` handle can open the
-file), and a `TestWriterOverwrite` class pinning that re-writing the same
+file), a `TestWriterOverwrite` class pinning that re-writing the same
 path truncates stale content (a leftover `lad` variable from an earlier
 export does not survive a re-export that no longer has canopy) -- the
 decision from the design's open question on overwrite behavior: truncate,
 matching every other exporter in this package (`cityles.py`'s `open(filename,
-'w')` writers).
+'w')` writers) -- `TestWriterAttrsGuard` (a `None`-valued attribute must be
+skipped, not passed to `setattr`, which netCDF4 rejects outright),
+`TestWriterCompression` (pins that compression is enabled and shrinks a
+sparse array, with values round-tripping unchanged), and `TestWriterFieldSpecs`
+(parametrized over every entry in `_FIELD_SPECS`, asserting
+dtype/dims/`_FillValue`/units/long_name/lod exhaustively rather than the
+hand-picked subset `test_variable_attributes` covers, plus dtype/units for
+the coordinate/index variables outside that table and `format="NETCDF4"`
+itself) and a `test_fill_value_declared_and_observed_via_auto_mask` test on
+`TestWriter` (the round-trip test reads with auto-mask off and so cannot
+observe whether `_FillValue` is actually declared; this one leaves auto-mask
+on and asserts the returned mask lands exactly on the fill cells).
 
 - [ ] **Step 4: Run tests to verify they pass**
 
