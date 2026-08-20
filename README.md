@@ -56,7 +56,7 @@ VoxCity turns open geospatial data into a single, simulation-ready 3D voxel mode
 - 🌍 **Global by default** — automatically selects the best open data source for any location worldwide.
 - 🧱 **One integrated voxel model** — buildings, trees, land cover, and terrain fused into a single semantic 3D grid.
 - ☀️ **Built-in simulation** — solar irradiance, sky/green view index, landmark visibility, and network analysis.
-- 🔄 **Export anywhere** — ENVI-met (INX/EDB), OBJ (Blender/Rhino/Twinmotion), and MagicaVoxel (VOX).
+- 🔄 **Export anywhere** — ENVI-met (INX/EDB), PALM (NetCDF static driver), OBJ (Blender/Rhino/Twinmotion), and MagicaVoxel (VOX).
 - 🧩 **Reproducible & open** — open data with documented provenance and a peer-reviewed method.
 
 The **generator** module downloads building heights, tree canopy heights, land cover, and terrain elevation for a target area and voxelizes them into an integrated voxel city model. The **simulator** module runs environmental analyses such as solar radiation and view index. Try it in the [Google Colab Demo](https://colab.research.google.com/drive/1Lofd3RawKMr6QuUsamGaF48u2MN0hfrP?usp=sharing) or locally, and see the [documentation](https://voxcity.readthedocs.io/en/latest) for the full API reference and tutorials.
@@ -393,6 +393,28 @@ generate_edb_file(lad=envimet_kwargs["lad"])
 <p align="center">
   <em>Example Output Exported in INX and Inported in ENVI-met</em>
 </p>
+
+</details>
+
+<details>
+<summary>💨 PALM (NetCDF static driver) — LES urban-climate simulation</summary>
+
+#### PALM Static Driver Files:
+
+```python
+from voxcity.exporter.palm import export_palm
+
+# Pass the VoxCity object directly; writes <domain_name>_static to output_directory
+export_palm(
+    voxcity,
+    output_directory="output/palm",
+    domain_name="voxcity",
+    lad=1.0,              # Leaf Area Density (m2/m3) inside tree crowns
+    buildings_3d="auto",  # write the LOD2 building mask only where LOD1 can't express the geometry
+)
+```
+
+[PALM](https://palm.muk.uni-hannover.de/) is an open-source large-eddy simulation (LES) model widely used for atmospheric boundary-layer and urban-climate research. `export_palm` writes a single PIDS-conformant NetCDF `<domain_name>_static` file — terrain, buildings (2D + optional 3D), surface classification, and leaf area density — validated against PALM's documented consistency rules before it's written.
 
 </details>
 

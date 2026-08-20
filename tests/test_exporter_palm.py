@@ -2,6 +2,7 @@
 
 import logging
 import warnings
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -23,6 +24,7 @@ from voxcity.exporter.palm import (
     OEMJ_CLASS_TO_PALM,
     OSM_CLASS_TO_PALM,
     URBANWATCH_CLASS_TO_PALM,
+    PalmExporter,
     _FIELD_SPECS,
     _build_building_mask,
     _build_buildings,
@@ -36,6 +38,16 @@ from voxcity.exporter.palm import (
     _has_elevated_segments,
     _validate_static_fields,
     _write_static_driver,
+    export_palm,
+)
+from voxcity.models import (
+    BuildingGrid,
+    CanopyGrid,
+    DemGrid,
+    GridMetadata,
+    LandCoverGrid,
+    VoxCity,
+    VoxelGrid,
 )
 from voxcity.utils.lc import get_land_cover_classes
 
@@ -1848,3 +1860,271 @@ class TestWriterOverwrite:
         with Dataset(path) as nc:
             assert "lad" not in nc.variables
             assert "zlad" not in nc.dimensions
+
+
+def make_city(ny=4, nx=4, meshsize=2.0, with_overhang=False, with_canopy=True,
+              extras=None):
+    """Small synthetic VoxCity in the internal south-up orientation.
+
+    Cell layout (row, col); valid for any ny, nx >= 3:
+    - (0,0): Water, no canopy.
+    - (0,1): Road.
+    - (0,2): Tree, canopy top 6.0 m over bare ground (no building).
+    - (1,1): Building (height 10.0, id 7); also carries a canopy_top value
+      when with_canopy, which must be cleared by the building.
+    - (2,2): Building (height 6.0; LOD2 segment [4, 6] when with_overhang,
+      else [0, 6]).
+    - (ny-1, nx-1): Water WITH canopy when with_canopy -- the one cell the
+      plan's original fixture never exercised: canopy must NOT override a
+      water surface (precedence is building > canopy-over-non-water >
+      land-cover mapping; see _build_surface_types' docstring).
+    - (ny-1, :): DEM 1.5 m; 0 elsewhere.
+    """
+    meta = GridMetadata(crs="EPSG:4326",
+                        bounds=(139.7000, 35.6800, 139.7011, 35.6809),
+                        meshsize=meshsize)
+    heights = np.zeros((ny, nx))
+    heights[1, 1] = 10.0
+    heights[2, 2] = 6.0
+    ids = np.zeros((ny, nx), dtype=int)
+    ids[1, 1] = 7
+    ids[2, 2] = 8
+    min_heights = np.empty((ny, nx), dtype=object)
+    for i in range(ny):
+        for j in range(nx):
+            min_heights[i, j] = []
+    min_heights[1, 1] = [[0.0, 10.0]]
+    min_heights[2, 2] = [[4.0, 6.0]] if with_overhang else [[0.0, 6.0]]
+    land_cover = np.zeros((ny, nx), dtype=int)  # 0 = Bareland
+    land_cover[0, 0] = 8              # Water
+    land_cover[0, 1] = 11             # Road
+    land_cover[0, 2] = 5              # Tree
+    land_cover[1, 1] = 12             # Building (has height)
+    land_cover[2, 2] = 12
+    land_cover[ny - 1, nx - 1] = 8    # Water, also under canopy below
+    dem = np.zeros((ny, nx))
+    dem[ny - 1, :] = 1.5
+    canopy_top = np.zeros((ny, nx))
+    if with_canopy:
+        canopy_top[0, 2] = 6.0
+        canopy_top[1, 1] = 5.0             # over the building -> must be cleared
+        canopy_top[ny - 1, nx - 1] = 4.0   # over water -> must not override it
+    voxels = VoxelGrid(classes=np.zeros((ny, nx, 8), dtype=np.int32), meta=meta)
+    if extras is None:
+        extras = {"rectangle_vertices": RECT,
+                  "land_cover_source": "OpenStreetMap"}
+    return VoxCity(
+        voxels=voxels,
+        buildings=BuildingGrid(heights=heights, min_heights=min_heights,
+                               ids=ids, meta=meta),
+        land_cover=LandCoverGrid(classes=land_cover, meta=meta),
+        dem=DemGrid(elevation=dem, meta=meta),
+        tree_canopy=CanopyGrid(top=canopy_top, bottom=None, meta=meta),
+        extras=extras,
+    )
+
+
+class TestExportPalm:
+    def test_file_contract(self, tmp_path):
+        out = export_palm(make_city(), output_directory=str(tmp_path),
+                          domain_name="testdom")
+        path = Path(out)
+        assert path.name == "testdom_static"
+        with Dataset(path) as nc:
+            nc.set_auto_mask(False)
+            assert nc.dimensions["x"].size == 4
+            assert nc.dimensions["y"].size == 4
+            # coords are cell centres
+            assert nc.variables["x"][:].tolist() == [1.0, 3.0, 5.0, 7.0]
+            # georeference
+            assert nc.origin_lon == pytest.approx(139.7000)
+            assert nc.origin_lat == pytest.approx(35.6800)
+            assert abs(nc.rotation_angle) < 0.5
+            assert nc.origin_z == pytest.approx(0.0)
+            assert nc.origin_time == "2000-01-01 00:00:00 +00"
+            # terrain: dem row 3 = 1.5
+            assert nc.variables["zt"][3, 0] == pytest.approx(1.5)
+            # buildings
+            assert nc.variables["buildings_2d"][1, 1] == np.float32(10.0)
+            assert nc.variables["building_id"][1, 1] == 7
+            assert nc.variables["building_type"][1, 1] == 3
+            # no overhang -> LOD1 only, and no dangling z dimension left
+            # behind for a variable that was never written
+            assert "buildings_3d" not in nc.variables
+            assert "z" not in nc.dimensions
+            # surface classification
+            assert nc.variables["water_type"][0, 0] == 1
+            assert nc.variables["pavement_type"][0, 1] == 1
+            assert nc.variables["vegetation_type"][0, 2] == 3   # under canopy
+            assert nc.variables["vegetation_type"][1, 1] == FILL_BYTE
+            # lad: canopy at (0,2) top 6, default ratio 0.3 -> bottom 1.8
+            lad = nc.variables["lad"][:]
+            zlad = nc.variables["zlad"][:].tolist()
+            assert zlad == [0.0, 1.0, 3.0, 5.0]
+            assert lad[2, 0, 2] == np.float32(1.0)
+            assert lad[1, 0, 2] == np.float32(0.0)
+            # canopy over building cleared
+            assert (lad[:, 1, 1] == np.float32(FILL_FLOAT)).all()
+
+    def test_canopy_over_water_keeps_water_type(self, tmp_path):
+        # The highest-value fixture cell: (ny-1, nx-1) is both water (per
+        # land cover) and under canopy. Water must survive unchanged (Unit
+        # 4's precedence: building > canopy-over-non-water > land-cover
+        # mapping -- canopy never overrides water), while lad still
+        # represents the tree independently of the surface type below it.
+        # This is the one place the orchestrator's wiring could silently
+        # undo that deliberate physics decision.
+        out = export_palm(make_city(), output_directory=str(tmp_path))
+        with Dataset(out) as nc:
+            nc.set_auto_mask(False)
+            assert nc.variables["water_type"][3, 3] == 1
+            assert nc.variables["vegetation_type"][3, 3] == FILL_BYTE
+            assert nc.variables["soil_type"][3, 3] == FILL_BYTE
+            sf = nc.variables["surface_fraction"][:, 3, 3]
+            assert sf.tolist() == [0.0, 0.0, 1.0]
+            # lad still resolves the tree here, independently of the water
+            # surface below it.
+            assert (nc.variables["lad"][:, 3, 3] != np.float32(FILL_FLOAT)).any()
+
+    def test_exclusivity_invariant_whole_grid(self, tmp_path):
+        out = export_palm(make_city(), output_directory=str(tmp_path))
+        with Dataset(out) as nc:
+            nc.set_auto_mask(False)
+            veg = nc.variables["vegetation_type"][:] != FILL_BYTE
+            pav = nc.variables["pavement_type"][:] != FILL_BYTE
+            wat = nc.variables["water_type"][:] != FILL_BYTE
+            bld = nc.variables["buildings_2d"][:] != np.float32(FILL_FLOAT)
+            n = veg.astype(int) + pav.astype(int) + wat.astype(int)
+            assert (n[~bld] == 1).all()
+            assert (n[bld] == 0).all()
+
+    def test_buildings_3d_auto(self, tmp_path):
+        out = export_palm(make_city(with_overhang=True),
+                          output_directory=str(tmp_path))
+        with Dataset(out) as nc:
+            nc.set_auto_mask(False)
+            b3d = nc.variables["buildings_3d"]
+            assert b3d.lod == 2
+            assert "z" in nc.dimensions
+            col = b3d[:, 2, 2]
+            assert col[0] == 0 and col[1] == 0  # below the overhang
+            assert col[2] == 1                  # level 2 (4-6 m)
+
+    def test_buildings_3d_forced_off(self, tmp_path):
+        out = export_palm(make_city(with_overhang=True), buildings_3d=False,
+                          output_directory=str(tmp_path))
+        with Dataset(out) as nc:
+            assert "buildings_3d" not in nc.variables
+            assert "z" not in nc.dimensions
+
+    def test_trunk_ratio_recompute(self, tmp_path):
+        out = export_palm(make_city(), trunk_height_ratio=0.5,
+                          output_directory=str(tmp_path))
+        with Dataset(out) as nc:
+            nc.set_auto_mask(False)
+            lad = nc.variables["lad"][:]
+            # bottom = 3.0 now: z=1 below crown -> 0; z=3 in crown -> 1
+            assert lad[1, 0, 2] == np.float32(0.0)
+            assert lad[2, 0, 2] == np.float32(1.0)
+
+    def test_missing_rectangle_vertices_raises(self, tmp_path):
+        city = make_city(extras={"land_cover_source": "OpenStreetMap"})
+        with pytest.raises(ValueError, match="rectangle_vertices"):
+            export_palm(city, output_directory=str(tmp_path))
+        # The pre-check is a ValueError raised before _validate_static_fields
+        # and before the writer -- nothing must land on disk.
+        assert list(tmp_path.iterdir()) == []
+
+    def test_shape_mismatch_raises(self, tmp_path):
+        city = make_city()
+        city.dem.elevation = np.zeros((2, 2))
+        with pytest.raises(ValueError, match="shape"):
+            export_palm(city, output_directory=str(tmp_path))
+        assert list(tmp_path.iterdir()) == []
+
+    def test_voxel_grid_shape_mismatch_raises(self, tmp_path):
+        # The other half of the pre-check pair: a mismatched voxel grid
+        # horizontal shape, distinct from the 2D-grid case above.
+        city = make_city()
+        city.voxels.classes = np.zeros((2, 2, 8), dtype=np.int32)
+        with pytest.raises(ValueError, match="shape"):
+            export_palm(city, output_directory=str(tmp_path))
+        assert list(tmp_path.iterdir()) == []
+
+    def test_creates_missing_nested_output_directory(self, tmp_path):
+        # Without makedirs(..., exist_ok=True), a missing parent surfaces as
+        # netCDF4's confusing PermissionError [Errno 13] on Windows.
+        nested = tmp_path / "a" / "b" / "c"
+        assert not nested.exists()
+        out = export_palm(make_city(), output_directory=str(nested))
+        assert Path(out).exists()
+
+    def test_validator_failure_prevents_file_creation(self, tmp_path, monkeypatch):
+        # _validate_static_fields has no other caller -- this proves
+        # export_palm actually wires it in, and that a failure there runs
+        # before the writer, not just that the standalone validator raises
+        # in isolation (already covered by TestValidator).
+        def boom(fields):
+            raise RuntimeError("boom")
+
+        monkeypatch.setattr(palm_module, "_validate_static_fields", boom)
+        with pytest.raises(RuntimeError, match="boom"):
+            export_palm(make_city(), output_directory=str(tmp_path))
+        assert list(tmp_path.iterdir()) == []
+
+    def test_unexpected_keyword_raises(self, tmp_path):
+        # export_palm deliberately takes no **kwargs (see PalmExporter's
+        # docstring for the reasoning): a typo'd keyword must fail loudly
+        # rather than being silently dropped, especially with 14 parameters.
+        with pytest.raises(TypeError):
+            export_palm(make_city(), output_directory=str(tmp_path),
+                        buildings3d=True)
+
+    def test_non_square_grid_coords_and_fields_agree(self, tmp_path):
+        # ny != nx: a coordinate/field shape mix-up (e.g. sizing "x" off ny
+        # instead of nx) would slip through a square fixture unnoticed but
+        # is directly observable here.
+        out = export_palm(make_city(ny=3, nx=5), output_directory=str(tmp_path))
+        with Dataset(out) as nc:
+            nc.set_auto_mask(False)
+            assert nc.dimensions["x"].size == 5
+            assert nc.dimensions["y"].size == 3
+            assert nc.variables["x"][:].tolist() == [1.0, 3.0, 5.0, 7.0, 9.0]
+            assert nc.variables["y"][:].tolist() == [1.0, 3.0, 5.0]
+            assert nc.variables["buildings_2d"][1, 1] == np.float32(10.0)
+            assert nc.variables["buildings_2d"][2, 2] == np.float32(6.0)
+
+
+class TestPalmExporterAdapter:
+    def test_export_via_adapter(self, tmp_path):
+        exporter = PalmExporter()
+        out = exporter.export(make_city(), str(tmp_path), "mydom")
+        assert Path(out).name == "mydom_static"
+        assert Path(out).exists()
+
+    def test_rejects_non_voxcity(self, tmp_path):
+        with pytest.raises(TypeError):
+            PalmExporter().export(object(), str(tmp_path), "x")
+
+    def test_registered_in_package(self):
+        import voxcity.exporter as ex
+        assert "PalmExporter" in ex.__all__
+        assert "export_palm" in ex.__all__
+        assert ex.PalmExporter is PalmExporter
+
+    def test_forwards_kwargs_to_export_palm(self, tmp_path):
+        # Distinctive, non-default building_type (5, not the default 3)
+        # proves kwargs are actually forwarded to export_palm, not merely
+        # accepted by the adapter and dropped.
+        out = PalmExporter().export(make_city(), str(tmp_path), "mydom",
+                                    building_type=5)
+        with Dataset(out) as nc:
+            assert nc.variables["building_type"][1, 1] == 5
+
+    def test_unexpected_keyword_raises_via_adapter(self, tmp_path):
+        # PalmExporter.export's own **kwargs is pure pass-through: an
+        # unrecognised keyword must still fail (from export_palm's
+        # signature), not be silently absorbed by the adapter.
+        with pytest.raises(TypeError):
+            PalmExporter().export(make_city(), str(tmp_path), "mydom",
+                                  buildings3d=True)

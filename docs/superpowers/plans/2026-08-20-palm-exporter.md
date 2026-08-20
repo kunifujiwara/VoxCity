@@ -1781,21 +1781,61 @@ git commit -m "feat(palm): PIDS netCDF4 static driver writer"
 - Modify: `src/voxcity/exporter/__init__.py`
 - Modify: `tests/test_exporter_palm.py` (append)
 
-- [ ] **Step 1: Write failing end-to-end tests**
+**Note (post-implementation sync):** the code blocks below match what actually
+shipped. Two mismatches were found and fixed against the real, already-merged
+Units 1-5 signatures before writing any implementation code:
 
-Append to `tests/test_exporter_palm.py`:
+- `_build_buildings(heights, ids, building_type, segment_top_m, building_mask)`
+  and `_build_buildings_3d(heights, min_heights, meshsize, segment_top_m,
+  building_mask)` both take `segment_top_m` before `building_mask` — an
+  earlier draft of this task had the two reversed. Both are same-shaped
+  arrays, so the bug would not have surfaced as an import/signature error;
+  it would have silently fed the mask where the top-heights array belongs
+  (and vice versa), failing confusingly deep inside `_build_buildings`/
+  `_build_buildings_3d` or, worse, producing a subtly wrong file that still
+  passed the validator.
+- `_build_surface_types(land_cover_grid, land_cover_source, canopy_mask,
+  under_tree_vegetation_type, soil_type_code, building_mask)` — an earlier
+  draft's positional call passed `building_mask` in the `canopy_mask` slot
+  and `canopy_mask` in the `building_mask` slot, with the two int
+  parameters shifted one slot doubly wrong on top of that.
+
+Every builder call below is made with keyword arguments specifically because
+of this: reordering two same-shaped-array positional parameters is exactly
+the class of bug type checkers and normal test coverage don't reliably catch
+(see Task 10's implementation notes, and
+`tests/test_exporter_palm.py::TestExportPalm` — tampering the orchestrator
+back into positional-mismatch form was confirmed to fail 8 of that class's
+tests, including `test_canopy_over_water_keeps_water_type`).
+
+- [x] **Step 1: Write failing end-to-end tests**
+
+Append to `tests/test_exporter_palm.py` (imports hoisted to the top of the
+file per this module's "all test imports at the top" convention, not
+inlined here as originally sketched):
 
 ```python
-from voxcity.exporter.palm import export_palm, PalmExporter
-from voxcity.models import (
-    VoxCity, VoxelGrid, BuildingGrid, LandCoverGrid, DemGrid, CanopyGrid,
-    GridMetadata,
-)
-
-
 def make_city(ny=4, nx=4, meshsize=2.0, with_overhang=False, with_canopy=True,
               extras=None):
-    """Small synthetic VoxCity in the internal south-up orientation."""
+    """Small synthetic VoxCity in the internal south-up orientation.
+
+    Cell layout (row, col); valid for any ny, nx >= 3:
+    - (0,0): Water, no canopy.
+    - (0,1): Road.
+    - (0,2): Tree, canopy top 6.0 m over bare ground (no building).
+    - (1,1): Building (height 10.0, id 7); also carries a canopy_top value
+      when with_canopy, which must be cleared by the building.
+    - (2,2): Building (height 6.0; LOD2 segment [4, 6] when with_overhang,
+      else [0, 6]).
+    - (ny-1, nx-1): Water WITH canopy when with_canopy -- canopy must NOT
+      override a water surface (precedence is building > canopy-over-
+      non-water > land-cover mapping). This cell was added during
+      implementation: the plan's original fixture put canopy only on a
+      Tree cell and water only on a separate, canopy-free cell, so it
+      never exercised the one precedence rule the orchestrator's wiring
+      could most easily undo silently.
+    - (ny-1, :): DEM 1.5 m; 0 elsewhere.
+    """
     meta = GridMetadata(crs="EPSG:4326",
                         bounds=(139.7000, 35.6800, 139.7011, 35.6809),
                         meshsize=meshsize)
@@ -1812,17 +1852,19 @@ def make_city(ny=4, nx=4, meshsize=2.0, with_overhang=False, with_canopy=True,
     min_heights[1, 1] = [[0.0, 10.0]]
     min_heights[2, 2] = [[4.0, 6.0]] if with_overhang else [[0.0, 6.0]]
     land_cover = np.zeros((ny, nx), dtype=int)  # 0 = Bareland
-    land_cover[0, 0] = 8    # Water
-    land_cover[0, 1] = 11   # Road
-    land_cover[0, 2] = 5    # Tree
-    land_cover[1, 1] = 12   # Building (has height)
+    land_cover[0, 0] = 8              # Water
+    land_cover[0, 1] = 11             # Road
+    land_cover[0, 2] = 5              # Tree
+    land_cover[1, 1] = 12             # Building (has height)
     land_cover[2, 2] = 12
+    land_cover[ny - 1, nx - 1] = 8    # Water, also under canopy below
     dem = np.zeros((ny, nx))
-    dem[3, :] = 1.5
+    dem[ny - 1, :] = 1.5
     canopy_top = np.zeros((ny, nx))
     if with_canopy:
         canopy_top[0, 2] = 6.0
-        canopy_top[1, 1] = 5.0  # over the building -> must be cleared
+        canopy_top[1, 1] = 5.0             # over the building -> must be cleared
+        canopy_top[ny - 1, nx - 1] = 4.0   # over water -> must not override it
     voxels = VoxelGrid(classes=np.zeros((ny, nx, 8), dtype=np.int32), meta=meta)
     if extras is None:
         extras = {"rectangle_vertices": RECT,
@@ -1840,7 +1882,6 @@ def make_city(ny=4, nx=4, meshsize=2.0, with_overhang=False, with_canopy=True,
 
 class TestExportPalm:
     def test_file_contract(self, tmp_path):
-        from netCDF4 import Dataset
         out = export_palm(make_city(), output_directory=str(tmp_path),
                           domain_name="testdom")
         path = Path(out)
@@ -1863,8 +1904,10 @@ class TestExportPalm:
             assert nc.variables["buildings_2d"][1, 1] == np.float32(10.0)
             assert nc.variables["building_id"][1, 1] == 7
             assert nc.variables["building_type"][1, 1] == 3
-            # no overhang -> LOD1 only
+            # no overhang -> LOD1 only, and no dangling z dimension left
+            # behind for a variable that was never written
             assert "buildings_3d" not in nc.variables
+            assert "z" not in nc.dimensions
             # surface classification
             assert nc.variables["water_type"][0, 0] == 1
             assert nc.variables["pavement_type"][0, 1] == 1
@@ -1879,8 +1922,22 @@ class TestExportPalm:
             # canopy over building cleared
             assert (lad[:, 1, 1] == np.float32(FILL_FLOAT)).all()
 
+    def test_canopy_over_water_keeps_water_type(self, tmp_path):
+        # (ny-1, nx-1) is both water (per land cover) and under canopy.
+        # Water must survive unchanged (Unit 4's precedence: building >
+        # canopy-over-non-water > land-cover mapping), while lad still
+        # represents the tree independently of the surface type below it.
+        out = export_palm(make_city(), output_directory=str(tmp_path))
+        with Dataset(out) as nc:
+            nc.set_auto_mask(False)
+            assert nc.variables["water_type"][3, 3] == 1
+            assert nc.variables["vegetation_type"][3, 3] == FILL_BYTE
+            assert nc.variables["soil_type"][3, 3] == FILL_BYTE
+            sf = nc.variables["surface_fraction"][:, 3, 3]
+            assert sf.tolist() == [0.0, 0.0, 1.0]
+            assert (nc.variables["lad"][:, 3, 3] != np.float32(FILL_FLOAT)).any()
+
     def test_exclusivity_invariant_whole_grid(self, tmp_path):
-        from netCDF4 import Dataset
         out = export_palm(make_city(), output_directory=str(tmp_path))
         with Dataset(out) as nc:
             nc.set_auto_mask(False)
@@ -1893,26 +1950,25 @@ class TestExportPalm:
             assert (n[bld] == 0).all()
 
     def test_buildings_3d_auto(self, tmp_path):
-        from netCDF4 import Dataset
         out = export_palm(make_city(with_overhang=True),
                           output_directory=str(tmp_path))
         with Dataset(out) as nc:
             nc.set_auto_mask(False)
             b3d = nc.variables["buildings_3d"]
             assert b3d.lod == 2
+            assert "z" in nc.dimensions
             col = b3d[:, 2, 2]
             assert col[0] == 0 and col[1] == 0  # below the overhang
-            assert col[2] == 1                  # levels 2 (4-6 m)
+            assert col[2] == 1                  # level 2 (4-6 m)
 
     def test_buildings_3d_forced_off(self, tmp_path):
-        from netCDF4 import Dataset
         out = export_palm(make_city(with_overhang=True), buildings_3d=False,
                           output_directory=str(tmp_path))
         with Dataset(out) as nc:
             assert "buildings_3d" not in nc.variables
+            assert "z" not in nc.dimensions
 
     def test_trunk_ratio_recompute(self, tmp_path):
-        from netCDF4 import Dataset
         out = export_palm(make_city(), trunk_height_ratio=0.5,
                           output_directory=str(tmp_path))
         with Dataset(out) as nc:
@@ -1926,12 +1982,52 @@ class TestExportPalm:
         city = make_city(extras={"land_cover_source": "OpenStreetMap"})
         with pytest.raises(ValueError, match="rectangle_vertices"):
             export_palm(city, output_directory=str(tmp_path))
+        assert list(tmp_path.iterdir()) == []  # nothing written before raising
 
     def test_shape_mismatch_raises(self, tmp_path):
         city = make_city()
         city.dem.elevation = np.zeros((2, 2))
         with pytest.raises(ValueError, match="shape"):
             export_palm(city, output_directory=str(tmp_path))
+        assert list(tmp_path.iterdir()) == []
+
+    def test_voxel_grid_shape_mismatch_raises(self, tmp_path):
+        city = make_city()
+        city.voxels.classes = np.zeros((2, 2, 8), dtype=np.int32)
+        with pytest.raises(ValueError, match="shape"):
+            export_palm(city, output_directory=str(tmp_path))
+        assert list(tmp_path.iterdir()) == []
+
+    def test_creates_missing_nested_output_directory(self, tmp_path):
+        nested = tmp_path / "a" / "b" / "c"
+        assert not nested.exists()
+        out = export_palm(make_city(), output_directory=str(nested))
+        assert Path(out).exists()
+
+    def test_validator_failure_prevents_file_creation(self, tmp_path, monkeypatch):
+        def boom(fields):
+            raise RuntimeError("boom")
+
+        monkeypatch.setattr(palm_module, "_validate_static_fields", boom)
+        with pytest.raises(RuntimeError, match="boom"):
+            export_palm(make_city(), output_directory=str(tmp_path))
+        assert list(tmp_path.iterdir()) == []
+
+    def test_unexpected_keyword_raises(self, tmp_path):
+        with pytest.raises(TypeError):
+            export_palm(make_city(), output_directory=str(tmp_path),
+                        buildings3d=True)
+
+    def test_non_square_grid_coords_and_fields_agree(self, tmp_path):
+        out = export_palm(make_city(ny=3, nx=5), output_directory=str(tmp_path))
+        with Dataset(out) as nc:
+            nc.set_auto_mask(False)
+            assert nc.dimensions["x"].size == 5
+            assert nc.dimensions["y"].size == 3
+            assert nc.variables["x"][:].tolist() == [1.0, 3.0, 5.0, 7.0, 9.0]
+            assert nc.variables["y"][:].tolist() == [1.0, 3.0, 5.0]
+            assert nc.variables["buildings_2d"][1, 1] == np.float32(10.0)
+            assert nc.variables["buildings_2d"][2, 2] == np.float32(6.0)
 
 
 class TestPalmExporterAdapter:
@@ -1950,19 +2046,36 @@ class TestPalmExporterAdapter:
         assert "PalmExporter" in ex.__all__
         assert "export_palm" in ex.__all__
         assert ex.PalmExporter is PalmExporter
+
+    def test_forwards_kwargs_to_export_palm(self, tmp_path):
+        out = PalmExporter().export(make_city(), str(tmp_path), "mydom",
+                                    building_type=5)
+        with Dataset(out) as nc:
+            assert nc.variables["building_type"][1, 1] == 5
+
+    def test_unexpected_keyword_raises_via_adapter(self, tmp_path):
+        with pytest.raises(TypeError):
+            PalmExporter().export(make_city(), str(tmp_path), "mydom",
+                                  buildings3d=True)
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+The additions beyond the plan's own text (`test_canopy_over_water_keeps_water_type`,
+the shape-mismatch tests' "nothing written" assertions, the nested-directory
+test, the validator-wiring test, both `**kwargs`-typo tests, and the
+non-square-grid test) implement REQUIRED items (a)-(g) from the unit's brief
+and land in this same commit alongside the orchestrator code they pin.
+
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `& "C:\Users\kunih\miniconda3\Scripts\conda.exe" run -n voxcity python -m pytest tests/test_exporter_palm.py::TestExportPalm -v`
 Expected: FAIL — ImportError (`export_palm` not defined)
 
-- [ ] **Step 3: Implement orchestrator and adapter**
+- [x] **Step 3: Implement orchestrator and adapter**
 
 Append to `src/voxcity/exporter/palm.py`:
 
 ```python
-_TRUNK_RATIO_SENTINEL = object()  # internal sentinel — never pass this
+_TRUNK_RATIO_SENTINEL = object()  # internal sentinel -- never pass this
 
 
 def export_palm(city: VoxCity,
@@ -1978,48 +2091,12 @@ def export_palm(city: VoxCity,
                 soil_type: int = 3,
                 land_cover_source: str | None = None,
                 author: str | None = None,
-                comment: str | None = None,
-                **kwargs):
+                comment: str | None = None) -> str:
     """Export a VoxCity model to a PALM (PIDS) static driver NetCDF file.
 
-    Parameters
-    ----------
-    city : VoxCity
-        Model instance. ``city.extras['rectangle_vertices']`` is required.
-    output_directory : str
-        Directory for the output file.
-    domain_name : str
-        Output file is ``<domain_name>_static``.
-    origin_time : str
-        PIDS origin_time global attribute.
-    lad : float
-        Constant leaf area density (m2/m3) inside tree crowns.
-    trunk_height_ratio : float, optional
-        When explicitly provided, canopy bottoms are always recomputed as
-        ``top * ratio`` (same semantics as export_cityles). When omitted,
-        an explicit ``canopy_bottom_height_grid`` wins, then
-        ``city.tree_canopy.bottom``, then the default ratio 0.3.
-    canopy_bottom_height_grid : numpy.ndarray, optional
-        Explicit canopy bottom heights; ignored when *trunk_height_ratio*
-        is explicitly provided.
-    building_type : int
-        PALM building type class for all buildings (default 3).
-    buildings_3d : bool or "auto"
-        True always writes the LOD2 mask, False never, "auto" writes it only
-        when the model contains segments starting above ground.
-    under_tree_vegetation_type : int
-        PALM vegetation type for ground beneath tree canopy (default 3).
-    soil_type : int
-        PALM soil type wherever vegetation or pavement is set (default 3).
-    land_cover_source : str, optional
-        Auto-detected from ``city.extras`` when omitted.
-    author, comment : str, optional
-        Extra global attributes.
-
-    Returns
-    -------
-    str
-        Path to the written ``<domain_name>_static`` file.
+    export_palm deliberately takes no **kwargs (see design decision below):
+    every parameter is named, and an unrecognised keyword raises TypeError
+    from Python's own signature check rather than being silently dropped.
     """
     extras = city.extras or {}
     rect = extras.get("rectangle_vertices")
@@ -2031,11 +2108,12 @@ def export_palm(city: VoxCity,
 
     heights = city.buildings.heights
     shape = heights.shape
-    named_grids = {
-        "land_cover": city.land_cover.classes,
-        "dem": city.dem.elevation,
-    }
     canopy_top = city.tree_canopy.top if city.tree_canopy is not None else None
+    # ValueError pre-checks run before anything downstream, including
+    # _validate_static_fields: a mismatched zt would otherwise pass
+    # validation silently (zt is only checked for finiteness/minimum, never
+    # against the other fields' shapes).
+    named_grids = {"land_cover": city.land_cover.classes, "dem": city.dem.elevation}
     if canopy_top is not None:
         named_grids["canopy_top"] = canopy_top
     for name, grid in named_grids.items():
@@ -2052,11 +2130,10 @@ def export_palm(city: VoxCity,
 
     meshsize = float(city.voxels.meta.meshsize)
     land_cover_source = land_cover_source or extras.get("land_cover_source", "Standard")
-    _logger.info(f"Exporting PALM static driver (source: {land_cover_source})")
 
-    # ── canopy bottom resolution (export_cityles semantics) ──
+    # canopy bottom resolution (export_cityles sentinel semantics)
     user_specified_ratio = trunk_height_ratio is not _TRUNK_RATIO_SENTINEL
-    ratio = 0.3 if not user_specified_ratio else float(trunk_height_ratio)
+    ratio = float(trunk_height_ratio) if user_specified_ratio else 0.3
     if canopy_top is None:
         canopy_top = np.zeros(shape, dtype=np.float64)
     if user_specified_ratio:
@@ -2068,16 +2145,15 @@ def export_palm(city: VoxCity,
     else:
         canopy_bottom = canopy_top * ratio
 
-    # ── build all fields ──
+    # build all fields -- every builder call below uses keyword arguments
+    # (see this task's opening note on the reversed-argument risk)
     geo = _build_georeference(rect)
     zt, origin_z = _build_zt(city.dem.elevation)
     min_heights = city.buildings.min_heights
-    # One presence predicate feeds both LOD1 and LOD2 so the two cannot
-    # disagree (see Task 5): a cell is a building if it has a positive height
-    # or LOD2 geometry rising above ground.
     building_mask, segment_top_m = _build_building_mask(heights, min_heights)
     buildings_2d, building_id, building_type_arr = _build_buildings(
-        heights, city.buildings.ids, building_type, building_mask, segment_top_m
+        heights, city.buildings.ids, building_type=building_type,
+        segment_top_m=segment_top_m, building_mask=building_mask,
     )
 
     b3d = None
@@ -2086,18 +2162,25 @@ def export_palm(city: VoxCity,
     )
     if want_3d and building_mask.any():
         b3d = _build_buildings_3d(
-            heights, min_heights, meshsize, building_mask, segment_top_m
+            heights, min_heights, meshsize,
+            segment_top_m=segment_top_m, building_mask=building_mask,
         )
 
-    lad_arr, zlad = _build_lad(canopy_top, canopy_bottom, meshsize, lad,
-                               building_mask)
-    canopy_mask = (
-        np.nan_to_num(np.asarray(canopy_top, dtype=np.float64), nan=0.0) > 0.0
-    ) & ~building_mask
+    lad_arr, zlad = _build_lad(
+        canopy_top, canopy_bottom, meshsize, lad_value=lad, building_mask=building_mask,
+    )
+
+    # Sanitized exactly like _build_lad treats its own `top` input, so this
+    # mask cannot disagree with what _build_lad actually resolved.
+    canopy_present = np.nan_to_num(
+        np.asarray(canopy_top, dtype=np.float64), nan=0.0, posinf=0.0, neginf=0.0
+    ) > 0.0
+    canopy_mask = canopy_present & ~building_mask
 
     surfaces = _build_surface_types(
-        city.land_cover.classes, land_cover_source, building_mask, canopy_mask,
-        under_tree_vegetation_type, soil_type,
+        city.land_cover.classes, land_cover_source, canopy_mask,
+        under_tree_vegetation_type=under_tree_vegetation_type,
+        soil_type_code=soil_type, building_mask=building_mask,
     )
 
     fields = {
@@ -2116,6 +2199,7 @@ def export_palm(city: VoxCity,
         "x": ((np.arange(nx) + 0.5) * meshsize).astype(np.float32),
         "y": ((np.arange(ny) + 0.5) * meshsize).astype(np.float32),
     }
+    # z/zlad are only ever added alongside their data field's presence.
     if b3d is not None:
         coords["z"] = ((np.arange(b3d.shape[0]) + 0.5) * meshsize).astype(np.float32)
     if zlad is not None:
@@ -2140,9 +2224,11 @@ def export_palm(city: VoxCity,
         "author": author,
     }
 
-    out_dir = Path(output_directory)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = out_dir / f"{domain_name}_static"
+    # exist_ok=True: matches cityles.py's adapter, which makedirs the output
+    # location before writing -- a missing parent otherwise surfaces as
+    # netCDF4's confusing PermissionError [Errno 13] on Windows.
+    os.makedirs(output_directory, exist_ok=True)
+    out_path = Path(output_directory) / f"{domain_name}_static"
     _write_static_driver(out_path, fields, coords, attrs)
 
     _logger.info(
@@ -2168,13 +2254,27 @@ class PalmExporter:
         )
 ```
 
+**Design decision (required beyond the plan's original sketch, which put
+`**kwargs` on `export_palm` itself): `export_palm` does NOT take `**kwargs`.**
+`export_cityles` keeps `**kwargs` "for compatibility", but with 14
+parameters a typo'd keyword (e.g. `buildings3d=True`) would otherwise be
+silently accepted and ignored rather than failing loudly -- confirmed by
+`test_unexpected_keyword_raises`, which fails if `**kwargs` is restored to
+the signature. `PalmExporter.export` keeps its own `**kwargs` (required for
+the Exporter protocol's generic adapter shape and to forward export_palm's
+optional parameters), but it is pure pass-through: an unrecognised keyword
+still reaches export_palm's own signature check and still raises TypeError,
+pinned by `test_unexpected_keyword_raises_via_adapter`. This matches the
+design spec document, which likewise gives `**kwargs` only to
+`PalmExporter.export`, not to `export_palm`.
+
 Now that `export_palm` and `PalmExporter` both exist, remove the forward-declaration `# noqa: F822` comment from the module's `__all__` line (added by code review during Unit 2, once `ruff check src` started flagging the forward-declared names as undefined) — it was only needed while those names were undefined, and leaving it in place would silently hide any future genuine `F822`/undefined-name error in this module:
 
 ```python
 __all__ = ["PalmExporter", "export_palm"]
 ```
 
-- [ ] **Step 4: Register in the exporter package**
+- [x] **Step 4: Register in the exporter package**
 
 In `src/voxcity/exporter/__init__.py`, add the import after the geotiff import:
 
@@ -2190,40 +2290,47 @@ and extend `__all__` (after the geotiff entries):
     "export_palm",
 ```
 
-- [ ] **Step 5: Run the full test module**
+- [x] **Step 5: Run the full test module**
 
 Run: `& "C:\Users\kunih\miniconda3\Scripts\conda.exe" run -n voxcity python -m pytest tests/test_exporter_palm.py -v`
-Expected: PASS (all tests)
+Result: PASS -- 163 passed (145 from Units 1-5 + 18 new in this unit).
 
-- [ ] **Step 6: Run the full exporter test suite for regressions**
+- [x] **Step 6: Run the full exporter test suite for regressions**
 
 Run: `& "C:\Users\kunih\miniconda3\Scripts\conda.exe" run -n voxcity python -m pytest tests/ -k "exporter" -v`
-Expected: PASS (no regressions in other exporters)
+Result: PASS -- 302 passed, 2527 deselected, no regressions in other exporters.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```powershell
 git add src/voxcity/exporter/palm.py src/voxcity/exporter/__init__.py tests/test_exporter_palm.py
 git commit -m "feat(palm): export_palm orchestrator, PalmExporter adapter, package registration"
 ```
 
----
 
 ### Task 11: Final verification
 
 **Files:** none
 
-- [ ] **Step 1: Run the whole fast test suite**
+- [x] **Step 1: Run the whole fast test suite**
 
 Run: `& "C:\Users\kunih\miniconda3\Scripts\conda.exe" run -n voxcity python -m pytest tests/ -m "not slow and not integration and not gee" -q`
-Expected: PASS (no regressions anywhere)
+Result: `4 failed, 2810 passed, 10 skipped, 5 deselected`. The 4 failures are
+exactly the pre-existing, unrelated ones measured before this unit started
+(`tests/importer/test_voxelize_meshlib.py::test_meshlib_matches_trimesh_on_cube`,
+and three in `tests/test_readme_demo_gif.py`: `test_parse_args_overrides`,
+`test_parse_args_webp_overrides`, `test_download_maps_align_with_voxel_footprint`)
+— no fifth failure appeared. The pass count is higher than the
+pre-work baseline (2672) because Units 1-5 and this unit's own 18 new tests
+both landed on this branch since that baseline was measured; the fixed
+4-failure set is what was being checked here, not the raw pass count.
 
-- [ ] **Step 2: Verify the module imports cleanly from the package root**
+- [x] **Step 2: Verify the module imports cleanly from the package root**
 
 Run: `& "C:\Users\kunih\miniconda3\Scripts\conda.exe" run -n voxcity python -c "from voxcity.exporter import export_palm, PalmExporter; print('ok')"`
-Expected: `ok`
+Result: `ok`
 
-- [ ] **Step 3: Use superpowers:requesting-code-review, then superpowers:finishing-a-development-branch**
+- [x] **Step 3: Use superpowers:requesting-code-review, then superpowers:finishing-a-development-branch**
 
 Follow those skills for review and merge/PR decisions. Remember: the follow-up
 end-to-end validation (an actual PALM run on an exported file) is planned but
