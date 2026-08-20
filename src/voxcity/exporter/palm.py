@@ -517,11 +517,16 @@ def _build_lad(canopy_top, canopy_bottom, meshsize, lad_value, building_mask):
     """Leaf area density field lad(zlad, y, x).
 
     zlad levels are [0, (k - 0.5) * dz ...] up to the highest canopy top
-    (palm_csd convention: surface level plus cell centres). Vegetated
-    columns carry 0.0 below the crown, ``lad_value`` inside
-    [bottom, top], and fill above the top; non-vegetated columns are all
-    fill. Canopy over buildings is cleared. A crown too thin to catch any
-    level gets the topmost level at/below its top so no tree is lost.
+    (palm_csd convention: surface level plus cell centres); zlad[0] is
+    always exactly 0.0 by construction. Vegetated columns carry 0.0 below
+    the crown, ``lad_value`` inside [bottom, top] (both boundaries
+    inclusive), and fill above the top; non-vegetated columns are all
+    fill. Canopy over buildings is cleared. ``bottom`` needs no clamping:
+    a negative bottom already satisfies ``level >= bottom`` for every zlad
+    level (since every level is >= 0), and an inverted crown
+    (``bottom > top``) is handled below by the empty-in_crown fallback,
+    which gives the topmost level at/below top so no tree is lost --
+    exactly the same fallback a crown too thin to catch any level needs.
 
     Returns (lad, zlad) or (None, None) when no canopy remains.
     """
@@ -534,6 +539,10 @@ def _build_lad(canopy_top, canopy_bottom, meshsize, lad_value, building_mask):
     # finite n_centres, and np.arange(1, n_centres + 1) then raises
     # ValueError: Maximum allowed size exceeded (observed directly by
     # temporarily dropping these two kwargs and running the test suite).
+    # The same applies on the bottom side: an unsanitized +inf bottom would
+    # not be flooded to "no crown" but left as an enormous finite value
+    # that no zlad level can reach, forcing every column into the
+    # single-level fallback instead of filling from the ground.
     top = np.nan_to_num(
         np.asarray(canopy_top, dtype=np.float64), nan=0.0, posinf=0.0, neginf=0.0
     )
@@ -541,16 +550,6 @@ def _build_lad(canopy_top, canopy_bottom, meshsize, lad_value, building_mask):
     bottom = np.nan_to_num(
         np.asarray(canopy_bottom, dtype=np.float64), nan=0.0, posinf=0.0, neginf=0.0
     )
-    # Neither half of this clip is currently observable in the output below:
-    # zlad's own minimum entry is always 0.0, so `zlad >= bottom` is already
-    # all-True whenever bottom <= 0 (the floor changes nothing), and when
-    # bottom > top, `in_crown` is empty either way -- the fallback branch
-    # that then fires does not consult bottom at all (the ceiling changes
-    # nothing; see the inverted-crown test). Kept as an explicit
-    # sanitization boundary so a future change to the crown logic below
-    # cannot start relying on an out-of-range bottom without a visible clip
-    # to remove first.
-    bottom = np.clip(bottom, 0.0, top)
 
     max_top = float(top.max()) if top.size else 0.0
     if max_top <= 0.0:

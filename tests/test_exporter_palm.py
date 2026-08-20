@@ -754,15 +754,21 @@ class TestBuildLad:
 
     def test_does_not_mutate_inputs(self):
         # float64 is the aliasing-prone dtype: np.asarray(x, dtype=float64)
-        # returns the same object for float64 input, so if nan_to_num/
-        # np.where/np.clip ever stopped copying, this would observe it.
-        top = np.array([[6.0, 0.0]], dtype=np.float64)
-        bottom = np.array([[1.8, 0.0]], dtype=np.float64)
+        # returns the same object for float64 input, so if nan_to_num or
+        # np.where ever stopped copying, this would observe it -- but only
+        # if the inputs actually force a substitution. Finite, in-range
+        # values (e.g. top=6.0, bottom=1.8, an all-False mask) give
+        # nan_to_num/np.where nothing to change, so a copy=False regression
+        # would be a silent no-op on them and this test would pass either
+        # way. Using +-inf/NaN and a True mask entry forces a real
+        # substitution in every op that touches the caller's arrays.
+        top = np.array([[6.0, np.inf]], dtype=np.float64)
+        bottom = np.array([[np.nan, 1.0]], dtype=np.float64)
         top_orig, bottom_orig = top.copy(), bottom.copy()
         _build_lad(top, bottom, meshsize=2.0, lad_value=1.0,
-                   building_mask=np.zeros((1, 2), dtype=bool))
-        assert np.array_equal(top, top_orig)
-        assert np.array_equal(bottom, bottom_orig)
+                   building_mask=np.array([[False, True]]))
+        assert np.array_equal(top, top_orig, equal_nan=True)
+        assert np.array_equal(bottom, bottom_orig, equal_nan=True)
 
     def test_infinite_top_is_sanitized_not_a_crash(self):
         # +-inf must not reach the n_centres/np.arange sizing below (without
@@ -783,11 +789,12 @@ class TestBuildLad:
         assert (lad[:, 0, 1] == np.float32(1.0)).any()         # finite column unaffected
 
     def test_inverted_crown_clamped_to_a_single_sane_layer(self):
-        # bottom (100) > top (6): whether via np.clip(bottom, 0, top) or the
-        # empty-in_crown fallback below, the pair must never leave an
-        # inverted (bottom > top) range or an empty crown loose in the
-        # output -- exactly one level survives, and it's the highest level
-        # at/below top.
+        # bottom (100) > top (6): an inverted (bottom > top) range must
+        # never leave an empty crown loose in the output -- the
+        # empty-in_crown fallback below gives exactly one surviving level,
+        # the highest level at/below top, without needing bottom clamped
+        # down to top first (bottom is used raw; see _build_lad's
+        # docstring for why no clamping is required).
         top = np.array([[6.0]])
         bottom = np.array([[100.0]])
         lad, zlad = _build_lad(top, bottom, meshsize=2.0, lad_value=1.0,
@@ -796,3 +803,78 @@ class TestBuildLad:
         col = lad[:, 0, 0]
         assert (col == np.float32(1.0)).sum() == 1
         assert col[3] == np.float32(1.0)  # z=5, the last level <= top
+
+    def test_fill_above_own_top_not_zero(self):
+        # Two columns with different tops: the short column's levels above
+        # its OWN top must be FILL_FLOAT, not left at the default 0.0 --
+        # every other fixture's tallest column is the domain max (the one
+        # that sizes zlad), so no level is ever above its own top without a
+        # second, taller column establishing a larger zlad array first.
+        top = np.array([[6.0, 2.0]])
+        bottom = np.array([[0.0, 0.0]])
+        building = np.zeros((1, 2), dtype=bool)
+        lad, zlad = _build_lad(top, bottom, meshsize=2.0, lad_value=1.0,
+                               building_mask=building)
+        assert zlad.tolist() == [0.0, 1.0, 3.0, 5.0]
+        col1 = lad[:, 0, 1]
+        assert list(col1) == [
+            np.float32(1.0), np.float32(1.0),
+            np.float32(FILL_FLOAT), np.float32(FILL_FLOAT),
+        ]
+
+    def test_crown_boundary_is_inclusive_at_bottom(self):
+        # top=5, bottom=1, dz=2 -> zlad=[0, 1, 3]. Crown membership is
+        # inclusive at the bottom boundary (>=): level 1 sits exactly on
+        # bottom and must be included, not excluded by a strict
+        # inequality. The thin-crown fallback (bottom == top, used
+        # elsewhere) doesn't depend on bottom at all, so it can't catch a
+        # boundary-strictness regression -- this needs bottom < top with a
+        # level landing exactly on bottom. (Changing only the lower
+        # inequality to strict, `zlad > b`, was confirmed to fail this
+        # test; three other fixtures in this class also happen to use
+        # bottom == 0 == zlad[0] and fail alongside it, which is expected
+        # overlap, not a substitute for this test.)
+        top = np.array([[5.0]])
+        bottom = np.array([[1.0]])
+        lad, zlad = _build_lad(top, bottom, meshsize=2.0, lad_value=1.0,
+                               building_mask=np.array([[False]]))
+        assert zlad.tolist() == [0.0, 1.0, 3.0]
+        assert list(lad[:, 0, 0]) == [
+            np.float32(0.0), np.float32(1.0), np.float32(1.0),
+        ]
+
+    def test_crown_boundary_is_inclusive_at_top(self):
+        # Two columns: col0's top (10.0) sizes zlad=[0,1,3,5,7,9]; col1's
+        # own top (3.0) lands exactly on one of those grid points. Crown
+        # membership is inclusive at the top boundary (<=): level 3 sits
+        # exactly on col1's own top and must be included in its crown, not
+        # excluded by a strict inequality -- and it must NOT be caught by
+        # the separate "fill above own top" `zlad > t` step either, since
+        # 3 is not above 3. No single-column fixture can exercise this: a
+        # column's own top only ever lands exactly on a zlad grid point
+        # when a taller sibling column is the one sizing that grid.
+        top = np.array([[10.0, 3.0]])
+        bottom = np.array([[0.0, 0.0]])
+        lad, zlad = _build_lad(top, bottom, meshsize=2.0, lad_value=1.0,
+                               building_mask=np.zeros((1, 2), dtype=bool))
+        assert zlad.tolist() == [0.0, 1.0, 3.0, 5.0, 7.0, 9.0]
+        col1 = lad[:, 0, 1]
+        assert list(col1) == [
+            np.float32(1.0), np.float32(1.0), np.float32(1.0),
+            np.float32(FILL_FLOAT), np.float32(FILL_FLOAT), np.float32(FILL_FLOAT),
+        ]
+
+    def test_infinite_bottom_is_sanitized_not_left_huge(self):
+        # +-inf on the bottom side must also be sanitized to 0.0 (ground),
+        # not left as nan_to_num's default huge-but-finite substitute --
+        # that would put bottom far above every zlad level, forcing the
+        # column into the single-level fallback instead of filling the
+        # whole crown from the ground up. Only the `top` side was pinned by
+        # test_infinite_top_is_sanitized_not_a_crash; this covers the other
+        # nan_to_num call.
+        top = np.array([[6.0]])
+        bottom = np.array([[np.inf]])
+        lad, zlad = _build_lad(top, bottom, meshsize=2.0, lad_value=1.0,
+                               building_mask=np.array([[False]]))
+        assert zlad.tolist() == [0.0, 1.0, 3.0, 5.0]
+        assert list(lad[:, 0, 0]) == [np.float32(1.0)] * 4
