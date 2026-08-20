@@ -18,10 +18,15 @@ from voxcity.exporter.palm import (
     OEMJ_CLASS_TO_PALM,
     OSM_CLASS_TO_PALM,
     URBANWATCH_CLASS_TO_PALM,
+    _build_georeference,
     _build_index_to_palm_map,
     _get_source_name_mapping,
 )
 from voxcity.utils.lc import get_land_cover_classes
+
+# Axis-aligned rectangle near Tokyo, canonical [SW, NW, NE, SE] (lon, lat)
+RECT = [(139.7000, 35.6800), (139.7000, 35.6809),
+        (139.7011, 35.6809), (139.7011, 35.6800)]
 
 ALL_TABLES = [
     OSM_CLASS_TO_PALM,
@@ -130,3 +135,20 @@ class TestSourceResolution:
 
         assert class_names[0] == 'Bareland'
         assert index_to_assignment[0] == DEFAULT_ASSIGNMENT
+
+
+class TestGeoreference:
+    def test_tokyo_rectangle(self):
+        geo = _build_georeference(RECT)
+        assert geo["origin_lon"] == pytest.approx(139.7000)
+        assert geo["origin_lat"] == pytest.approx(35.6800)
+        assert geo["epsg"] == 32654  # UTM zone 54N
+        assert abs(geo["rotation_angle"]) < 0.5
+        # Tokyo UTM54N easting ~ 380-390 km, northing ~ 3.94-3.96 Mm
+        assert 300_000 < geo["origin_x"] < 500_000
+        assert 3_900_000 < geo["origin_y"] < 4_000_000
+
+    def test_southern_hemisphere_epsg(self):
+        rect = [(151.2, -33.87), (151.2, -33.86), (151.21, -33.86), (151.21, -33.87)]
+        geo = _build_georeference(rect)
+        assert geo["epsg"] == 32756  # Sydney, UTM zone 56S

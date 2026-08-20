@@ -23,7 +23,9 @@ import os
 from pathlib import Path
 
 import numpy as np
+from pyproj import Transformer
 
+from ..geoprocessor.utils import compute_rotation_angle, normalize_rectangle_vertices
 from ..models import VoxCity
 from ..utils.lc import get_land_cover_classes
 from ..utils.logging import get_logger
@@ -190,3 +192,30 @@ def _build_index_to_palm_map(land_cover_source):
         for idx, name in enumerate(class_names)
     }
     return index_to_assignment, class_names
+
+
+def _build_georeference(rectangle_vertices):
+    """Georeferencing attributes from the AOI rectangle.
+
+    Returns dict with origin_lon/origin_lat (SW corner), origin_x/origin_y
+    (that corner in the auto-detected UTM zone), rotation_angle (degrees
+    clockwise; VoxCity and PIDS conventions agree), and the EPSG code used.
+    """
+    rect = normalize_rectangle_vertices(rectangle_vertices, warn=False)
+    origin_lon = float(rect[0][0])
+    origin_lat = float(rect[0][1])
+    rotation_angle = float(compute_rotation_angle(rect))
+
+    zone = min(max(int((origin_lon + 180.0) // 6.0) + 1, 1), 60)
+    epsg = (32600 if origin_lat >= 0.0 else 32700) + zone
+    transformer = Transformer.from_crs("EPSG:4326", f"EPSG:{epsg}", always_xy=True)
+    origin_x, origin_y = transformer.transform(origin_lon, origin_lat)
+
+    return {
+        "origin_lon": origin_lon,
+        "origin_lat": origin_lat,
+        "origin_x": float(origin_x),
+        "origin_y": float(origin_y),
+        "rotation_angle": rotation_angle,
+        "epsg": epsg,
+    }
