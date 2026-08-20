@@ -144,20 +144,45 @@ like the cityles exporter does.
 
 ## Buildings
 
+**Presence predicate (single source of truth).** A cell is a building iff it has
+a positive height OR LOD2 geometry rising above ground. Formally, per cell
+`segment_top_m = max(max(0.0, seg_top) for seg in segments)` (so a segment
+entirely below the terrain datum contributes nothing), and
+`mask = (height > 0) | (segment_top_m > 0)`. This one mask feeds both the LOD1
+and LOD2 builders, so the two cannot disagree by construction. Without it two
+PIDS-invalid outputs are reachable: a segment with no recorded height yields a
+filled 3D column with no `building_id`/`building_type`, and a building shorter
+than half a voxel yields a `buildings_2d` entry whose 3D column is empty.
+
 - `buildings_2d(y, x)` float32, attribute `lod = 1`, `_FillValue = -9999.0`:
-  `heights` where `> 0`, fill elsewhere. NaN heights are treated as no building.
+  `max(height, segment_top_m)` on the mask, fill elsewhere. NaN/inf heights are
+  treated as no building. Taking the max repairs the orphan case — a cell whose
+  geometry is taller than its recorded height gets the height its geometry
+  implies — and logs at info level when that repair fires, so malformed input is
+  visible rather than silent.
 - `building_id(y, x)` int32, `_FillValue = -9999`: from `city.buildings.ids`
   where a building exists; cells with a height but no ID get a generated unique
-  ID (max existing ID + running counter).
+  ID (max existing ID + running counter). IDs are assumed to be small positive
+  integers, as the VoxCity pipeline produces them.
 - `building_type(y, x)` byte, `_FillValue = -127`: constant `building_type`
   parameter on building cells (default 3, residential 1950–2000).
 - `buildings_3d(z, y, x)` byte 0/1, attribute `lod = 2`, `_FillValue = -127`:
-  derived from the voxel grid's building class via transpose `(2, 0, 1)`.
-  Written when `buildings_3d=True`, or under `"auto"` when the voxel grid
-  contains non-ground-based building geometry (some building voxel column has
-  air below building — the case `buildings_2d` cannot represent). PIDS requires
-  `building_id` and `building_type` on every column where `buildings_3d` has any
-  set voxel; the builder enforces this.
+  built from the per-cell `[min, max]` segments in `city.buildings.min_heights`,
+  falling back to ground extrusion for cells without segments. Written when
+  `buildings_3d=True`, or under `"auto"` when any segment starts above ground —
+  the case `buildings_2d` cannot represent. Level conversion uses the
+  voxelizer's rounding (`int(h / meshsize + 0.5)`) so the mask aligns with
+  VoxCity's own voxel grid. `nz` covers the taller of the height-derived and
+  segment-derived tops, so tall geometry is never truncated; segment bounds are
+  clamped to `[0, nz]` so below-ground geometry starts at ground rather than
+  wrapping via negative-index slicing.
+- **Sub-voxel guarantee:** every masked cell gets at least one filled level. A
+  building shorter than half a voxel would otherwise vanish from the LOD2 field,
+  and when `buildings_3d` is present PALM reads it as authoritative — so
+  dropping the column would silently delete a building the user asked to export.
+  Rounding up by less than one `dz` is a bounded error at the vertical
+  resolution limit; silent data loss is not. This deliberately diverges from
+  VoxCity's own voxelizer, which drops sub-voxel buildings.
 
 ## Vegetation (LAD)
 

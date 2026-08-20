@@ -1792,18 +1792,23 @@ def export_palm(city: VoxCity,
     # ── build all fields ──
     geo = _build_georeference(rect)
     zt, origin_z = _build_zt(city.dem.elevation)
+    min_heights = city.buildings.min_heights
+    # One presence predicate feeds both LOD1 and LOD2 so the two cannot
+    # disagree (see Task 5): a cell is a building if it has a positive height
+    # or LOD2 geometry rising above ground.
+    building_mask, segment_top_m = _build_building_mask(heights, min_heights)
     buildings_2d, building_id, building_type_arr = _build_buildings(
-        heights, city.buildings.ids, building_type
+        heights, city.buildings.ids, building_type, building_mask, segment_top_m
     )
-    building_mask = buildings_2d != np.float32(FILL_FLOAT)
 
     b3d = None
-    min_heights = city.buildings.min_heights
     want_3d = buildings_3d is True or (
         buildings_3d == "auto" and _has_elevated_segments(min_heights, meshsize)
     )
     if want_3d and building_mask.any():
-        b3d = _build_buildings_3d(heights, min_heights, meshsize)
+        b3d = _build_buildings_3d(
+            heights, min_heights, meshsize, building_mask, segment_top_m
+        )
 
     lad_arr, zlad = _build_lad(canopy_top, canopy_bottom, meshsize, lad,
                                building_mask)
