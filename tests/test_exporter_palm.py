@@ -180,10 +180,11 @@ class TestGeoreference:
         # Built directly in Web Mercator space (the space compute_rotation_angle
         # itself uses) by rotating a rectangle 30 deg clockwise from north
         # around the Tokyo SW corner, then projecting back to WGS84.
-        # The rectangle is 900 m x 1000 m, anchored at the Tokyo SW corner,
-        # constructed in EPSG:3857 (so regenerating it means: build a
-        # 900x1000 m axis-aligned box in EPSG:3857 at that corner, rotate it
-        # 30 deg clockwise, then reproject to WGS84).
+        # The rectangle is 1000 m east-west x 900 m north-south, anchored at
+        # the Tokyo SW corner, constructed in EPSG:3857 (so regenerating it
+        # means: build a 1000 m (east-west) x 900 m (north-south)
+        # axis-aligned box in EPSG:3857 at that corner, rotate it 30 deg
+        # clockwise, then reproject to WGS84).
         # Empirically confirmed: compute_rotation_angle(rect) == 30.0 exactly
         # for this fixture (verified by direct call before pinning here).
         rotated_rect = [
@@ -284,13 +285,18 @@ class TestBuildBuildings:
         assert all(i > 10 for i in generated)
 
     def test_does_not_mutate_inputs(self):
+        # ids is float64 deliberately, matching heights: for non-float64
+        # input (e.g. int64), np.asarray(ids, dtype=np.float64) always
+        # copies, so the in-place np.nan_to_num step inside _build_buildings
+        # could never be observed corrupting the caller's array. float64 is
+        # the aliasing-prone dtype where np.asarray returns the same object.
         heights = np.array([[3.0, 0.0], [6.0, np.nan]], dtype=np.float64)
-        ids = np.array([[0, 0], [5, 0]], dtype=np.int64)
+        ids = np.array([[0.0, 0.0], [5.0, np.nan]], dtype=np.float64)
         heights_orig = heights.copy()
         ids_orig = ids.copy()
         _build_buildings(heights, ids, building_type=1)
         assert np.array_equal(heights, heights_orig, equal_nan=True)
-        assert np.array_equal(ids, ids_orig)
+        assert np.array_equal(ids, ids_orig, equal_nan=True)
 
 
 class TestElevatedSegments:

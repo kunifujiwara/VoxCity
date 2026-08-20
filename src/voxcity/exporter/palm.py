@@ -250,6 +250,15 @@ def _build_buildings(heights, ids, building_type):
     Returns (buildings_2d float32, building_id int32, building_type int8),
     all (y, x) with PIDS fill values off the building mask. Cells with a
     height but no positive id receive generated ids above the existing max.
+
+    ``ids`` is assumed to hold small positive integers, as produced by the
+    VoxCity pipeline (which overwrites raw ids with small sequential
+    integers before rasterizing — see geoprocessor/raster/buildings.py).
+    This function does not validate that assumption: all-negative input ids
+    would generate ids <= 0 (invalid for PIDS), and an id near the int32
+    range boundary (e.g. a raw OSM-scale id) would silently wrap under the
+    int32 cast. Both are unreachable via the current pipeline and are left
+    unhandled here.
     """
     h = _clean_heights(heights)
     mask = h > 0.0
@@ -294,7 +303,7 @@ def _has_elevated_segments(min_heights, meshsize):
 
 
 def _build_buildings_3d(heights, min_heights, meshsize):
-    """LOD2 byte mask (z, y, x) from per-cell [min, max] segments (metres
+    """LOD2 byte mask (z, y, x) from per-cell [min, max] segments (meters
     above ground). Cells without segments fall back to ground extrusion.
 
     ``nz`` covers the taller of the height-derived and segment-derived tops,
