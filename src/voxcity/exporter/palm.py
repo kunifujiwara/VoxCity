@@ -32,7 +32,7 @@ from ..utils.logging import get_logger
 
 _logger = get_logger(__name__)
 
-__all__ = ["PalmExporter", "export_palm"]
+__all__ = ["PalmExporter", "export_palm"]  # noqa: F822 — defined in the final unit
 
 # ---------------------------------------------------------------------------
 # PIDS fill values
@@ -226,7 +226,7 @@ def _build_zt(dem_grid):
 
     Returns (zt float32 (y, x), origin_z) where origin_z is the subtracted
     minimum (recorded as the PIDS global attribute ``origin_z``). NaN/inf
-    cells take the grid minimum (i.e. 0 after shifting).
+    cells take the minimum of the finite cells (i.e. 0 after shifting).
     """
     zt = np.asarray(dem_grid, dtype=np.float64).copy()
     finite = np.isfinite(zt)

@@ -163,6 +163,31 @@ class TestGeoreference:
         geo = _build_georeference(rect)
         assert geo["epsg"] == 32756  # Sydney, UTM zone 56S
 
+    def test_non_canonical_order_still_resolves_sw_corner(self):
+        # Same rectangle as RECT, but the vertex list is rotated to start at
+        # NE (same winding). normalize_rectangle_vertices must reorder it
+        # back to SW-first; without that call the SW corner would not be
+        # vertices[0] and this would report the NE corner instead.
+        rotated_start = RECT[2:] + RECT[:2]
+        geo = _build_georeference(rotated_start)
+        assert geo["origin_lon"] == pytest.approx(139.7000)
+        assert geo["origin_lat"] == pytest.approx(35.6800)
+
+    def test_rotated_rectangle_angle(self):
+        # Built directly in Web Mercator space (the space compute_rotation_angle
+        # itself uses) by rotating a rectangle 30 deg clockwise from north
+        # around the Tokyo SW corner, then projecting back to WGS84.
+        # Empirically confirmed: compute_rotation_angle(rect) == 30.0 exactly
+        # for this fixture (verified by direct call before pinning here).
+        rotated_rect = [
+            (139.7, 35.67999999999999),
+            (139.7040424187785, 35.685687167858035),
+            (139.71182205734505, 35.68203889459048),
+            (139.70777963856654, 35.67635146668452),
+        ]
+        geo = _build_georeference(rotated_rect)
+        assert geo["rotation_angle"] == pytest.approx(30.0, abs=0.01)
+
 
 class TestBuildZt:
     def test_shift_to_zero_min(self):
@@ -185,3 +210,20 @@ class TestBuildZt:
         zt, origin_z = _build_zt(dem)
         assert origin_z == 0.0
         assert (zt == 0.0).all()
+
+    def test_inf_replaced_with_finite_min_before_shift(self):
+        dem = np.array([[-np.inf, 5.0], [4.0, np.inf]])
+        zt, origin_z = _build_zt(dem)
+        assert origin_z == pytest.approx(4.0)
+        assert zt[0, 0] == pytest.approx(0.0)  # -inf takes the finite min
+        assert zt[1, 1] == pytest.approx(0.0)  # +inf takes the finite min too
+        assert np.isfinite(zt).all()
+
+    def test_does_not_mutate_input(self):
+        # dem_grid is already float64, so np.asarray(..., dtype=float64) is a
+        # no-op view of the same object -- .copy() is what keeps this
+        # function from rewriting the caller's array in place.
+        dem = np.array([[3.0, 5.0], [4.0, 7.0]], dtype=np.float64)
+        original = dem.copy()
+        _build_zt(dem)
+        assert np.array_equal(dem, original)
