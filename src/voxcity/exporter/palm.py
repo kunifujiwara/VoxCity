@@ -765,7 +765,6 @@ def _write_static_driver(path, fields, coords, attrs):
 
         def write(name, data, dims, dtype, fill, **var_attrs):
             var = nc.createVariable(name, dtype, dims, fill_value=fill)
-            var.set_auto_mask(False)
             var[:] = data
             for k, v in var_attrs.items():
                 setattr(var, k, v)

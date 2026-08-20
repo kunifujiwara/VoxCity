@@ -1628,7 +1628,6 @@ def _write_static_driver(path, fields, coords, attrs):
 
         def write(name, data, dims, dtype, fill, **var_attrs):
             var = nc.createVariable(name, dtype, dims, fill_value=fill)
-            var.set_auto_mask(False)
             var[:] = data
             for k, v in var_attrs.items():
                 setattr(var, k, v)
@@ -1666,16 +1665,20 @@ def _write_static_driver(path, fields, coords, attrs):
 ```
 
 Note, corrected during implementation: `var.set_auto_mask(False)` at *write*
-time turned out to have no effect on what is stored in the file -- verified
-directly (write a fill value with and without the write-side call, in both
-cases the raw file holds the literal fill float; only the *read*-side
+time is inert and was deleted, not kept. Verified twice independently --
+first here (write a fill value with and without the write-side call; the
+raw file holds the same literal fill float either way), then independently
+reproduced by a reviewer: writing the same data with and without the
+write-side call produces byte-identical files (same SHA-256), including
+for a `numpy.ma.MaskedArray` input whose masked element's underlying value
+differs from the fill -- so the call is not even protective in that edge
+case. It plainly does nothing on write. Only the *read*-side
 `nc.set_auto_mask(False)` determines whether a fill value comes back as a
-plain value or as a masked (`--`) entry of a `numpy.ma.MaskedArray`). The
-call is kept (harmless, and protective if `data` were ever a masked array),
-but it is not the load-bearing line the original text claimed; every test
-in this module that inspects fill values disables masking on the *read*
-side instead (`nc.set_auto_mask(False)` right after `Dataset(path)`), which
-is what actually matters.
+plain value or as a masked (`--`) entry of a `numpy.ma.MaskedArray`; every
+test in this module that inspects fill values disables masking there
+instead (`nc.set_auto_mask(False)` right after `Dataset(path)`), which is
+what actually matters. Deleted rather than kept with an explanatory
+comment, per this module's standard for a provably-dead line: delete it.
 
 The shipped test suite also adds, beyond the Step-1 `TestWriter` block
 above: `test_round_trip_values_and_fill_placement` (actual data values and

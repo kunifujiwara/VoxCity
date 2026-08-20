@@ -1313,6 +1313,78 @@ class TestValidatorLadRange:
             _validate_static_fields(f)
 
 
+class TestValidatorRemainingRuleDirections:
+    """A second audit pass (after the buildings_3d/lad gaps found above)
+    found five more rules -- and one rule direction each for two rules
+    already partly covered -- with no test anywhere in this module:
+    zt's non-finite branch, the building_type twin of
+    test_building_without_id_fails, the "soil set where neither
+    vegetation nor pavement is" direction of the soil-coverage rule, the
+    "zero surface types" direction of the exactly-one-surface-type rule,
+    and the BYTE_RANGES lower bound. Each test below is built to fail
+    under the exact narrow mutation that let it slip through undetected
+    (see the per-test comments), not just under a wholesale rule removal.
+    """
+
+    def test_zt_non_finite_fails(self):
+        # The real risk this rule guards against: zt's isfinite branch is
+        # the only thing that can catch a NaN, because a NaN silently
+        # defeats the elif -- abs(nan) > 1e-4 is False, not True, so a NaN
+        # terrain would pass the min-check branch even if it were reached.
+        f = _valid_fields()
+        f["zt"][0, 0] = np.nan
+        with pytest.raises(RuntimeError, match="zt contains non-finite"):
+            _validate_static_fields(f)
+
+    def test_building_without_type_fails(self):
+        # Twin of test_building_without_id_fails above, which covers only
+        # the building_id half of the two symmetric "building cells
+        # missing X" checks; building_type's own check had no test.
+        f = _valid_fields()
+        f["building_type"][0, 1] = FILL_BYTE
+        with pytest.raises(RuntimeError, match="building cells missing building_type"):
+            _validate_static_fields(f)
+
+    def test_soil_set_without_vegetation_or_pavement_fails(self):
+        # The reverse direction of test_missing_soil_fails. That test
+        # (soil missing where vegetation IS set) also happens to satisfy
+        # an AND-based mutation of the rule (`(veg|pav) & ~soil`), because
+        # vegetation=True/soil=False still trips `True & True`. Only a
+        # cell where vegetation/pavement are BOTH absent but soil is
+        # nonetheless set exposes that mutation: `False & ~True == False`,
+        # silently missing it. Cell (0,1) is the building cell -- soil
+        # has no business being set there at all.
+        f = _valid_fields()
+        f["soil_type"][0, 1] = 3
+        with pytest.raises(RuntimeError, match="soil_type"):
+            _validate_static_fields(f)
+
+    def test_zero_surface_types_on_non_building_cell_fails(self):
+        # The reverse direction of test_two_surface_types_fail, which only
+        # exercises the "more than one type" half of `!= 1`. A non-building
+        # cell with NO surface type set (n_types == 0) is the other way
+        # `!= 1` can fire, and `> 1` (a plausible-looking mutation) misses
+        # it entirely: 0 > 1 is False. soil_type is cleared alongside
+        # vegetation_type so the soil-coverage rule doesn't also fire here,
+        # keeping this test's failure attributable to this rule alone.
+        f = _valid_fields()
+        f["vegetation_type"][0, 0] = FILL_BYTE
+        f["soil_type"][0, 0] = FILL_BYTE
+        with pytest.raises(RuntimeError, match="exactly one"):
+            _validate_static_fields(f)
+
+    def test_below_range_code_fails(self):
+        # test_out_of_range_code_fails above only ever uses a value above
+        # the upper bound (99); dropping the `(vals < lo).any()` half of
+        # the BYTE_RANGES check survives that test untouched. 0 is below
+        # vegetation_type's lower bound (1) but is not FILL_BYTE, so it is
+        # still "set" as far as every other rule is concerned.
+        f = _valid_fields()
+        f["vegetation_type"][0, 0] = 0
+        with pytest.raises(RuntimeError, match="vegetation_type"):
+            _validate_static_fields(f)
+
+
 class TestWriter:
     def _write(self, tmp_path, with_3d=False, with_lad=True):
         fields = _valid_fields()
@@ -1385,10 +1457,10 @@ class TestWriter:
 
     def test_round_trip_values_and_fill_placement(self, tmp_path):
         # Structure and dtypes are covered above; this checks the actual
-        # data values read back, including fill placement -- the thing
-        # set_auto_mask(False) exists to protect, and the single most
-        # likely thing to break silently (e.g. a transposed write, or a
-        # fill value read back masked instead of literal).
+        # data values read back, including fill placement -- the thing the
+        # read-side nc.set_auto_mask(False) below exists to protect (fill
+        # values otherwise come back masked, not literal), and the single
+        # most likely thing to break silently (e.g. a transposed write).
         path = self._write(tmp_path, with_3d=True, with_lad=True)
         with Dataset(path) as nc:
             nc.set_auto_mask(False)
@@ -1426,6 +1498,8 @@ class TestWriter:
             assert nc.variables["soil_type"].long_name == "soil type classification"
             assert nc.variables["lad"].units == "m2 m-3"
             assert nc.variables["lad"].long_name == "leaf area density"
+            assert nc.variables["surface_fraction"].units == "1"
+            assert nc.variables["surface_fraction"].long_name == "surface fraction"
             assert nc.variables["zt"].units == "m"
             assert nc.variables["zt"].long_name == "terrain height"
             assert nc.variables["x"].units == "m"
@@ -1454,6 +1528,27 @@ class TestWriter:
         with Dataset(path) as nc2:
             assert nc2.dimensions["x"].size == 2
             assert nc2.dimensions["nsurface_fraction"].size == 3
+
+
+class TestWriterAttrsGuard:
+    def test_none_valued_attr_is_skipped(self, tmp_path):
+        # attrs.items() with a None value (e.g. export_palm's optional
+        # author/comment) must be skipped, not passed to setattr: netCDF4
+        # rejects None outright (TypeError: illegal data type for
+        # attribute ..., got O -- confirmed directly), so without the
+        # `if value is not None` guard this call would raise instead of
+        # writing a file at all.
+        fields = _valid_fields()
+        coords = {
+            "x": np.array([1.0, 3.0], dtype=np.float32),
+            "y": np.array([1.0], dtype=np.float32),
+        }
+        attrs = {"Conventions": "CF-1.7", "author": None}
+        path = tmp_path / "dom_static"
+        _write_static_driver(path, fields, coords, attrs)  # must not raise
+        with Dataset(path) as nc:
+            assert "author" not in nc.ncattrs()
+            assert nc.Conventions == "CF-1.7"
 
 
 class TestWriterOverwrite:
