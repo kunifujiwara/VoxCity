@@ -2307,6 +2307,78 @@ git add src/voxcity/exporter/palm.py src/voxcity/exporter/__init__.py tests/test
 git commit -m "feat(palm): export_palm orchestrator, PalmExporter adapter, package registration"
 ```
 
+- [x] **Step 8 (post-review amendment): parameter-surface and pre-check gaps**
+
+A spec review after Step 7 found the non-vacuity convention had been applied
+to the new assertions but not to the *parameter surface*: 8 of 14 parameters
+were pinned only at their defaults, 3 of the 4 canopy-bottom sentinel
+branches were unreachable from any test, the `buildings_3d is True` branch
+and the `building_mask.any()` guard were each only tested from one side, and
+three inputs the orchestrator reads (`buildings.ids`, `buildings.min_heights`,
+`canopy_bottom_height_grid`) had no shape pre-check at all -- confirmed
+directly (before the fix) to raise a raw numpy broadcast `ValueError` (ids)
+or a raw `IndexError` (the other two, not even `ValueError`) instead of a
+clean, named error.
+
+Production changes (`src/voxcity/exporter/palm.py`):
+- `ids` and `min_heights` are now read once into local variables near the
+  top of `export_palm` (alongside the existing `canopy_top` extraction) and
+  reused throughout, instead of being re-read from `city.buildings.*` at
+  each call site.
+- The pre-check block folds `buildings.ids`, `buildings.min_heights`, and
+  `canopy_bottom_height_grid` (when provided) into the same `named_grids`
+  shape-check loop the 2D grids already use, so all five now raise the same
+  `ValueError: "<name> grid shape ... does not match building heights shape
+  ..."`, before `_validate_static_fields` and before anything is written.
+
+No change to the canopy-bottom resolution logic, the `buildings_3d`
+decision, or `land_cover_source`'s `param or extras.get(...)` precedence --
+all three were already correct; only their test coverage was missing.
+`land_cover_source` in particular is NOT a bug: the explicit parameter
+already wins over `city.extras['land_cover_source']`, matching
+`export_cityles` exactly. The reviewer's mutation that appeared to show
+otherwise was testing what happens when that precedence is *removed*, not
+reporting a defect in what shipped.
+
+Test additions (`tests/test_exporter_palm.py`, four new classes after
+`TestPalmExporterAdapter`):
+- `TestExportPalmCanopyBottomResolution` (7 tests): all four sentinel
+  branches plus three precedence orderings, using meshsize=1.0 so each
+  branch's resolved canopy bottom lands in a mutually distinguishable
+  crown-level count over a 7-point `zlad` grid.
+- `TestExportPalmParameterSurface` (2 tests): one export exercising
+  distinctive non-default values for `origin_time`, `lad`,
+  `under_tree_vegetation_type`, `soil_type`, `author`, `comment`, and
+  `origin_z` (via a shifted DEM) simultaneously; one exercising
+  `land_cover_source` explicitly overriding `extras` using two sources
+  (OpenStreetMap vs. Urbanwatch) whose raw-index-0 mappings disagree.
+- `TestExportPalmBuildings3dDecision` (2 tests): `buildings_3d=True` still
+  emitting LOD2 on a city with no elevated segments (isolating it from
+  `"auto"`), and `buildings_3d=True` on a city with zero buildings emitting
+  nothing (the `building_mask.any()` guard).
+- `TestExportPalmAdditionalShapeChecks` (3 tests): each of the three new
+  pre-checks, asserting a `ValueError` naming the specific grid (not a bare
+  `match="shape"`, which a raw numpy broadcast error's "shapes" text would
+  also satisfy) and that nothing is written to disk.
+
+`make_city` gained a `with_buildings=True` flag (drops both buildings
+entirely when `False`) for the buildings_3d-guard test.
+
+Every one of the above 14 new tests was tamper-verified against the exact
+mutation it targets (branch/guard/check deleted or precedence inverted) and
+the production file was restored byte-identically after each (confirmed via
+diff against a pre-tamper snapshot, not `git hash-object`, since these
+changes postdate the Step 7 commit).
+
+Result after this step: `tests/test_exporter_palm.py` -- 177 passed (163 +
+14). `tests/ -k "exporter"` -- 316 passed, 2527 deselected, no regressions.
+`ruff check src` clean.
+
+```powershell
+git add src/voxcity/exporter/palm.py tests/test_exporter_palm.py
+git commit -m "test(palm): pin the orchestrator parameter surface and sentinel precedence"
+```
+
 
 ### Task 11: Final verification
 

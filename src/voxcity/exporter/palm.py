@@ -931,16 +931,29 @@ def export_palm(city: VoxCity,
 
     heights = city.buildings.heights
     shape = heights.shape
+    ids = city.buildings.ids
+    min_heights = city.buildings.min_heights
     canopy_top = city.tree_canopy.top if city.tree_canopy is not None else None
     # ValueError pre-checks run before anything downstream (including
     # _validate_static_fields): a shape mismatch here is bad user input, not
-    # an exporter bug, and left unchecked it either raises a raw numpy
-    # broadcast error deep in a builder or -- for a mismatched zt specifically
-    # -- passes validation silently, since _validate_static_fields only checks
-    # zt for finiteness/minimum, never against the other fields' shapes.
+    # an exporter bug, and left unchecked each one fails somewhere confusing
+    # instead of naming the offending grid -- confirmed directly for all
+    # three optional grids below: buildings.ids raises a raw numpy broadcast
+    # ValueError inside _build_buildings, buildings.min_heights and
+    # canopy_bottom_height_grid both raise IndexError (not even ValueError)
+    # deep inside _build_buildings_3d/_build_lad's per-cell loops. A
+    # mismatched zt specifically would otherwise pass validation silently,
+    # since _validate_static_fields only checks zt for finiteness/minimum,
+    # never against the other fields' shapes.
     named_grids = {"land_cover": city.land_cover.classes, "dem": city.dem.elevation}
     if canopy_top is not None:
         named_grids["canopy_top"] = canopy_top
+    if ids is not None:
+        named_grids["buildings.ids"] = ids
+    if min_heights is not None:
+        named_grids["buildings.min_heights"] = min_heights
+    if canopy_bottom_height_grid is not None:
+        named_grids["canopy_bottom_height_grid"] = canopy_bottom_height_grid
     for name, grid in named_grids.items():
         if grid.shape != shape:
             raise ValueError(
@@ -974,13 +987,12 @@ def export_palm(city: VoxCity,
     # ── build all fields ──
     geo = _build_georeference(rect)
     zt, origin_z = _build_zt(city.dem.elevation)
-    min_heights = city.buildings.min_heights
     # One presence predicate feeds both LOD1 and LOD2 so the two cannot
     # disagree (see _build_building_mask): a cell is a building if it has a
     # positive height or LOD2 geometry rising above ground.
     building_mask, segment_top_m = _build_building_mask(heights, min_heights)
     buildings_2d, building_id, building_type_arr = _build_buildings(
-        heights, city.buildings.ids, building_type=building_type,
+        heights, ids, building_type=building_type,
         segment_top_m=segment_top_m, building_mask=building_mask,
     )
 

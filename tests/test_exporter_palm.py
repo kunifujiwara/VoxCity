@@ -1863,44 +1863,50 @@ class TestWriterOverwrite:
 
 
 def make_city(ny=4, nx=4, meshsize=2.0, with_overhang=False, with_canopy=True,
-              extras=None):
+              with_buildings=True, extras=None):
     """Small synthetic VoxCity in the internal south-up orientation.
 
     Cell layout (row, col); valid for any ny, nx >= 3:
     - (0,0): Water, no canopy.
     - (0,1): Road.
     - (0,2): Tree, canopy top 6.0 m over bare ground (no building).
-    - (1,1): Building (height 10.0, id 7); also carries a canopy_top value
-      when with_canopy, which must be cleared by the building.
+    - (1,1): Building (height 10.0, id 7) when with_buildings; also carries
+      a canopy_top value when with_canopy, which must be cleared by the
+      building.
     - (2,2): Building (height 6.0; LOD2 segment [4, 6] when with_overhang,
-      else [0, 6]).
+      else [0, 6]) when with_buildings.
     - (ny-1, nx-1): Water WITH canopy when with_canopy -- the one cell the
       plan's original fixture never exercised: canopy must NOT override a
       water surface (precedence is building > canopy-over-non-water >
       land-cover mapping; see _build_surface_types' docstring).
     - (ny-1, :): DEM 1.5 m; 0 elsewhere.
+
+    with_buildings=False drops both buildings entirely (heights/ids/
+    min_heights/land-cover-Building all revert to "nothing here"), for
+    tests that need a domain with no buildings at all.
     """
     meta = GridMetadata(crs="EPSG:4326",
                         bounds=(139.7000, 35.6800, 139.7011, 35.6809),
                         meshsize=meshsize)
     heights = np.zeros((ny, nx))
-    heights[1, 1] = 10.0
-    heights[2, 2] = 6.0
     ids = np.zeros((ny, nx), dtype=int)
-    ids[1, 1] = 7
-    ids[2, 2] = 8
     min_heights = np.empty((ny, nx), dtype=object)
     for i in range(ny):
         for j in range(nx):
             min_heights[i, j] = []
-    min_heights[1, 1] = [[0.0, 10.0]]
-    min_heights[2, 2] = [[4.0, 6.0]] if with_overhang else [[0.0, 6.0]]
     land_cover = np.zeros((ny, nx), dtype=int)  # 0 = Bareland
+    if with_buildings:
+        heights[1, 1] = 10.0
+        heights[2, 2] = 6.0
+        ids[1, 1] = 7
+        ids[2, 2] = 8
+        min_heights[1, 1] = [[0.0, 10.0]]
+        min_heights[2, 2] = [[4.0, 6.0]] if with_overhang else [[0.0, 6.0]]
+        land_cover[1, 1] = 12             # Building (has height)
+        land_cover[2, 2] = 12
     land_cover[0, 0] = 8              # Water
     land_cover[0, 1] = 11             # Road
     land_cover[0, 2] = 5              # Tree
-    land_cover[1, 1] = 12             # Building (has height)
-    land_cover[2, 2] = 12
     land_cover[ny - 1, nx - 1] = 8    # Water, also under canopy below
     dem = np.zeros((ny, nx))
     dem[ny - 1, :] = 1.5
@@ -2128,3 +2134,224 @@ class TestPalmExporterAdapter:
         with pytest.raises(TypeError):
             PalmExporter().export(make_city(), str(tmp_path), "mydom",
                                   buildings3d=True)
+
+
+class TestExportPalmCanopyBottomResolution:
+    """Pins all four branches of the canopy-bottom resolution logic
+    (export_palm's replica of export_cityles' sentinel semantics: see
+    export_palm's own docstring) and the precedence between them.
+
+    Uses meshsize=1.0 (finer than the 2.0 m default fixture) so canopy_top
+    (fixed at 6.0 m by make_city's own (0,2) cell) yields
+    zlad=[0, 0.5, 1.5, 2.5, 3.5, 4.5, 5.5], and each branch's resolved
+    bottom is chosen so its crown-level COUNT is distinct from every other
+    branch's: explicit ratio 0.75 -> bottom 4.5 (2 levels in crown),
+    explicit canopy_bottom_height_grid -> bottom 3.0 (3 levels),
+    city.tree_canopy.bottom -> bottom 0.8 (5 levels), default ratio 0.3 ->
+    bottom 1.8 (4 levels). A regression collapsing one branch into another
+    (or into the wrong precedence order) is therefore observable from the
+    crown-level count alone, without needing to inspect the raw bottom
+    value directly.
+    """
+
+    def _crown_count(self, path):
+        with Dataset(path) as nc:
+            nc.set_auto_mask(False)
+            lad = nc.variables["lad"][:]
+            return int((lad[:, 0, 2] == np.float32(1.0)).sum())
+
+    def test_branch1_explicit_ratio_used(self, tmp_path):
+        out = export_palm(make_city(meshsize=1.0), trunk_height_ratio=0.75,
+                          output_directory=str(tmp_path))
+        assert self._crown_count(out) == 2
+
+    def test_branch2_explicit_grid_used_when_no_ratio(self, tmp_path):
+        city = make_city(meshsize=1.0)
+        grid = np.zeros_like(city.tree_canopy.top)
+        grid[0, 2] = 3.0
+        out = export_palm(city, canopy_bottom_height_grid=grid,
+                          output_directory=str(tmp_path))
+        assert self._crown_count(out) == 3
+
+    def test_branch3_model_bottom_used_when_no_ratio_or_grid(self, tmp_path):
+        city = make_city(meshsize=1.0)
+        bottom = np.zeros_like(city.tree_canopy.top)
+        bottom[0, 2] = 0.8
+        city.tree_canopy.bottom = bottom
+        out = export_palm(city, output_directory=str(tmp_path))
+        assert self._crown_count(out) == 5
+
+    def test_branch4_default_ratio_used_when_nothing_else_given(self, tmp_path):
+        out = export_palm(make_city(meshsize=1.0), output_directory=str(tmp_path))
+        assert self._crown_count(out) == 4
+
+    def test_explicit_ratio_beats_explicit_grid_and_model_bottom(self, tmp_path):
+        # All three optional inputs given at once: the explicit ratio must
+        # win over both of the others simultaneously.
+        city = make_city(meshsize=1.0)
+        grid = np.zeros_like(city.tree_canopy.top)
+        grid[0, 2] = 3.0
+        bottom = np.zeros_like(city.tree_canopy.top)
+        bottom[0, 2] = 0.8
+        city.tree_canopy.bottom = bottom
+        out = export_palm(city, trunk_height_ratio=0.75,
+                          canopy_bottom_height_grid=grid,
+                          output_directory=str(tmp_path))
+        assert self._crown_count(out) == 2  # branch 1's pattern, not 3 or 5
+
+    def test_explicit_ratio_beats_model_bottom_alone(self, tmp_path):
+        city = make_city(meshsize=1.0)
+        bottom = np.zeros_like(city.tree_canopy.top)
+        bottom[0, 2] = 0.8
+        city.tree_canopy.bottom = bottom
+        out = export_palm(city, trunk_height_ratio=0.75,
+                          output_directory=str(tmp_path))
+        assert self._crown_count(out) == 2  # branch 1's pattern, not 5
+
+    def test_explicit_grid_beats_model_bottom(self, tmp_path):
+        # No ratio; grid and model bottom both given: the explicit grid
+        # must win.
+        city = make_city(meshsize=1.0)
+        grid = np.zeros_like(city.tree_canopy.top)
+        grid[0, 2] = 3.0
+        bottom = np.zeros_like(city.tree_canopy.top)
+        bottom[0, 2] = 0.8
+        city.tree_canopy.bottom = bottom
+        out = export_palm(city, canopy_bottom_height_grid=grid,
+                          output_directory=str(tmp_path))
+        assert self._crown_count(out) == 3  # branch 2's pattern, not 5
+
+
+class TestExportPalmParameterSurface:
+    """Every optional parameter must actually reach the written file, not
+    merely be accepted and dropped. test_file_contract (TestExportPalm)
+    only ever exercises defaults (origin_time, under_tree_vegetation_type
+    at its default value 3, etc.), which cannot distinguish "the parameter
+    was read" from "the parameter was ignored and the default happened to
+    be the answer anyway" -- see this module's non-vacuity convention.
+    """
+
+    def test_distinctive_non_default_parameters_land_in_file(self, tmp_path):
+        city = make_city()
+        # DEM minimum shifted well off zero so origin_z is observably
+        # non-zero and non-default.
+        city.dem.elevation = city.dem.elevation + 100.0
+        out = export_palm(
+            city,
+            output_directory=str(tmp_path),
+            origin_time="2020-06-15 12:00:00 +00",
+            lad=2.5,
+            # 13 and 6 are chosen to differ from: the default (3), each
+            # other, and the land-cover mapping's own code for the (0,2)
+            # Tree cell (OSM 'Tree' -> vegetation 7) -- so a passing
+            # assertion can only mean the parameter was actually used to
+            # override the canopy cell, not that the land-cover code or
+            # the default leaked through by coincidence.
+            under_tree_vegetation_type=13,
+            soil_type=6,
+            author="Test Author",
+            comment="distinctive comment",
+        )
+        with Dataset(out) as nc:
+            nc.set_auto_mask(False)
+            assert nc.origin_time == "2020-06-15 12:00:00 +00"
+            assert nc.author == "Test Author"
+            assert "distinctive comment" in nc.comment
+            assert nc.origin_z == pytest.approx(100.0)
+            # (0,2): Tree, under canopy, non-building.
+            assert nc.variables["vegetation_type"][0, 2] == 13
+            assert nc.variables["soil_type"][0, 2] == 6
+            # lad: z=3 sits inside the default-ratio crown (bottom 1.8) at
+            # (0,2) -- must carry the passed lad value, not the default 1.0.
+            lad = nc.variables["lad"][:]
+            assert lad[2, 0, 2] == np.float32(2.5)
+
+    def test_explicit_land_cover_source_overrides_extras(self, tmp_path):
+        # extras['land_cover_source'] is 'OpenStreetMap' by default (see
+        # make_city); passing a different source explicitly must win (the
+        # resolution is `land_cover_source or extras.get(...)`, matching
+        # export_cityles). OSM and Urbanwatch disagree on raw index 0:
+        # OSM's is 'Bareland' (-> vegetation 1); Urbanwatch's is 'Building'
+        # with no recorded height here (-> pavement 2, per the "Building
+        # class without height becomes pavement" rule), so the two sources
+        # produce observably different output for the same raw grid.
+        # (ny-1, 0) is plain Bareland (raw index 0), not water/canopy/
+        # building, in the default fixture.
+        out = export_palm(make_city(), land_cover_source="Urbanwatch",
+                          output_directory=str(tmp_path))
+        with Dataset(out) as nc:
+            nc.set_auto_mask(False)
+            assert nc.variables["vegetation_type"][3, 0] == FILL_BYTE
+            assert nc.variables["pavement_type"][3, 0] == 2
+
+
+class TestExportPalmBuildings3dDecision:
+    """The buildings_3d="auto"/True/False decision has two independent
+    conditions (`buildings_3d is True` and `building_mask.any()`) ANDed
+    with the "auto" branch's own condition; TestExportPalm's existing
+    coverage (test_buildings_3d_auto, test_buildings_3d_forced_off) only
+    ever exercises "auto" and False, leaving the `is True` branch and the
+    building_mask.any() guard both unpinned.
+    """
+
+    def test_forced_true_without_elevated_segments_still_emits_lod2(self, tmp_path):
+        # buildings_3d="auto" would NOT build a LOD2 mask here (no segment
+        # starts above ground -- with_overhang=False), isolating the
+        # `buildings_3d is True` branch from "auto" entirely.
+        out = export_palm(make_city(with_overhang=False), buildings_3d=True,
+                          output_directory=str(tmp_path))
+        with Dataset(out) as nc:
+            assert "buildings_3d" in nc.variables
+            assert nc.variables["buildings_3d"].lod == 2
+
+    def test_forced_true_with_no_buildings_at_all_emits_nothing(self, tmp_path):
+        # want_3d is True, but building_mask.any() is False: nothing for a
+        # LOD2 mask to represent, so it must not be written even though the
+        # caller explicitly asked for it.
+        out = export_palm(make_city(with_buildings=False), buildings_3d=True,
+                          output_directory=str(tmp_path))
+        with Dataset(out) as nc:
+            assert "buildings_3d" not in nc.variables
+            assert "z" not in nc.dimensions
+
+
+class TestExportPalmAdditionalShapeChecks:
+    """Three inputs export_palm reads but did not shape-check: a
+    mismatched buildings.ids raises a raw numpy broadcast ValueError deep
+    in _build_buildings; a mismatched buildings.min_heights or
+    canopy_bottom_height_grid each raise IndexError (not even ValueError)
+    deep in _build_buildings_3d/_build_lad's per-cell loops -- confirmed
+    directly against the unpatched module before adding these checks.
+    zt/DEM is already covered via test_shape_mismatch_raises.
+    """
+
+    def test_ids_shape_mismatch_raises(self, tmp_path):
+        # match= is the specific "buildings.ids grid shape" prefix this
+        # module's own pre-check produces, not just "shape" -- the raw
+        # numpy broadcast error this check replaces
+        # ("operands could not be broadcast together with shapes ...") is
+        # also a ValueError and its message also contains the substring
+        # "shape" (inside "shapes"), so a loose match="shape" pattern would
+        # pass whether or not the dedicated pre-check actually ran.
+        city = make_city()
+        city.buildings.ids = np.zeros((2, 2), dtype=int)
+        with pytest.raises(ValueError, match="buildings.ids grid shape"):
+            export_palm(city, output_directory=str(tmp_path))
+        assert list(tmp_path.iterdir()) == []
+
+    def test_min_heights_shape_mismatch_raises(self, tmp_path):
+        city = make_city()
+        mh = np.empty((2, 2), dtype=object)
+        for i in range(2):
+            for j in range(2):
+                mh[i, j] = []
+        city.buildings.min_heights = mh
+        with pytest.raises(ValueError, match="buildings.min_heights grid shape"):
+            export_palm(city, output_directory=str(tmp_path))
+        assert list(tmp_path.iterdir()) == []
+
+    def test_canopy_bottom_height_grid_shape_mismatch_raises(self, tmp_path):
+        with pytest.raises(ValueError, match="canopy_bottom_height_grid grid shape"):
+            export_palm(make_city(), canopy_bottom_height_grid=np.zeros((2, 2)),
+                        output_directory=str(tmp_path))
+        assert list(tmp_path.iterdir()) == []
