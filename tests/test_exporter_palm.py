@@ -599,6 +599,51 @@ class TestBuildSurfaceTypes:
         assert sf[IDX_WATER, 0, 1] == 1.0
         assert sf[:, 1, 1].tolist() == [np.float32(FILL_FLOAT)] * 3
 
+    def test_out_of_range_raw_index_falls_back_to_default_assignment(self):
+        # Negative and absurdly large indices have no entry in
+        # index_to_assignment; .get(..., DEFAULT_ASSIGNMENT) must degrade to
+        # the default rather than raising KeyError/IndexError.
+        lc = np.array([[-1, 9999]])
+        building_mask = np.zeros((1, 2), dtype=bool)
+        canopy_mask = np.zeros((1, 2), dtype=bool)
+        f = _build_surface_types(
+            lc, 'OpenStreetMap', building_mask, canopy_mask,
+            under_tree_vegetation_type=3, soil_type_code=3,
+        )
+        category, code = DEFAULT_ASSIGNMENT
+        assert category == 'vegetation'
+        assert f["vegetation_type"][0, 0] == code
+        assert f["vegetation_type"][0, 1] == code
+
+    def test_unknown_land_cover_source_still_classifies(self):
+        # An unrecognised source must still produce a usable classification
+        # (via the OSM fallback name list inside _build_index_to_palm_map),
+        # not raise.
+        lc = np.array([[0]])  # index 0 in the OSM fallback order: Bareland
+        building_mask = np.zeros((1, 1), dtype=bool)
+        canopy_mask = np.zeros((1, 1), dtype=bool)
+        f = _build_surface_types(
+            lc, 'TotallyUnknownSource', building_mask, canopy_mask,
+            under_tree_vegetation_type=3, soil_type_code=3,
+        )
+        assert f["vegetation_type"][0, 0] == 1  # Bareland -> bare soil (OSM table)
+
+    def test_canopy_and_building_overlap_building_wins(self):
+        # A cell flagged as both canopy and building must stay all-fill:
+        # building takes precedence per the function's documented order.
+        lc = np.array([[5]])  # Tree -- would be vegetation if not a building
+        building_mask = np.array([[True]])
+        canopy_mask = np.array([[True]])
+        f = _build_surface_types(
+            lc, 'OpenStreetMap', building_mask, canopy_mask,
+            under_tree_vegetation_type=3, soil_type_code=3,
+        )
+        assert f["vegetation_type"][0, 0] == FILL_BYTE
+        assert f["pavement_type"][0, 0] == FILL_BYTE
+        assert f["water_type"][0, 0] == FILL_BYTE
+        assert f["soil_type"][0, 0] == FILL_BYTE
+        assert (f["surface_fraction"][:, 0, 0] == np.float32(FILL_FLOAT)).all()
+
 
 class TestBuildLad:
     def test_crown_placement(self):
@@ -638,3 +683,44 @@ class TestBuildLad:
                                meshsize=1.0, lad_value=1.0,
                                building_mask=np.zeros((2, 2), dtype=bool))
         assert lad is None and zlad is None
+
+    def test_does_not_mutate_inputs(self):
+        # float64 is the aliasing-prone dtype: np.asarray(x, dtype=float64)
+        # returns the same object for float64 input, so if nan_to_num/
+        # np.where/np.clip ever stopped copying, this would observe it.
+        top = np.array([[6.0, 0.0]], dtype=np.float64)
+        bottom = np.array([[1.8, 0.0]], dtype=np.float64)
+        top_orig, bottom_orig = top.copy(), bottom.copy()
+        _build_lad(top, bottom, meshsize=2.0, lad_value=1.0,
+                   building_mask=np.zeros((1, 2), dtype=bool))
+        assert np.array_equal(top, top_orig)
+        assert np.array_equal(bottom, bottom_orig)
+
+    def test_infinite_top_is_sanitized_not_a_crash(self):
+        # +-inf must not reach int(np.ceil(...)) (OverflowError) or corrupt
+        # a finite column; sanitized to 0.0, consistent with how
+        # _clean_heights treats non-finite heights as "nothing here".
+        top = np.array([[np.inf, 5.0, -np.inf]])
+        bottom = np.array([[0.0, 2.0, 0.0]])
+        building = np.zeros((1, 3), dtype=bool)
+        lad, zlad = _build_lad(top, bottom, meshsize=2.0, lad_value=1.0,
+                               building_mask=building)
+        assert lad is not None
+        assert (lad[:, 0, 0] == np.float32(FILL_FLOAT)).all()  # +inf -> no canopy
+        assert (lad[:, 0, 2] == np.float32(FILL_FLOAT)).all()  # -inf -> no canopy
+        assert (lad[:, 0, 1] == np.float32(1.0)).any()         # finite column unaffected
+
+    def test_inverted_crown_clamped_to_a_single_sane_layer(self):
+        # bottom (100) > top (6): whether via np.clip(bottom, 0, top) or the
+        # empty-in_crown fallback below, the pair must never leave an
+        # inverted (bottom > top) range or an empty crown loose in the
+        # output -- exactly one level survives, and it's the highest level
+        # at/below top.
+        top = np.array([[6.0]])
+        bottom = np.array([[100.0]])
+        lad, zlad = _build_lad(top, bottom, meshsize=2.0, lad_value=1.0,
+                               building_mask=np.array([[False]]))
+        assert zlad.tolist() == [0.0, 1.0, 3.0, 5.0]
+        col = lad[:, 0, 0]
+        assert (col == np.float32(1.0)).sum() == 1
+        assert col[3] == np.float32(1.0)  # z=5, the last level <= top

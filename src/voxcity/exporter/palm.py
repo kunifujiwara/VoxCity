@@ -505,15 +505,29 @@ def _build_lad(canopy_top, canopy_bottom, meshsize, lad_value, building_mask):
 
     Returns (lad, zlad) or (None, None) when no canopy remains.
     """
-    top = np.nan_to_num(np.asarray(canopy_top, dtype=np.float64), nan=0.0)
+    # posinf/neginf -> 0.0 (treated as "no canopy here"), matching
+    # _clean_heights and the ids cleaning in _build_buildings: an infinite
+    # top left unsanitized would otherwise reach int(np.ceil(...)) below and
+    # raise OverflowError.
+    top = np.nan_to_num(
+        np.asarray(canopy_top, dtype=np.float64), nan=0.0, posinf=0.0, neginf=0.0
+    )
     top = np.where(np.asarray(building_mask, dtype=bool), 0.0, top)
-    bottom = np.nan_to_num(np.asarray(canopy_bottom, dtype=np.float64), nan=0.0)
+    bottom = np.nan_to_num(
+        np.asarray(canopy_bottom, dtype=np.float64), nan=0.0, posinf=0.0, neginf=0.0
+    )
     bottom = np.clip(bottom, 0.0, top)
 
     max_top = float(top.max()) if top.size else 0.0
     if max_top <= 0.0:
         return None, None
 
+    # Cell-centre convention (palm_csd), not the edge convention _to_level
+    # implements: level k covers a slab centred on (k - 0.5) * dz, so the
+    # centre count is ceil(max_top / dz - 0.5), not the int(x / dz + 0.5)
+    # nearest-edge rounding used everywhere else in this module. This is a
+    # genuinely different rule, not an inline duplicate of _to_level's -- do
+    # not "fix" it to route through _to_level.
     n_centres = max(int(np.ceil(max_top / meshsize - 0.5)), 1)
     zlad = np.concatenate(
         ([0.0], (np.arange(1, n_centres + 1) - 0.5) * meshsize)
