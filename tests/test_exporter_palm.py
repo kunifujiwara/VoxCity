@@ -1,6 +1,7 @@
 """Tests for voxcity.exporter.palm (PALM static driver exporter)."""
 
 import logging
+import warnings
 
 import numpy as np
 import pytest
@@ -18,6 +19,7 @@ from voxcity.exporter.palm import (
     OEMJ_CLASS_TO_PALM,
     OSM_CLASS_TO_PALM,
     URBANWATCH_CLASS_TO_PALM,
+    _build_building_mask,
     _build_buildings,
     _build_buildings_3d,
     _build_georeference,
@@ -245,11 +247,41 @@ def _empty_min_heights(ny, nx):
     return mh
 
 
+class TestBuildingMask:
+    def test_orphan_segment_cell_is_a_building(self):
+        # Segment present, no recorded LOD1 height: the shared mask still
+        # counts this as a building, and segment_top_m carries the height
+        # buildings_2d should be repaired to.
+        heights = np.array([[0.0]])
+        mh = _empty_min_heights(1, 1)
+        mh[0, 0] = [[4.0, 10.0]]
+        mask, segment_top_m = _build_building_mask(heights, mh)
+        assert mask[0, 0]
+        assert segment_top_m[0, 0] == pytest.approx(10.0)
+
+    def test_fully_below_ground_segment_is_not_a_building(self):
+        heights = np.array([[0.0]])
+        mh = _empty_min_heights(1, 1)
+        mh[0, 0] = [[-10.0, -6.0]]
+        mask, segment_top_m = _build_building_mask(heights, mh)
+        assert not mask[0, 0]
+        assert segment_top_m[0, 0] == 0.0
+
+    def test_height_only_cell_is_a_building_without_segments(self):
+        heights = np.array([[5.0]])
+        mask, segment_top_m = _build_building_mask(heights, None)
+        assert mask[0, 0]
+        assert segment_top_m[0, 0] == 0.0
+
+
 class TestBuildBuildings:
     def test_basic_fields(self):
         heights = np.array([[0.0, 10.0], [6.0, np.nan]])
         ids = np.array([[0, 7], [0, 0]])
-        b2d, bid, btype = _build_buildings(heights, ids, building_type=3)
+        mask, segment_top_m = _build_building_mask(heights, None)
+        b2d, bid, btype = _build_buildings(
+            heights, ids, building_type=3, mask=mask, segment_top_m=segment_top_m
+        )
         assert b2d.dtype == np.float32
         assert b2d[0, 0] == np.float32(FILL_FLOAT)
         assert b2d[1, 1] == np.float32(FILL_FLOAT)  # NaN height -> no building
@@ -264,7 +296,10 @@ class TestBuildBuildings:
 
     def test_none_ids_all_generated(self):
         heights = np.array([[5.0, 0.0]])
-        b2d, bid, btype = _build_buildings(heights, None, building_type=2)
+        mask, segment_top_m = _build_building_mask(heights, None)
+        b2d, bid, btype = _build_buildings(
+            heights, None, building_type=2, mask=mask, segment_top_m=segment_top_m
+        )
         assert bid[0, 0] >= 1
         assert bid[0, 1] == FILL_INT
 
@@ -274,8 +309,10 @@ class TestBuildBuildings:
         # "greater than the max existing id at that one cell".
         heights = np.array([[3.0, 4.0, 5.0], [6.0, 0.0, 7.0]])
         ids = np.array([[0, 10, 0], [5, 0, 0]])
-        b2d, bid, btype = _build_buildings(heights, ids, building_type=1)
-        mask = heights > 0.0
+        mask, segment_top_m = _build_building_mask(heights, None)
+        b2d, bid, btype = _build_buildings(
+            heights, ids, building_type=1, mask=mask, segment_top_m=segment_top_m
+        )
         non_fill_ids = bid[mask].tolist()
         assert len(non_fill_ids) == len(set(non_fill_ids)), non_fill_ids
         assert 5 in non_fill_ids
@@ -292,11 +329,66 @@ class TestBuildBuildings:
         # the aliasing-prone dtype where np.asarray returns the same object.
         heights = np.array([[3.0, 0.0], [6.0, np.nan]], dtype=np.float64)
         ids = np.array([[0.0, 0.0], [5.0, np.nan]], dtype=np.float64)
+        mask, segment_top_m = _build_building_mask(heights, None)
         heights_orig = heights.copy()
         ids_orig = ids.copy()
-        _build_buildings(heights, ids, building_type=1)
+        _build_buildings(
+            heights, ids, building_type=1, mask=mask, segment_top_m=segment_top_m
+        )
         assert np.array_equal(heights, heights_orig, equal_nan=True)
         assert np.array_equal(ids, ids_orig, equal_nan=True)
+
+    def test_orphan_segment_repairs_buildings_2d_and_logs(
+        self, caplog, propagate_voxcity_logs
+    ):
+        # A cell with LOD2 geometry but no recorded LOD1 height (h=0) must
+        # get buildings_2d raised to the geometry's height, get a generated
+        # id, and get a building_type -- and the repair must be logged so a
+        # malformed input grid is visible rather than silently patched over.
+        heights = np.array([[0.0]])
+        mh = _empty_min_heights(1, 1)
+        mh[0, 0] = [[4.0, 10.0]]
+        mask, segment_top_m = _build_building_mask(heights, mh)
+        with caplog.at_level(logging.INFO, logger="voxcity"):
+            b2d, bid, btype = _build_buildings(
+                heights, None, building_type=1, mask=mask, segment_top_m=segment_top_m
+            )
+        assert b2d[0, 0] == np.float32(10.0)
+        assert bid[0, 0] != FILL_INT
+        assert btype[0, 0] == 1
+        assert "repair" in caplog.text.lower()
+
+    def test_infinite_ids_are_cleaned_like_heights(self):
+        # heights gets full finite-cleaning via _clean_heights (nan/inf -> 0);
+        # ids must be cleaned the same way (nan_to_num with posinf/neginf),
+        # not just nan -- otherwise +-inf reaches .astype(np.int64) and
+        # triggers "RuntimeWarning: invalid value encountered in cast".
+        heights = np.array([[5.0, 6.0]])
+        ids = np.array([[np.inf, -np.inf]])
+        mask, segment_top_m = _build_building_mask(heights, None)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            b2d, bid, btype = _build_buildings(
+                heights, ids, building_type=1, mask=mask, segment_top_m=segment_top_m
+            )
+        # both inf ids are cleaned to 0 (treated as "no id"), so both cells
+        # get generated ids, and those generated ids must still be unique.
+        assert bid[0, 0] != FILL_INT
+        assert bid[0, 1] != FILL_INT
+        assert bid[0, 0] != bid[0, 1]
+
+    def test_stale_id_on_non_building_cell_becomes_fill_and_does_not_collide(self):
+        # A positive id sitting on a cell with no height/geometry is not a
+        # building: it must not get a building_id, but it must still count
+        # toward the "existing max" that generated ids are placed above.
+        heights = np.array([[5.0, 0.0]])
+        ids = np.array([[0, 99]])
+        mask, segment_top_m = _build_building_mask(heights, None)
+        b2d, bid, btype = _build_buildings(
+            heights, ids, building_type=1, mask=mask, segment_top_m=segment_top_m
+        )
+        assert bid[0, 1] == FILL_INT
+        assert bid[0, 0] == 100
 
 
 class TestElevatedSegments:
@@ -336,7 +428,10 @@ class TestBuildBuildings3d:
         heights = np.array([[10.0, 0.0]])
         mh = _empty_min_heights(1, 2)
         mh[0, 0] = [[4.0, 10.0]]
-        b3d = _build_buildings_3d(heights, mh, meshsize=2.0)
+        mask, segment_top_m = _build_building_mask(heights, mh)
+        b3d = _build_buildings_3d(
+            heights, mh, meshsize=2.0, mask=mask, segment_top_m=segment_top_m
+        )
         assert b3d.dtype == np.int8
         assert b3d.shape == (5, 1, 2)  # nz = round(10/2)
         col = b3d[:, 0, 0]
@@ -345,7 +440,11 @@ class TestBuildBuildings3d:
 
     def test_extrusion_fallback_when_no_segments(self):
         heights = np.array([[6.0]])
-        b3d = _build_buildings_3d(heights, _empty_min_heights(1, 1), meshsize=2.0)
+        mh = _empty_min_heights(1, 1)
+        mask, segment_top_m = _build_building_mask(heights, mh)
+        b3d = _build_buildings_3d(
+            heights, mh, meshsize=2.0, mask=mask, segment_top_m=segment_top_m
+        )
         assert list(b3d[:, 0, 0]) == [1, 1, 1]
 
     def test_multiple_disjoint_segments_leave_a_real_gap(self):
@@ -354,7 +453,10 @@ class TestBuildBuildings3d:
         heights = np.array([[12.0]])
         mh = _empty_min_heights(1, 1)
         mh[0, 0] = [[0.0, 4.0], [8.0, 12.0]]
-        b3d = _build_buildings_3d(heights, mh, meshsize=2.0)
+        mask, segment_top_m = _build_building_mask(heights, mh)
+        b3d = _build_buildings_3d(
+            heights, mh, meshsize=2.0, mask=mask, segment_top_m=segment_top_m
+        )
         assert list(b3d[:, 0, 0]) == [1, 1, 0, 0, 1, 1]
 
     def test_segment_extending_above_heights_grows_nz_instead_of_truncating(self):
@@ -364,7 +466,10 @@ class TestBuildBuildings3d:
         heights = np.array([[5.0]])
         mh = _empty_min_heights(1, 1)
         mh[0, 0] = [[0.0, 20.0]]
-        b3d = _build_buildings_3d(heights, mh, meshsize=2.0)
+        mask, segment_top_m = _build_building_mask(heights, mh)
+        b3d = _build_buildings_3d(
+            heights, mh, meshsize=2.0, mask=mask, segment_top_m=segment_top_m
+        )
         assert b3d.shape == (10, 1, 1)  # nz from the segment top (20/2=10), not heights.max()
         assert list(b3d[:, 0, 0]) == [1] * 10
 
@@ -376,11 +481,67 @@ class TestBuildBuildings3d:
         heights = np.array([[10.0]])
         mh = _empty_min_heights(1, 1)
         mh[0, 0] = [[-6.0, 8.0]]
-        b3d = _build_buildings_3d(heights, mh, meshsize=2.0)
+        mask, segment_top_m = _build_building_mask(heights, mh)
+        b3d = _build_buildings_3d(
+            heights, mh, meshsize=2.0, mask=mask, segment_top_m=segment_top_m
+        )
         assert b3d.shape == (5, 1, 1)
         assert list(b3d[:, 0, 0]) == [1, 1, 1, 1, 0]
 
+    def test_fully_below_ground_segment_does_not_spuriously_fill(self):
+        # Segment entirely below ground: seg[1] = -6.0 rounds to k1 = -2 (not
+        # -1 or 0, per int(-2.5) == -2). If k1's lower bound isn't clamped
+        # independently of k0, b3d[k0:k1] normalizes the negative stop index
+        # and spuriously fills levels 0..2 instead of contributing nothing.
+        # A second, taller building establishes nz=5 so the array is long
+        # enough for that wraparound to be visible if the clamp regresses.
+        heights = np.array([[0.0, 10.0]])
+        mh = _empty_min_heights(1, 2)
+        mh[0, 0] = [[-10.0, -6.0]]
+        mask, segment_top_m = _build_building_mask(heights, mh)
+        b3d = _build_buildings_3d(
+            heights, mh, meshsize=2.0, mask=mask, segment_top_m=segment_top_m
+        )
+        assert b3d.shape == (5, 1, 2)
+        assert list(b3d[:, 0, 0]) == [0, 0, 0, 0, 0]
+
+    def test_sub_voxel_building_gets_at_least_one_level(self):
+        # 0.4 m at meshsize=2.0 rounds to level 0 (an empty extrusion range)
+        # under the voxelizer's own rounding, but the mask still counts it
+        # as a building, so buildings_3d must not drop the column entirely.
+        heights = np.array([[0.4]])
+        mask, segment_top_m = _build_building_mask(heights, None)
+        b3d = _build_buildings_3d(
+            heights, None, meshsize=2.0, mask=mask, segment_top_m=segment_top_m
+        )
+        assert b3d.shape[0] >= 1
+        assert b3d[0, 0, 0] == 1
+
+    def test_none_min_heights_extrudes_from_heights_directly(self):
+        # Distinct from the "no segments" tests above, which pass an object
+        # array of empty per-cell lists: this exercises the actual
+        # `min_heights is None` branch (mh stays None, not an array).
+        heights = np.array([[6.0]])
+        mask, segment_top_m = _build_building_mask(heights, None)
+        b3d = _build_buildings_3d(
+            heights, None, meshsize=2.0, mask=mask, segment_top_m=segment_top_m
+        )
+        assert list(b3d[:, 0, 0]) == [1, 1, 1]
+
+    def test_nan_height_cell_produces_empty_column(self):
+        heights = np.array([[3.0, np.nan]])
+        mask, segment_top_m = _build_building_mask(heights, None)
+        b3d = _build_buildings_3d(
+            heights, None, meshsize=2.0, mask=mask, segment_top_m=segment_top_m
+        )
+        assert not mask[0, 1]
+        assert (b3d[:, 0, 1] == 0).all()
+        assert (b3d[:, 0, 0] == 1).any()
+
     def test_empty_grid_does_not_raise(self):
         heights = np.zeros((0, 3))
-        b3d = _build_buildings_3d(heights, None, meshsize=2.0)
+        mask, segment_top_m = _build_building_mask(heights, None)
+        b3d = _build_buildings_3d(
+            heights, None, meshsize=2.0, mask=mask, segment_top_m=segment_top_m
+        )
         assert b3d.shape == (1, 0, 3)
