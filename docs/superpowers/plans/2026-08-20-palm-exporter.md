@@ -671,33 +671,91 @@ def _clean_heights(heights):
     return np.where(np.isfinite(h), h, 0.0)
 
 
-def _build_buildings(heights, ids, building_type):
+def _to_level(value, meshsize):
+    """Convert a height in meters to a voxel level index.
+
+    Uses the voxelizer's own rounding (voxelizer.py:_flatten_building_segments
+    uses ``int(seg[0] * inv_vs + 0.5)``): ``int(value / meshsize + 0.5)``.
+    Every height-to-level conversion in this module routes through here so
+    nz-sizing and slice bounds are derived from one rounding rule.
+    """
+    return int(float(value) / meshsize + 0.5)
+
+
+def _segment_top_m(min_heights, shape):
+    """Per-cell tallest LOD2 segment top, in meters above ground.
+
+    Each cell's value is ``max(0.0, seg[1])`` over its segments (0.0 if the
+    cell has no segments or all segments are entirely below ground).
+    """
+    top = np.zeros(shape, dtype=np.float64)
+    if min_heights is None:
+        return top
+    mh = np.asarray(min_heights, dtype=object)
+    ny, nx = shape
+    for i in range(ny):
+        for j in range(nx):
+            segs = mh[i, j]
+            if not segs:
+                continue
+            cell_top = 0.0
+            for seg in segs:
+                # Floor at 0: a segment entirely below ground (seg[1] <= 0)
+                # must not register as a building with a negative height.
+                t = max(0.0, float(seg[1]))
+                if t > cell_top:
+                    cell_top = t
+            top[i, j] = cell_top
+    return top
+
+
+def _build_building_mask(heights, min_heights):
+    """Shared building-presence mask for the LOD1 and LOD2 builders.
+
+    Returns ``(mask, segment_top_m)``, both (y, x): ``mask`` is
+    ``(heights > 0) | (segment_top_m > 0)`` and ``segment_top_m`` is each
+    cell's tallest LOD2 segment top (see _segment_top_m). Pass both to
+    _build_buildings and _build_buildings_3d so the two outputs agree on
+    which cells are buildings.
+    """
+    h = _clean_heights(heights)
+    segment_top_m = _segment_top_m(min_heights, h.shape)
+    mask = (h > 0.0) | (segment_top_m > 0.0)
+    return mask, segment_top_m
+
+
+def _build_buildings(heights, ids, building_type, mask, segment_top_m):
     """LOD1 building fields.
 
     Returns (buildings_2d float32, building_id int32, building_type int8),
-    all (y, x) with PIDS fill values off the building mask. Cells with a
-    height but no positive id receive generated ids above the existing max.
-
-    ``ids`` is assumed to hold small positive integers, as produced by the
-    VoxCity pipeline (which overwrites raw ids with small sequential
-    integers before rasterizing — see geoprocessor/raster/buildings.py).
-    This function does not validate that assumption: all-negative input ids
-    would generate ids <= 0 (invalid for PIDS), and an id near the int32
-    range boundary (e.g. a raw OSM-scale id) would silently wrap under the
-    int32 cast. Both are unreachable via the current pipeline and are left
-    unhandled here.
+    all (y, x) with PIDS fill values off ``mask`` (see
+    _build_building_mask). ``buildings_2d`` is
+    ``max(heights, segment_top_m)`` on the mask, so a cell with LOD2
+    geometry but no recorded LOD1 height still gets a height. Cells with no
+    positive id receive generated ids above the existing max.
     """
     h = _clean_heights(heights)
-    mask = h > 0.0
+    effective_h = np.maximum(h, segment_top_m)
 
     buildings_2d = np.full(h.shape, FILL_FLOAT, dtype=np.float32)
-    buildings_2d[mask] = h[mask].astype(np.float32)
+    buildings_2d[mask] = effective_h[mask].astype(np.float32)
+
+    repaired = mask & (segment_top_m > h)
+    n_repaired = int(repaired.sum())
+    if n_repaired:
+        _logger.info(
+            f"{n_repaired} cell(s) had LOD2 segment geometry taller than "
+            "the recorded LOD1 height; buildings_2d was raised to match "
+            "(orphan-segment repair)."
+        )
 
     if ids is None:
         ids_arr = np.zeros(h.shape, dtype=np.int64)
     else:
+        # ids assumed small positive integers (VoxCity pipeline convention);
+        # not validated here.
         ids_arr = np.nan_to_num(
-            np.asarray(ids, dtype=np.float64), nan=0.0
+            np.asarray(ids, dtype=np.float64), nan=0.0, posinf=0.0, neginf=0.0
         ).astype(np.int64)
 
     building_id = np.full(h.shape, FILL_INT, dtype=np.int32)
@@ -716,59 +774,76 @@ def _build_buildings(heights, ids, building_type):
 
 
 def _has_elevated_segments(min_heights, meshsize):
-    """True when any building segment starts above ground level (voxelizer
-    rounding: int(h / meshsize + 0.5)) — geometry buildings_2d cannot express."""
+    """True when any building segment starts above ground level after
+    _to_level rounding — geometry buildings_2d cannot express."""
     if min_heights is None:
         return False
     for cell in np.asarray(min_heights, dtype=object).ravel():
         if not cell:
             continue
         for seg in cell:
-            if int(float(seg[0]) / meshsize + 0.5) > 0:
+            if _to_level(seg[0], meshsize) > 0:
                 return True
     return False
 
 
-def _build_buildings_3d(heights, min_heights, meshsize):
-    """LOD2 byte mask (z, y, x) from per-cell [min, max] segments (meters
-    above ground). Cells without segments fall back to ground extrusion.
+def _build_buildings_3d(heights, min_heights, meshsize, mask, segment_top_m):
+    """LOD2 byte mask (z, y, x) from per-cell [min, max] segments.
 
-    ``nz`` covers the taller of the height-derived and segment-derived tops,
-    so a segment whose top exceeds ``heights.max()`` is fully represented
-    rather than truncated. Segment bounds are clamped to ``[0, nz]`` so a
-    below-ground minimum (e.g. CityGML LOD2 geometry dipping below the
-    terrain datum) starts at ground level instead of wrapping to the top of
-    the column via negative-index slicing.
+    Cells without segments fall back to ground extrusion from ``heights``.
+    Aligned to ``mask`` (see _build_building_mask): every masked cell gets
+    at least one filled level.
     """
     h = _clean_heights(heights)
     ny, nx = h.shape
     mh = None if min_heights is None else np.asarray(min_heights, dtype=object)
 
-    height_top = int(float(h.max()) / meshsize + 0.5) if h.size else 0
-    segment_top = 0
-    if mh is not None:
-        for cell in mh.ravel():
-            if not cell:
-                continue
-            for seg in cell:
-                k1 = int(float(seg[1]) / meshsize + 0.5)
-                if k1 > segment_top:
-                    segment_top = k1
-    nz = max(height_top, segment_top, 1)
+    height_top = _to_level(float(h.max()), meshsize) if h.size else 0
+    # segment_top_m already holds each cell's max segment top in meters, and
+    # _to_level is monotonic on non-negative inputs, so converting the
+    # array-wide max once is equivalent to converting every segment
+    # individually and taking the max of the resulting levels -- no second
+    # scan of min_heights needed here.
+    segment_top_level = (
+        _to_level(float(segment_top_m.max()), meshsize) if segment_top_m.size else 0
+    )
+    nz = max(height_top, segment_top_level, 1)
 
     b3d = np.zeros((nz, ny, nx), dtype=np.int8)
     for i in range(ny):
         for j in range(nx):
             segs = mh[i, j] if mh is not None else None
+            filled = False
             if segs:
                 for seg in segs:
-                    k0 = int(float(seg[0]) / meshsize + 0.5)
-                    k1 = int(float(seg[1]) / meshsize + 0.5)
-                    k0 = max(0, min(k0, nz))
-                    k1 = max(k0, min(k1, nz))
-                    b3d[k0:k1, i, j] = 1
+                    # Clamp both bounds to [0, nz] independently: an
+                    # unclamped k0 lets a below-ground minimum wrap to the
+                    # top of the column via negative-index slicing, and an
+                    # unclamped k1 lets a fully-below-ground segment (both
+                    # bounds negative) spuriously fill from level 0 up to a
+                    # wrapped stop index -- the `k1 > k0` check below is what
+                    # then makes such a segment a no-op instead.
+                    k0 = max(0, min(_to_level(seg[0], meshsize), nz))
+                    k1 = max(0, min(_to_level(seg[1], meshsize), nz))
+                    if k1 > k0:
+                        b3d[k0:k1, i, j] = 1
+                        filled = True
             elif h[i, j] > 0.0:
-                b3d[: int(h[i, j] / meshsize + 0.5), i, j] = 1
+                top_level = _to_level(h[i, j], meshsize)
+                if top_level > 0:
+                    b3d[:top_level, i, j] = 1
+                    filled = True
+            if not filled and mask[i, j]:
+                # Every masked cell must end up with >=1 level: PALM treats
+                # buildings_3d as authoritative when present, so a sub-voxel
+                # building (e.g. 0.4 m at meshsize=2.0) that rounds to an
+                # empty level range must not vanish from the LOD2 mask while
+                # still holding a building_id in buildings_2d -- that would
+                # silently delete a building the user asked to export.
+                # Rounding up overstates height by less than one dz (the
+                # vertical resolution limit anyway): a bounded, explainable
+                # error beats unbounded silent data loss.
+                b3d[0, i, j] = 1
     return b3d
 ```
 
