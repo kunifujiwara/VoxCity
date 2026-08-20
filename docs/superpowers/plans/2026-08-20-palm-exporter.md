@@ -143,6 +143,7 @@ from pathlib import Path
 import numpy as np
 
 from ..models import VoxCity
+from ..utils.lc import get_land_cover_classes
 from ..utils.logging import get_logger
 
 _logger = get_logger(__name__)
@@ -439,6 +440,19 @@ Expected: FAIL — ImportError
 
 - [ ] **Step 3: Implement**
 
+`pyproj.Transformer` and `..geoprocessor.utils.{compute_rotation_angle,
+normalize_rectangle_vertices}` are imported once at module scope (alongside
+the module's other imports), not locally inside this function — same
+rationale as the Task 2 hoist: they defer nothing and `geoprocessor.utils`
+does not import from `exporter`, so there is no cycle. Add to the module
+header (see Task 1):
+
+```python
+from pyproj import Transformer
+
+from ..geoprocessor.utils import compute_rotation_angle, normalize_rectangle_vertices
+```
+
 Append to `src/voxcity/exporter/palm.py`:
 
 ```python
@@ -449,13 +463,6 @@ def _build_georeference(rectangle_vertices):
     (that corner in the auto-detected UTM zone), rotation_angle (degrees
     clockwise; VoxCity and PIDS conventions agree), and the EPSG code used.
     """
-    from pyproj import Transformer
-
-    from ..geoprocessor.utils import (
-        compute_rotation_angle,
-        normalize_rectangle_vertices,
-    )
-
     rect = normalize_rectangle_vertices(rectangle_vertices, warn=False)
     origin_lon = float(rect[0][0])
     origin_lat = float(rect[0][1])
