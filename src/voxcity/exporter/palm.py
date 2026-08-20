@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import datetime
 import os
+from collections import namedtuple
 from pathlib import Path
 
 import numpy as np
@@ -616,26 +617,27 @@ def _build_lad(canopy_top, canopy_bottom, meshsize, lad_value, building_mask):
     return lad, zlad
 
 
-# dtype the writer must produce for each field (see _write_static_driver):
-# an int8<->int16 slip here is a silently non-PIDS-conformant file (`byte`
-# vs `short`), so this is asserted explicitly rather than left to the
-# writer's netCDF4 calls to fail loudly (they wouldn't -- netCDF4 happily
-# casts on write).
-_REQUIRED_DTYPES = {
-    "zt": np.float32,
-    "buildings_2d": np.float32,
-    "surface_fraction": np.float32,
-    "building_id": np.int32,
-    "building_type": np.int8,
-    "vegetation_type": np.int8,
-    "pavement_type": np.int8,
-    "water_type": np.int8,
-    "soil_type": np.int8,
-}
-# Optional fields (may be None): checked only when present.
-_OPTIONAL_DTYPES = {
-    "buildings_3d": np.int8,
-    "lad": np.float32,
+# Single source of truth for every static-driver field: the validator
+# asserts dtype from this table, the writer takes dims/fill/units/
+# long_name/lod from it too, so the two can no longer independently
+# drift. nc_type is a netCDF4 createVariable type code, and numpy
+# understands the same codes (np.dtype("f4") == float32, "i4" == int32,
+# "b" == int8), so it also serves as the expected in-memory dtype.
+_FieldSpec = namedtuple("_FieldSpec", "dims nc_type fill units long_name lod optional")
+
+_FIELD_SPECS = {
+    "zt": _FieldSpec(("y", "x"), "f4", FILL_FLOAT, "m", "terrain height", None, False),
+    "buildings_2d": _FieldSpec(("y", "x"), "f4", FILL_FLOAT, "m", "building height", 1, False),
+    "building_id": _FieldSpec(("y", "x"), "i4", FILL_INT, "1", "building id numbers", None, False),
+    "building_type": _FieldSpec(("y", "x"), "b", FILL_BYTE, "1", "building type classification", None, False),
+    "vegetation_type": _FieldSpec(("y", "x"), "b", FILL_BYTE, "1", "vegetation type classification", None, False),
+    "pavement_type": _FieldSpec(("y", "x"), "b", FILL_BYTE, "1", "pavement type classification", None, False),
+    "water_type": _FieldSpec(("y", "x"), "b", FILL_BYTE, "1", "water type classification", None, False),
+    "soil_type": _FieldSpec(("y", "x"), "b", FILL_BYTE, "1", "soil type classification", 1, False),
+    "surface_fraction": _FieldSpec(
+        ("nsurface_fraction", "y", "x"), "f4", FILL_FLOAT, "1", "surface fraction", None, False),
+    "buildings_3d": _FieldSpec(("z", "y", "x"), "b", FILL_BYTE, "1", "building structure in 3d", 2, True),
+    "lad": _FieldSpec(("zlad", "y", "x"), "f4", FILL_FLOAT, "m2 m-3", "leaf area density", None, True),
 }
 
 
@@ -647,17 +649,17 @@ def _validate_static_fields(fields):
     """
     problems = []
 
-    for name, dtype in _REQUIRED_DTYPES.items():
-        arr = fields[name]
-        if arr.dtype != dtype:
+    for name, spec in _FIELD_SPECS.items():
+        if spec.optional:
+            arr = fields.get(name)
+            if arr is None:
+                continue
+        else:
+            arr = fields[name]
+        expected_dtype = np.dtype(spec.nc_type)
+        if arr.dtype != expected_dtype:
             problems.append(
-                f"{name} has dtype {arr.dtype}, expected {np.dtype(dtype)}"
-            )
-    for name, dtype in _OPTIONAL_DTYPES.items():
-        arr = fields.get(name)
-        if arr is not None and arr.dtype != dtype:
-            problems.append(
-                f"{name} has dtype {arr.dtype}, expected {np.dtype(dtype)}"
+                f"{name} has dtype {arr.dtype}, expected {expected_dtype}"
             )
 
     zt = fields["zt"]
@@ -769,33 +771,14 @@ def _write_static_driver(path, fields, coords, attrs):
             for k, v in var_attrs.items():
                 setattr(var, k, v)
 
-        yx = ("y", "x")
-        write("zt", fields["zt"], yx, "f4", np.float32(FILL_FLOAT),
-              units="m", long_name="terrain height")
-        write("buildings_2d", fields["buildings_2d"], yx, "f4",
-              np.float32(FILL_FLOAT), units="m", long_name="building height",
-              lod=np.int32(1))
-        write("building_id", fields["building_id"], yx, "i4", np.int32(FILL_INT),
-              units="1", long_name="building id numbers")
-        write("building_type", fields["building_type"], yx, "b",
-              np.int8(FILL_BYTE), units="1", long_name="building type classification")
-        write("vegetation_type", fields["vegetation_type"], yx, "b",
-              np.int8(FILL_BYTE), units="1", long_name="vegetation type classification")
-        write("pavement_type", fields["pavement_type"], yx, "b",
-              np.int8(FILL_BYTE), units="1", long_name="pavement type classification")
-        write("water_type", fields["water_type"], yx, "b",
-              np.int8(FILL_BYTE), units="1", long_name="water type classification")
-        write("soil_type", fields["soil_type"], yx, "b",
-              np.int8(FILL_BYTE), units="1", long_name="soil type classification",
-              lod=np.int32(1))
-        write("surface_fraction", fields["surface_fraction"],
-              ("nsurface_fraction", "y", "x"), "f4", np.float32(FILL_FLOAT),
-              units="1", long_name="surface fraction")
-        if fields.get("buildings_3d") is not None:
-            write("buildings_3d", fields["buildings_3d"], ("z", "y", "x"), "b",
-                  np.int8(FILL_BYTE), units="1",
-                  long_name="building structure in 3d", lod=np.int32(2))
-        if fields.get("lad") is not None:
-            write("lad", fields["lad"], ("zlad", "y", "x"), "f4",
-                  np.float32(FILL_FLOAT), units="m2 m-3",
-                  long_name="leaf area density")
+        # Declared from the same _FIELD_SPECS table the validator's dtype
+        # check reads (defined above _validate_static_fields).
+        for name, spec in _FIELD_SPECS.items():
+            data = fields.get(name) if spec.optional else fields[name]
+            if data is None:
+                continue
+            var_attrs = {"units": spec.units, "long_name": spec.long_name}
+            if spec.lod is not None:
+                var_attrs["lod"] = np.int32(spec.lod)
+            fill = np.dtype(spec.nc_type).type(spec.fill)
+            write(name, data, spec.dims, spec.nc_type, fill, **var_attrs)
