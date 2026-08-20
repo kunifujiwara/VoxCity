@@ -23,6 +23,7 @@ import os
 from pathlib import Path
 
 import numpy as np
+from netCDF4 import Dataset
 from pyproj import Transformer
 
 from ..geoprocessor.utils import compute_rotation_angle, normalize_rectangle_vertices
@@ -731,3 +732,71 @@ def _validate_static_fields(fields):
             "PALM static driver consistency check failed: " + "; ".join(problems)
         )
 
+
+def _write_static_driver(path, fields, coords, attrs):
+    """Write the PIDS static driver NetCDF file (NETCDF4 format).
+
+    Truncates and overwrites an existing file at ``path`` (netCDF4's
+    ``"w"`` mode), matching how every other exporter in this package
+    writes its output file.
+    """
+    with Dataset(str(path), "w", format="NETCDF4") as nc:
+        for key, value in attrs.items():
+            if value is not None:
+                setattr(nc, key, value)
+
+        def coord(name, values, long_name):
+            nc.createDimension(name, values.size)
+            var = nc.createVariable(name, "f4", (name,))
+            var[:] = values
+            var.units = "m"
+            var.long_name = long_name
+
+        coord("x", coords["x"], "distance to origin in x-direction")
+        coord("y", coords["y"], "distance to origin in y-direction")
+        if "z" in coords:
+            coord("z", coords["z"], "height above origin")
+        if "zlad" in coords:
+            coord("zlad", coords["zlad"], "height above ground")
+
+        nc.createDimension("nsurface_fraction", 3)
+        nsf = nc.createVariable("nsurface_fraction", "i4", ("nsurface_fraction",))
+        nsf[:] = [IDX_VEGETATION, IDX_PAVEMENT, IDX_WATER]
+
+        def write(name, data, dims, dtype, fill, **var_attrs):
+            var = nc.createVariable(name, dtype, dims, fill_value=fill)
+            var.set_auto_mask(False)
+            var[:] = data
+            for k, v in var_attrs.items():
+                setattr(var, k, v)
+
+        yx = ("y", "x")
+        write("zt", fields["zt"], yx, "f4", np.float32(FILL_FLOAT),
+              units="m", long_name="terrain height")
+        write("buildings_2d", fields["buildings_2d"], yx, "f4",
+              np.float32(FILL_FLOAT), units="m", long_name="building height",
+              lod=np.int32(1))
+        write("building_id", fields["building_id"], yx, "i4", np.int32(FILL_INT),
+              units="1", long_name="building id numbers")
+        write("building_type", fields["building_type"], yx, "b",
+              np.int8(FILL_BYTE), units="1", long_name="building type classification")
+        write("vegetation_type", fields["vegetation_type"], yx, "b",
+              np.int8(FILL_BYTE), units="1", long_name="vegetation type classification")
+        write("pavement_type", fields["pavement_type"], yx, "b",
+              np.int8(FILL_BYTE), units="1", long_name="pavement type classification")
+        write("water_type", fields["water_type"], yx, "b",
+              np.int8(FILL_BYTE), units="1", long_name="water type classification")
+        write("soil_type", fields["soil_type"], yx, "b",
+              np.int8(FILL_BYTE), units="1", long_name="soil type classification",
+              lod=np.int32(1))
+        write("surface_fraction", fields["surface_fraction"],
+              ("nsurface_fraction", "y", "x"), "f4", np.float32(FILL_FLOAT),
+              units="1", long_name="surface fraction")
+        if fields.get("buildings_3d") is not None:
+            write("buildings_3d", fields["buildings_3d"], ("z", "y", "x"), "b",
+                  np.int8(FILL_BYTE), units="1",
+                  long_name="building structure in 3d", lod=np.int32(2))
+        if fields.get("lad") is not None:
+            write("lad", fields["lad"], ("zlad", "y", "x"), "f4",
+                  np.float32(FILL_FLOAT), units="m2 m-3",
+                  long_name="leaf area density")

@@ -5,6 +5,7 @@ import warnings
 
 import numpy as np
 import pytest
+from netCDF4 import Dataset
 
 import voxcity.exporter.palm as palm_module
 from voxcity.exporter.palm import (
@@ -33,6 +34,7 @@ from voxcity.exporter.palm import (
     _get_source_name_mapping,
     _has_elevated_segments,
     _validate_static_fields,
+    _write_static_driver,
 )
 from voxcity.utils.lc import get_land_cover_classes
 
@@ -1073,3 +1075,74 @@ class TestValidator:
         f["buildings_3d"] = b3d
         with pytest.raises(RuntimeError, match="buildings_3d"):
             _validate_static_fields(f)
+
+
+class TestWriter:
+    def _write(self, tmp_path, with_3d=False, with_lad=True):
+        fields = _valid_fields()
+        if with_3d:
+            b3d = np.zeros((2, 1, 2), dtype=np.int8)
+            b3d[:, 0, 1] = 1
+            fields["buildings_3d"] = b3d
+        if with_lad:
+            fields["lad"] = np.full((2, 1, 2), FILL_FLOAT, dtype=np.float32)
+            fields["lad"][:, 0, 0] = [0.0, 1.0]
+        coords = {
+            "x": np.array([1.0, 3.0], dtype=np.float32),
+            "y": np.array([1.0], dtype=np.float32),
+        }
+        if with_3d:
+            coords["z"] = np.array([1.0, 3.0], dtype=np.float32)
+        if with_lad:
+            coords["zlad"] = np.array([0.0, 1.0], dtype=np.float32)
+        attrs = {
+            "Conventions": "CF-1.7",
+            "origin_time": "2000-01-01 00:00:00 +00",
+            "origin_lon": 139.7, "origin_lat": 35.68,
+            "origin_x": 382000.0, "origin_y": 3949000.0,
+            "origin_z": 0.0, "rotation_angle": 0.0,
+        }
+        path = tmp_path / "dom_static"
+        _write_static_driver(path, fields, coords, attrs)
+        return path
+
+    def test_dims_dtypes_and_fills(self, tmp_path):
+        path = self._write(tmp_path, with_3d=True)
+        with Dataset(path) as nc:
+            nc.set_auto_mask(False)
+            assert nc.dimensions["x"].size == 2
+            assert nc.dimensions["y"].size == 1
+            assert nc.dimensions["z"].size == 2
+            assert nc.dimensions["zlad"].size == 2
+            assert nc.dimensions["nsurface_fraction"].size == 3
+            zt = nc.variables["zt"]
+            assert zt.dtype == np.float32
+            assert zt._FillValue == np.float32(FILL_FLOAT)
+            b2d = nc.variables["buildings_2d"]
+            assert b2d.lod == 1
+            assert b2d[0, 1] == np.float32(8.0)
+            bid = nc.variables["building_id"]
+            assert bid.dtype == np.int32
+            assert bid._FillValue == FILL_INT
+            for name in ("building_type", "vegetation_type", "pavement_type",
+                         "water_type", "soil_type"):
+                var = nc.variables[name]
+                assert var.dtype == np.int8
+                assert var._FillValue == FILL_BYTE
+            b3d = nc.variables["buildings_3d"]
+            assert b3d.lod == 2
+            assert b3d.dimensions == ("z", "y", "x")
+            lad = nc.variables["lad"]
+            assert lad.dimensions == ("zlad", "y", "x")
+            sf = nc.variables["surface_fraction"]
+            assert sf.dimensions == ("nsurface_fraction", "y", "x")
+            assert nc.rotation_angle == 0.0
+            assert nc.origin_lon == pytest.approx(139.7)
+
+    def test_optional_vars_absent(self, tmp_path):
+        path = self._write(tmp_path, with_3d=False, with_lad=False)
+        with Dataset(path) as nc:
+            assert "buildings_3d" not in nc.variables
+            assert "lad" not in nc.variables
+            assert "z" not in nc.dimensions
+            assert "zlad" not in nc.dimensions
