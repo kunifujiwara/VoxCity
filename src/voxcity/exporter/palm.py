@@ -63,8 +63,11 @@ BYTE_RANGES = {
 #
 # PALM codes used: vegetation_type 1 bare soil, 2 crops, 3 short grass,
 # 7 deciduous broadleaf trees, 13 ice caps, 14 bogs and marshes,
-# 16 deciduous shrubs; pavement_type 1 asphalt, 2 concrete;
-# water_type 1 lake, 3 ocean.
+# 16 deciduous shrubs; pavement_type 2 asphalt, 3 concrete; water_type
+# 1 lake, 3 ocean. pavement_type per PALM's own documented table
+# (https://palm.muk.uni-hannover.de/trac/wiki/doc/app/land_surface_parameters):
+# 1 is "asphalt/concrete mix", 2 is "asphalt (asphalt concrete)", 3 is
+# "concrete (Portland concrete)" -- this module never uses 1.
 
 OSM_CLASS_TO_PALM = {
     'Bareland': ('vegetation', 1),
@@ -77,16 +80,16 @@ OSM_CLASS_TO_PALM = {
     'Mangroves': ('vegetation', 7),
     'Water': ('water', 1),
     'Snow and ice': ('vegetation', 13),
-    'Developed space': ('pavement', 2),
-    'Road': ('pavement', 1),
+    'Developed space': ('pavement', 3),
+    'Road': ('pavement', 2),
     'Building': ('building', None),
     'No Data': ('vegetation', 3),
 }
 
 URBANWATCH_CLASS_TO_PALM = {
     'Building': ('building', None),
-    'Road': ('pavement', 1),
-    'Parking Lot': ('pavement', 1),
+    'Road': ('pavement', 2),
+    'Parking Lot': ('pavement', 2),
     'Tree Canopy': ('vegetation', 7),
     'Grass/Shrub': ('vegetation', 3),
     'Agriculture': ('vegetation', 2),
@@ -99,8 +102,8 @@ URBANWATCH_CLASS_TO_PALM = {
 OEMJ_CLASS_TO_PALM = {
     'Bareland': ('vegetation', 1),
     'Rangeland': ('vegetation', 3),
-    'Developed space': ('pavement', 2),
-    'Road': ('pavement', 1),
+    'Developed space': ('pavement', 3),
+    'Road': ('pavement', 2),
     'Tree': ('vegetation', 7),
     'Water': ('water', 1),
     'Agriculture land': ('vegetation', 2),
@@ -113,7 +116,7 @@ ESA_CLASS_TO_PALM = {
     'Shrubland': ('vegetation', 16),
     'Grassland': ('vegetation', 3),
     'Cropland': ('vegetation', 2),
-    'Built-up': ('pavement', 2),
+    'Built-up': ('pavement', 3),
     'Barren / sparse vegetation': ('vegetation', 1),
     'Snow and ice': ('vegetation', 13),
     'Open water': ('water', 1),
@@ -130,7 +133,7 @@ ESRI_CLASS_TO_PALM = {
     'Flooded Vegetation': ('vegetation', 14),
     'Crops': ('vegetation', 2),
     'Scrub/Shrub': ('vegetation', 16),
-    'Built Area': ('pavement', 2),
+    'Built Area': ('pavement', 3),
     'Bare Ground': ('vegetation', 1),
     'Snow/Ice': ('vegetation', 13),
     'Clouds': ('vegetation', 3),
@@ -143,7 +146,7 @@ DYNAMIC_WORLD_CLASS_TO_PALM = {
     'Flooded Vegetation': ('vegetation', 14),
     'Crops': ('vegetation', 2),
     'Shrub and Scrub': ('vegetation', 16),
-    'Built': ('pavement', 2),
+    'Built': ('pavement', 3),
     'Bare': ('vegetation', 1),
     'Snow and Ice': ('vegetation', 13),
 }
@@ -454,7 +457,7 @@ def _build_surface_types(land_cover_grid, land_cover_source, canopy_mask,
     heat capacity, and evaporation by margins that dominate a microclimate
     result), and the LAD field already represents the trees independently
     of the surface type below them. A 'building' land-cover class without
-    building height becomes pavement 2 (concrete): the surface is sealed
+    building height becomes pavement 3 (concrete): the surface is sealed
     but there is no obstacle.
 
     Returns dict with vegetation_type/pavement_type/water_type/soil_type
@@ -501,7 +504,7 @@ def _build_surface_types(land_cover_grid, land_cover_source, canopy_mask,
             raw_idx = int(land_cover_grid[i, j])
             category, code = index_to_assignment.get(raw_idx, DEFAULT_ASSIGNMENT)
             if category == 'building':
-                category, code = 'pavement', 2
+                category, code = 'pavement', 3
             # Tier 2: canopy over non-water -- ground under trees becomes
             # vegetation. Skipped when tier 3 resolved to water: overhanging
             # canopy keeps its water surface (see the docstring).

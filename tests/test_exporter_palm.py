@@ -111,8 +111,12 @@ class TestMappingTables:
         assert set(names) == set(table.keys())
 
     def test_spec_pinned_codes(self):
-        assert OSM_CLASS_TO_PALM["Road"] == ("pavement", 1)
-        assert OSM_CLASS_TO_PALM["Developed space"] == ("pavement", 2)
+        # pavement codes per PALM's own documented table
+        # (https://palm.muk.uni-hannover.de/trac/wiki/doc/app/land_surface_parameters):
+        # 2 asphalt, 3 concrete -- this module never uses 1
+        # ("asphalt/concrete mix").
+        assert OSM_CLASS_TO_PALM["Road"] == ("pavement", 2)
+        assert OSM_CLASS_TO_PALM["Developed space"] == ("pavement", 3)
         assert OSM_CLASS_TO_PALM["Tree"] == ("vegetation", 7)
         assert OSM_CLASS_TO_PALM["Shrub"] == ("vegetation", 16)
         assert OSM_CLASS_TO_PALM["Wet land"] == ("vegetation", 14)
@@ -152,7 +156,7 @@ class TestSourceResolution:
         assert index_to_assignment[0] == ('vegetation', 1)
         assert index_to_assignment[5] == ('vegetation', 7)
         assert index_to_assignment[8] == ('water', 1)
-        assert index_to_assignment[11] == ('pavement', 1)
+        assert index_to_assignment[11] == ('pavement', 2)
         assert index_to_assignment[12] == ('building', None)
 
     def test_index_map_unknown_source_uses_osm_names(self):
@@ -657,9 +661,9 @@ class TestBuildSurfaceTypes:
         veg, pav, wat = f["vegetation_type"], f["pavement_type"], f["water_type"]
         assert veg[0, 0] == 3          # canopy overrides Bareland
         assert wat[0, 1] == 1          # Water -> lake
-        assert pav[1, 0] == 1          # Road -> asphalt
+        assert pav[1, 0] == 2          # Road -> asphalt
         assert veg[2, 0] == 1          # Bareland -> bare soil
-        assert pav[2, 1] == 2          # Building class w/o height -> concrete
+        assert pav[2, 1] == 3          # Building class w/o height -> concrete
         # building cell: everything fill
         assert veg[1, 1] == FILL_BYTE
         assert pav[1, 1] == FILL_BYTE
@@ -826,7 +830,7 @@ class TestBuildSurfaceTypes:
         )
         assert f["vegetation_type"][0, 0] == 7  # not Bareland's own code (1)
         assert f["soil_type"][0, 0] == 5         # vegetation-branch soil write
-        assert f["pavement_type"][0, 1] == 1     # Road, sanity check
+        assert f["pavement_type"][0, 1] == 2     # Road, sanity check
         assert f["soil_type"][0, 1] == 5         # pavement-branch soil write
 
 
@@ -1975,7 +1979,7 @@ class TestExportPalm:
             assert "z" not in nc.dimensions
             # surface classification
             assert nc.variables["water_type"][0, 0] == 1
-            assert nc.variables["pavement_type"][0, 1] == 1
+            assert nc.variables["pavement_type"][0, 1] == 2
             assert nc.variables["vegetation_type"][0, 2] == 3   # under canopy
             assert nc.variables["vegetation_type"][1, 1] == FILL_BYTE
             # lad: canopy at (0,2) top 6, default ratio 0.3 -> bottom 1.8
@@ -2307,17 +2311,17 @@ class TestExportPalmParameterSurface:
         # resolution is `land_cover_source or extras.get(...)`, matching
         # export_cityles). OSM and Urbanwatch disagree on raw index 0:
         # OSM's is 'Bareland' (-> vegetation 1); Urbanwatch's is 'Building'
-        # with no recorded height here (-> pavement 2, per the "Building
-        # class without height becomes pavement" rule), so the two sources
-        # produce observably different output for the same raw grid.
-        # (ny-1, 0) is plain Bareland (raw index 0), not water/canopy/
-        # building, in the default fixture.
+        # with no recorded height here (-> pavement 3 concrete, per the
+        # "Building class without height becomes pavement" rule), so the
+        # two sources produce observably different output for the same raw
+        # grid. (ny-1, 0) is plain Bareland (raw index 0), not water/
+        # canopy/building, in the default fixture.
         out = export_palm(make_city(), land_cover_source="Urbanwatch",
                           output_directory=str(tmp_path))
         with Dataset(out) as nc:
             nc.set_auto_mask(False)
             assert nc.variables["vegetation_type"][3, 0] == FILL_BYTE
-            assert nc.variables["pavement_type"][3, 0] == 2
+            assert nc.variables["pavement_type"][3, 0] == 3
 
 
 class TestExportPalmBuildings3dDecision:
