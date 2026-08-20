@@ -667,6 +667,18 @@ class TestBuildSurfaceTypes:
         assert sf[IDX_WATER, 0, 1] == 1.0
         assert sf[:, 1, 1].tolist() == [np.float32(FILL_FLOAT)] * 3
 
+    def test_dtypes(self):
+        # This unit's return values are the writer's input contract: an
+        # int8 -> int16 slip here produces a silently non-PIDS-conformant
+        # file (`byte` vs `short`), and a regression must be attributed to
+        # this builder rather than discovered later by Unit 5's validator.
+        f = self._run()
+        assert f["vegetation_type"].dtype == np.int8
+        assert f["pavement_type"].dtype == np.int8
+        assert f["water_type"].dtype == np.int8
+        assert f["soil_type"].dtype == np.int8
+        assert f["surface_fraction"].dtype == np.float32
+
     def test_out_of_range_raw_index_falls_back_to_default_assignment(self):
         # Negative and absurdly large indices have no entry in
         # index_to_assignment; .get(..., DEFAULT_ASSIGNMENT) must degrade to
@@ -734,6 +746,26 @@ class TestBuildSurfaceTypes:
         assert sf[IDX_VEGETATION] == 0.0
         assert sf[IDX_PAVEMENT] == 0.0
 
+    def test_distinctive_parameter_values_are_read_not_defaulted(self):
+        # Every other fixture in this class pins under_tree_vegetation_type
+        # and soil_type_code at 3 -- which is also DEFAULT_ASSIGNMENT's code
+        # and also the OSM code for Rangeland/No Data, so those fixtures
+        # cannot tell "parameter read" apart from "parameter ignored, and 3
+        # happened to be the answer anyway". Uses distinct, non-default
+        # values and checks the soil write on both branches that make it
+        # (vegetation and pavement can regress independently).
+        lc = np.array([[0, 11]])  # Bareland (canopy cell), Road (pavement cell)
+        building_mask = np.zeros((1, 2), dtype=bool)
+        canopy_mask = np.array([[True, False]])
+        f = _build_surface_types(
+            lc, 'OpenStreetMap', building_mask, canopy_mask,
+            under_tree_vegetation_type=7, soil_type_code=5,
+        )
+        assert f["vegetation_type"][0, 0] == 7  # not Bareland's own code (1)
+        assert f["soil_type"][0, 0] == 5         # vegetation-branch soil write
+        assert f["pavement_type"][0, 1] == 1     # Road, sanity check
+        assert f["soil_type"][0, 1] == 5         # pavement-branch soil write
+
 
 class TestBuildLad:
     def test_crown_placement(self):
@@ -751,6 +783,8 @@ class TestBuildLad:
         assert col[3] == 1.0     # z=5 in crown
         # non-vegetated column: all fill
         assert (lad[:, 0, 1] == np.float32(FILL_FLOAT)).all()
+        assert lad.dtype == np.float32
+        assert zlad.dtype == np.float32
 
     def test_building_clears_canopy(self):
         top = np.array([[6.0]])
@@ -767,6 +801,19 @@ class TestBuildLad:
         lad, zlad = _build_lad(top, bottom, meshsize=2.0, lad_value=0.5,
                                building_mask=np.array([[False]]))
         assert (lad[:, 0, 0] == 0.5).sum() == 1
+
+    def test_sub_dz_canopy_still_gets_one_centre(self):
+        # top=0.5 with dz=2: np.ceil(0.5/2 - 0.5) = np.ceil(-0.25) = 0, which
+        # without the max(..., 1) floor gives zero centres (zlad=[0.0], the
+        # surface level only -- nowhere for a crown to land). With the
+        # floor, one centre exists (zlad=[0.0, 1.0]). This is the LAD
+        # analogue of the sub-voxel building case in _build_buildings_3d:
+        # a real, if tiny, canopy must not be sized out of existence.
+        top = np.array([[0.5]])
+        bottom = np.array([[0.0]])
+        lad, zlad = _build_lad(top, bottom, meshsize=2.0, lad_value=1.0,
+                               building_mask=np.array([[False]]))
+        assert zlad.tolist() == [0.0, 1.0]
 
     def test_no_canopy_returns_none(self):
         lad, zlad = _build_lad(np.zeros((2, 2)), np.zeros((2, 2)),
@@ -792,23 +839,28 @@ class TestBuildLad:
         assert np.array_equal(top, top_orig, equal_nan=True)
         assert np.array_equal(bottom, bottom_orig, equal_nan=True)
 
-    def test_infinite_top_is_sanitized_not_a_crash(self):
-        # +-inf must not reach the n_centres/np.arange sizing below (without
-        # posinf/neginf, nan_to_num's default substitutes the largest finite
-        # float64 for +inf rather than leaving literal infinity, so the
-        # observed failure is ValueError: Maximum allowed size exceeded out
-        # of np.arange, not OverflowError out of int()) or corrupt a finite
-        # column; sanitized to 0.0, consistent with how _clean_heights
-        # treats non-finite heights as "nothing here".
-        top = np.array([[np.inf, 5.0, -np.inf]])
-        bottom = np.array([[0.0, 2.0, 0.0]])
-        building = np.zeros((1, 3), dtype=bool)
+    def test_non_finite_top_is_sanitized_not_a_crash(self):
+        # NaN and +-inf must not reach the n_centres/np.arange sizing below
+        # (without posinf/neginf, nan_to_num's default substitutes the
+        # largest finite float64 for +inf rather than leaving literal
+        # infinity, so the observed failure is ValueError: Maximum allowed
+        # size exceeded out of np.arange, not OverflowError out of int())
+        # or corrupt a finite column; sanitized to 0.0, consistent with how
+        # _clean_heights treats non-finite heights as "nothing here". NaN
+        # is the one most likely to appear for real (canopy height rasters
+        # commonly carry NaN as nodata; +-inf is essentially synthetic), so
+        # it gets its own column rather than being assumed to behave like
+        # +-inf just because they share one nan_to_num call.
+        top = np.array([[np.nan, np.inf, 5.0, -np.inf]])
+        bottom = np.array([[0.0, 0.0, 2.0, 0.0]])
+        building = np.zeros((1, 4), dtype=bool)
         lad, zlad = _build_lad(top, bottom, meshsize=2.0, lad_value=1.0,
                                building_mask=building)
         assert lad is not None
-        assert (lad[:, 0, 0] == np.float32(FILL_FLOAT)).all()  # +inf -> no canopy
-        assert (lad[:, 0, 2] == np.float32(FILL_FLOAT)).all()  # -inf -> no canopy
-        assert (lad[:, 0, 1] == np.float32(1.0)).any()         # finite column unaffected
+        assert (lad[:, 0, 0] == np.float32(FILL_FLOAT)).all()  # NaN -> no canopy
+        assert (lad[:, 0, 1] == np.float32(FILL_FLOAT)).all()  # +inf -> no canopy
+        assert (lad[:, 0, 3] == np.float32(FILL_FLOAT)).all()  # -inf -> no canopy
+        assert (lad[:, 0, 2] == np.float32(1.0)).any()         # finite column unaffected
 
     def test_inverted_crown_clamped_to_a_single_sane_layer(self):
         # bottom (100) > top (6): an inverted (bottom > top) range must
@@ -886,17 +938,19 @@ class TestBuildLad:
             np.float32(FILL_FLOAT), np.float32(FILL_FLOAT), np.float32(FILL_FLOAT),
         ]
 
-    def test_infinite_bottom_is_sanitized_not_left_huge(self):
-        # +-inf on the bottom side must also be sanitized to 0.0 (ground),
-        # not left as nan_to_num's default huge-but-finite substitute --
-        # that would put bottom far above every zlad level, forcing the
-        # column into the single-level fallback instead of filling the
-        # whole crown from the ground up. Only the `top` side was pinned by
-        # test_infinite_top_is_sanitized_not_a_crash; this covers the other
-        # nan_to_num call.
-        top = np.array([[6.0]])
-        bottom = np.array([[np.inf]])
+    def test_non_finite_bottom_is_sanitized_not_left_huge(self):
+        # NaN and +-inf on the bottom side must also be sanitized to 0.0
+        # (ground), not left as nan_to_num's default huge-but-finite
+        # substitute -- that would put bottom far above every zlad level,
+        # forcing the column into the single-level fallback instead of
+        # filling the whole crown from the ground up. Only the `top` side
+        # was pinned by test_non_finite_top_is_sanitized_not_a_crash; this
+        # covers the other nan_to_num call, with both NaN (the realistic
+        # nodata case for a canopy-bottom raster) and +inf.
+        top = np.array([[6.0, 6.0]])
+        bottom = np.array([[np.inf, np.nan]])
         lad, zlad = _build_lad(top, bottom, meshsize=2.0, lad_value=1.0,
-                               building_mask=np.array([[False]]))
+                               building_mask=np.array([[False, False]]))
         assert zlad.tolist() == [0.0, 1.0, 3.0, 5.0]
-        assert list(lad[:, 0, 0]) == [np.float32(1.0)] * 4
+        assert list(lad[:, 0, 0]) == [np.float32(1.0)] * 4  # inf bottom -> ground
+        assert list(lad[:, 0, 1]) == [np.float32(1.0)] * 4  # NaN bottom -> ground
