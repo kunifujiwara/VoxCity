@@ -351,15 +351,30 @@ class TestBuildBuildings3d:
         b3d = _build_buildings_3d(heights, mh, meshsize=2.0)
         assert list(b3d[:, 0, 0]) == [1, 1, 0, 0, 1, 1]
 
-    def test_segment_extends_above_2d_derived_nz_is_silently_truncated(self):
-        # A segment's upper bound (20 m) exceeds heights.max() (5 m), so the
-        # derived nz is too small to hold it. Numpy slice assignment clips
-        # the out-of-range stop index rather than raising -- this pins that
-        # current (accepted) truncation behavior: no exception, and every
-        # level the undersized grid actually has gets set.
+    def test_segment_extending_above_heights_grows_nz_instead_of_truncating(self):
+        # A segment's upper bound (20 m) exceeds heights.max() (5 m). nz is
+        # sized from the taller of the two, so the full segment is
+        # represented -- nothing above heights.max() gets silently clipped.
         heights = np.array([[5.0]])
         mh = _empty_min_heights(1, 1)
         mh[0, 0] = [[0.0, 20.0]]
         b3d = _build_buildings_3d(heights, mh, meshsize=2.0)
-        assert b3d.shape == (3, 1, 1)  # nz from heights.max()=5.0, not the segment
-        assert list(b3d[:, 0, 0]) == [1, 1, 1]
+        assert b3d.shape == (10, 1, 1)  # nz from the segment top (20/2=10), not heights.max()
+        assert list(b3d[:, 0, 0]) == [1] * 10
+
+    def test_negative_segment_min_clamps_to_ground(self):
+        # A segment starting below ground (e.g. CityGML LOD2 geometry dipping
+        # below the terrain datum) must clamp to level 0, not wrap via a
+        # negative-index slice. Unclamped: k0 = int(-6/2 + 0.5) = -2, so
+        # b3d[-2:4] would set only index 3 (wrap-around), not levels 0..3.
+        heights = np.array([[10.0]])
+        mh = _empty_min_heights(1, 1)
+        mh[0, 0] = [[-6.0, 8.0]]
+        b3d = _build_buildings_3d(heights, mh, meshsize=2.0)
+        assert b3d.shape == (5, 1, 1)
+        assert list(b3d[:, 0, 0]) == [1, 1, 1, 1, 0]
+
+    def test_empty_grid_does_not_raise(self):
+        heights = np.zeros((0, 3))
+        b3d = _build_buildings_3d(heights, None, meshsize=2.0)
+        assert b3d.shape == (1, 0, 3)

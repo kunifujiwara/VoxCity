@@ -295,12 +295,32 @@ def _has_elevated_segments(min_heights, meshsize):
 
 def _build_buildings_3d(heights, min_heights, meshsize):
     """LOD2 byte mask (z, y, x) from per-cell [min, max] segments (metres
-    above ground). Cells without segments fall back to ground extrusion."""
+    above ground). Cells without segments fall back to ground extrusion.
+
+    ``nz`` covers the taller of the height-derived and segment-derived tops,
+    so a segment whose top exceeds ``heights.max()`` is fully represented
+    rather than truncated. Segment bounds are clamped to ``[0, nz]`` so a
+    below-ground minimum (e.g. CityGML LOD2 geometry dipping below the
+    terrain datum) starts at ground level instead of wrapping to the top of
+    the column via negative-index slicing.
+    """
     h = _clean_heights(heights)
     ny, nx = h.shape
-    nz = max(int(float(h.max()) / meshsize + 0.5), 1)
-    b3d = np.zeros((nz, ny, nx), dtype=np.int8)
     mh = None if min_heights is None else np.asarray(min_heights, dtype=object)
+
+    height_top = int(float(h.max()) / meshsize + 0.5) if h.size else 0
+    segment_top = 0
+    if mh is not None:
+        for cell in mh.ravel():
+            if not cell:
+                continue
+            for seg in cell:
+                k1 = int(float(seg[1]) / meshsize + 0.5)
+                if k1 > segment_top:
+                    segment_top = k1
+    nz = max(height_top, segment_top, 1)
+
+    b3d = np.zeros((nz, ny, nx), dtype=np.int8)
     for i in range(ny):
         for j in range(nx):
             segs = mh[i, j] if mh is not None else None
@@ -308,6 +328,8 @@ def _build_buildings_3d(heights, min_heights, meshsize):
                 for seg in segs:
                     k0 = int(float(seg[0]) / meshsize + 0.5)
                     k1 = int(float(seg[1]) / meshsize + 0.5)
+                    k0 = max(0, min(k0, nz))
+                    k1 = max(k0, min(k1, nz))
                     b3d[k0:k1, i, j] = 1
             elif h[i, j] > 0.0:
                 b3d[: int(h[i, j] / meshsize + 0.5), i, j] = 1
