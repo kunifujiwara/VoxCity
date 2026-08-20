@@ -800,7 +800,7 @@ def _has_elevated_segments(min_heights, meshsize):
         if not cell:
             continue
         for seg in cell:
-            if _to_level(seg[0], meshsize) > 0:
+            if _to_level(_clean_segment_bound(seg[0]), meshsize) > 0:
                 return True
     return False
 
@@ -1118,9 +1118,14 @@ def _build_lad(canopy_top, canopy_bottom, meshsize, lad_value, building_mask):
     Returns (lad, zlad) or (None, None) when no canopy remains.
     """
     # posinf/neginf -> 0.0 (treated as "no canopy here"), matching
-    # _clean_heights and the ids cleaning in _build_buildings: an infinite
-    # top left unsanitized would otherwise reach int(np.ceil(...)) below and
-    # raise OverflowError.
+    # _clean_heights and the ids cleaning in _build_buildings. Without the
+    # posinf/neginf args, nan_to_num's default substitutes +-inf with the
+    # largest/smallest *finite* float64 rather than leaving literal
+    # infinity, so int(np.ceil(...)) below does not raise OverflowError as
+    # one might expect -- it succeeds with an astronomically large but
+    # finite n_centres, and np.arange(1, n_centres + 1) then raises
+    # ValueError: Maximum allowed size exceeded (observed directly by
+    # temporarily dropping these two kwargs and running the test suite).
     top = np.nan_to_num(
         np.asarray(canopy_top, dtype=np.float64), nan=0.0, posinf=0.0, neginf=0.0
     )
@@ -1128,6 +1133,15 @@ def _build_lad(canopy_top, canopy_bottom, meshsize, lad_value, building_mask):
     bottom = np.nan_to_num(
         np.asarray(canopy_bottom, dtype=np.float64), nan=0.0, posinf=0.0, neginf=0.0
     )
+    # Neither half of this clip is currently observable in the output below:
+    # zlad's own minimum entry is always 0.0, so `zlad >= bottom` is already
+    # all-True whenever bottom <= 0 (the floor changes nothing), and when
+    # bottom > top, `in_crown` is empty either way -- the fallback branch
+    # that then fires does not consult bottom at all (the ceiling changes
+    # nothing; see the inverted-crown test). Kept as an explicit
+    # sanitization boundary so a future change to the crown logic below
+    # cannot start relying on an out-of-range bottom without a visible clip
+    # to remove first.
     bottom = np.clip(bottom, 0.0, top)
 
     max_top = float(top.max()) if top.size else 0.0

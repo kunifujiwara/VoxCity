@@ -446,6 +446,17 @@ class TestElevatedSegments:
         mh[1, 1] = [[4.0, 10.0]]
         assert _has_elevated_segments(mh, 2.0)
 
+    def test_non_finite_minimum_does_not_crash_and_reads_as_ground(self):
+        # A NaN/inf seg[0] must not reach _to_level unsanitized (int(nan)
+        # raises ValueError, int(inf) raises OverflowError); routed through
+        # _clean_segment_bound it reads as ground level (0), agreeing with
+        # _segment_top_m and _build_buildings_3d instead of being the one
+        # sibling that still raises on the same raw bound.
+        mh = _empty_min_heights(2, 1)
+        mh[0, 0] = [[np.nan, 10.0]]
+        mh[1, 0] = [[np.inf, 10.0]]
+        assert not _has_elevated_segments(mh, 2.0)
+
 
 class TestBuildBuildings3d:
     def test_overhang_column(self):
@@ -754,9 +765,13 @@ class TestBuildLad:
         assert np.array_equal(bottom, bottom_orig)
 
     def test_infinite_top_is_sanitized_not_a_crash(self):
-        # +-inf must not reach int(np.ceil(...)) (OverflowError) or corrupt
-        # a finite column; sanitized to 0.0, consistent with how
-        # _clean_heights treats non-finite heights as "nothing here".
+        # +-inf must not reach the n_centres/np.arange sizing below (without
+        # posinf/neginf, nan_to_num's default substitutes the largest finite
+        # float64 for +inf rather than leaving literal infinity, so the
+        # observed failure is ValueError: Maximum allowed size exceeded out
+        # of np.arange, not OverflowError out of int()) or corrupt a finite
+        # column; sanitized to 0.0, consistent with how _clean_heights
+        # treats non-finite heights as "nothing here".
         top = np.array([[np.inf, 5.0, -np.inf]])
         bottom = np.array([[0.0, 2.0, 0.0]])
         building = np.zeros((1, 3), dtype=bool)
