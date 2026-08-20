@@ -2072,187 +2072,39 @@ Expected: FAIL — ImportError (`export_palm` not defined)
 
 - [x] **Step 3: Implement orchestrator and adapter**
 
-Append to `src/voxcity/exporter/palm.py`:
+Implemented in `src/voxcity/exporter/palm.py` (`export_palm` and
+`PalmExporter`). **This plan doc stopped re-embedding the full
+implementation as a code block after it drifted out of sync for the third
+time** (each of the last two review rounds changed `export_palm`'s body --
+pre-checks extracted into `_check_export_inputs`, the shape-checked-grid
+table grown from three entries to six, the `0.3` default extracted into
+`_DEFAULT_TRUNK_HEIGHT_RATIO`, the write made atomic -- and the block here
+was updated as prose each time but not as runnable code, which a reviewer
+correctly called out as worse than no block at all). Read the module
+directly for the current implementation; this step only records what it
+must do:
 
-```python
-_TRUNK_RATIO_SENTINEL = object()  # internal sentinel -- never pass this
-
-
-def export_palm(city: VoxCity,
-                output_directory: str = "output/palm",
-                domain_name: str = "voxcity",
-                origin_time: str = "2000-01-01 00:00:00 +00",
-                lad: float = 1.0,
-                trunk_height_ratio: float = _TRUNK_RATIO_SENTINEL,
-                canopy_bottom_height_grid=None,
-                building_type: int = 3,
-                buildings_3d="auto",
-                under_tree_vegetation_type: int = 3,
-                soil_type: int = 3,
-                land_cover_source: str | None = None,
-                author: str | None = None,
-                comment: str | None = None) -> str:
-    """Export a VoxCity model to a PALM (PIDS) static driver NetCDF file.
-
-    export_palm deliberately takes no **kwargs (see design decision below):
-    every parameter is named, and an unrecognised keyword raises TypeError
-    from Python's own signature check rather than being silently dropped.
-    """
-    extras = city.extras or {}
-    rect = extras.get("rectangle_vertices")
-    if rect is None:
-        raise ValueError(
-            "city.extras['rectangle_vertices'] is required for PALM export "
-            "(georeferencing); refusing to write an unreferenced static driver"
-        )
-
-    heights = city.buildings.heights
-    shape = heights.shape
-    canopy_top = city.tree_canopy.top if city.tree_canopy is not None else None
-    # ValueError pre-checks run before anything downstream, including
-    # _validate_static_fields: a mismatched zt would otherwise pass
-    # validation silently (zt is only checked for finiteness/minimum, never
-    # against the other fields' shapes).
-    named_grids = {"land_cover": city.land_cover.classes, "dem": city.dem.elevation}
-    if canopy_top is not None:
-        named_grids["canopy_top"] = canopy_top
-    for name, grid in named_grids.items():
-        if grid.shape != shape:
-            raise ValueError(
-                f"{name} grid shape {grid.shape} does not match building "
-                f"heights shape {shape}"
-            )
-    if city.voxels.classes.shape[:2] != shape:
-        raise ValueError(
-            f"voxel grid horizontal shape {city.voxels.classes.shape[:2]} "
-            f"does not match building heights shape {shape}"
-        )
-
-    meshsize = float(city.voxels.meta.meshsize)
-    land_cover_source = land_cover_source or extras.get("land_cover_source", "Standard")
-
-    # canopy bottom resolution (export_cityles sentinel semantics)
-    user_specified_ratio = trunk_height_ratio is not _TRUNK_RATIO_SENTINEL
-    ratio = float(trunk_height_ratio) if user_specified_ratio else 0.3
-    if canopy_top is None:
-        canopy_top = np.zeros(shape, dtype=np.float64)
-    if user_specified_ratio:
-        canopy_bottom = canopy_top * ratio
-    elif canopy_bottom_height_grid is not None:
-        canopy_bottom = canopy_bottom_height_grid
-    elif city.tree_canopy is not None and city.tree_canopy.bottom is not None:
-        canopy_bottom = city.tree_canopy.bottom
-    else:
-        canopy_bottom = canopy_top * ratio
-
-    # build all fields -- every builder call below uses keyword arguments
-    # (see this task's opening note on the reversed-argument risk)
-    geo = _build_georeference(rect)
-    zt, origin_z = _build_zt(city.dem.elevation)
-    min_heights = city.buildings.min_heights
-    building_mask, segment_top_m = _build_building_mask(heights, min_heights)
-    buildings_2d, building_id, building_type_arr = _build_buildings(
-        heights, city.buildings.ids, building_type=building_type,
-        segment_top_m=segment_top_m, building_mask=building_mask,
-    )
-
-    b3d = None
-    want_3d = buildings_3d is True or (
-        buildings_3d == "auto" and _has_elevated_segments(min_heights, meshsize)
-    )
-    if want_3d and building_mask.any():
-        b3d = _build_buildings_3d(
-            heights, min_heights, meshsize,
-            segment_top_m=segment_top_m, building_mask=building_mask,
-        )
-
-    lad_arr, zlad = _build_lad(
-        canopy_top, canopy_bottom, meshsize, lad_value=lad, building_mask=building_mask,
-    )
-
-    # Sanitized exactly like _build_lad treats its own `top` input, so this
-    # mask cannot disagree with what _build_lad actually resolved.
-    canopy_present = np.nan_to_num(
-        np.asarray(canopy_top, dtype=np.float64), nan=0.0, posinf=0.0, neginf=0.0
-    ) > 0.0
-    canopy_mask = canopy_present & ~building_mask
-
-    surfaces = _build_surface_types(
-        city.land_cover.classes, land_cover_source, canopy_mask,
-        under_tree_vegetation_type=under_tree_vegetation_type,
-        soil_type_code=soil_type, building_mask=building_mask,
-    )
-
-    fields = {
-        "zt": zt,
-        "buildings_2d": buildings_2d,
-        "building_id": building_id,
-        "building_type": building_type_arr,
-        "buildings_3d": b3d,
-        "lad": lad_arr,
-        **surfaces,
-    }
-    _validate_static_fields(fields)
-
-    ny, nx = shape
-    coords = {
-        "x": ((np.arange(nx) + 0.5) * meshsize).astype(np.float32),
-        "y": ((np.arange(ny) + 0.5) * meshsize).astype(np.float32),
-    }
-    # z/zlad are only ever added alongside their data field's presence.
-    if b3d is not None:
-        coords["z"] = ((np.arange(b3d.shape[0]) + 0.5) * meshsize).astype(np.float32)
-    if zlad is not None:
-        coords["zlad"] = zlad
-
-    attrs = {
-        "Conventions": "CF-1.7",
-        "title": f"VoxCity PALM static driver: {domain_name}",
-        "source": "VoxCity",
-        "origin_time": origin_time,
-        "creation_time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S +00"),
-        "origin_lon": geo["origin_lon"],
-        "origin_lat": geo["origin_lat"],
-        "origin_x": geo["origin_x"],
-        "origin_y": geo["origin_y"],
-        "origin_z": float(origin_z),
-        "rotation_angle": geo["rotation_angle"],
-        "comment": (
-            f"origin_x/origin_y in EPSG:{geo['epsg']}"
-            + (f"; {comment}" if comment else "")
-        ),
-        "author": author,
-    }
-
-    # exist_ok=True: matches cityles.py's adapter, which makedirs the output
-    # location before writing -- a missing parent otherwise surfaces as
-    # netCDF4's confusing PermissionError [Errno 13] on Windows.
-    os.makedirs(output_directory, exist_ok=True)
-    out_path = Path(output_directory) / f"{domain_name}_static"
-    _write_static_driver(out_path, fields, coords, attrs)
-
-    _logger.info(
-        f"PALM static driver written: {out_path} "
-        f"({nx}x{ny} cells, dx={meshsize} m, "
-        f"buildings_3d={'yes' if b3d is not None else 'no'}, "
-        f"lad={'yes' if lad_arr is not None else 'no'})"
-    )
-    return str(out_path)
-
-
-class PalmExporter:
-    """Exporter adapter to write a VoxCity model to a PALM static driver."""
-
-    def export(self, obj, output_directory: str, base_filename: str, **kwargs):
-        if not isinstance(obj, VoxCity):
-            raise TypeError("PalmExporter expects a VoxCity instance")
-        return export_palm(
-            obj,
-            output_directory=output_directory,
-            domain_name=base_filename,
-            **kwargs,
-        )
-```
+- Validate every user-supplied input via `_check_export_inputs` (raises
+  `ValueError`; see "Validation & error handling" in the design spec for
+  the current, complete list) before any builder runs.
+- Resolve `land_cover_source`, then the canopy-bottom sentinel branches
+  (see "Vegetation (LAD)" above).
+- Call every builder with keyword arguments (see this task's opening note
+  on the reversed-argument risk) to assemble `fields`, then
+  `_validate_static_fields(fields)` before anything is written.
+- Build `coords`, including `z`/`zlad` only alongside their data field's
+  presence.
+- Build the `attrs` dict (see "Grid geometry & georeferencing" above for
+  the actual attribute list).
+- `makedirs(out_path.parent, exist_ok=True)`, then write atomically: to a
+  `.tmp` sibling, `os.replace()` into place only on success, with cleanup
+  and a named `RuntimeError` on any failure (including `os.replace`
+  itself, which must be inside the same `try` -- seen directly to raise a
+  raw `PermissionError` naming the `.tmp` path when the target is open
+  elsewhere, e.g. the ordinary flow of inspecting a driver then
+  re-exporting).
+- `PalmExporter.export` type-checks its `obj` argument and forwards to
+  `export_palm` with `domain_name=base_filename`.
 
 **Design decision (required beyond the plan's original sketch, which put
 `**kwargs` on `export_palm` itself): `export_palm` does NOT take `**kwargs`.**

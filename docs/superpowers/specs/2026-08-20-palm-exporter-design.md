@@ -26,8 +26,12 @@ Key conveniences confirmed against the codebase:
 - **Orientation is a direct match.** VoxCity's internal contract
   (`voxcity.utils.orientation`: axis 0 = northward with row 0 at the south edge,
   axis 1 = eastward) equals PALM's `(y, x)` convention. Grids are written as
-  `var[y, x] = grid[i, j]` with **no flip**. The voxel grid `(i, j, k)` maps to
-  `buildings_3d(z, y, x)` by a `(2, 0, 1)` transpose.
+  `var[y, x] = grid[i, j]` with **no flip**. `buildings_3d(z, y, x)` is NOT a
+  transpose of `city.voxels.classes(i, j, k)` -- the implementation never reads
+  the voxel grid for this field. It is built directly from
+  `city.buildings.heights`/`min_heights` (per-cell `[min, max]` segments,
+  extruded to a byte 0/1 mask) in `_build_buildings_3d`, at whatever `nz` the
+  tallest height/segment requires.
 - **Rotation conventions agree.** VoxCity's `rotation_angle` (degrees clockwise,
   derived from `rectangle_vertices` via `compute_rotation_angle`) matches the PIDS
   `rotation_angle` global attribute definition.
@@ -80,9 +84,13 @@ Internal structure, top to bottom of the module:
 - `z` (for `buildings_3d`) and `zlad` (for `lad`) are cell-center height
   coordinates. Per PIDS, `zlad` covers ground to the highest canopy layer; `z`
   covers ground to the highest building layer.
-- Global attributes:
-  - `Conventions = "CF-1.7"`, `origin_time`, `data_content`, `version`,
-    `creation_time`; `author`/`comment` when provided.
+- Global attributes actually written: `Conventions = "CF-1.7"`, `title`,
+  `source = "VoxCity"`, `origin_time`, `creation_time`, `origin_lon`,
+  `origin_lat`, `origin_x`, `origin_y`, `origin_z`, `rotation_angle`,
+  `comment` (always; the user-supplied `comment` argument, when given, is
+  appended to it); `author` only when provided. `data_content` and
+  `version` are not written -- an earlier draft of this spec promised
+  them; they were dropped during implementation and never added back.
   - `origin_lon`, `origin_lat`: SW corner from
     `normalize_rectangle_vertices(city.extras["rectangle_vertices"])`.
   - `origin_x`, `origin_y`: that corner projected to the auto-detected UTM zone
@@ -114,9 +122,9 @@ per-source table maps names → `(category, palm_code)`:
 | Wet land | vegetation | 14 (bogs and marshes) |
 | Snow and ice | vegetation | 13 (ice caps and glaciers) |
 | Water | water | 1 (lake) |
-| Road | pavement | 1 (asphalt) |
-| Developed space | pavement | 2 (concrete) |
-| Building | — (skipped; building mask wins) | — |
+| Road | pavement | 2 (asphalt) |
+| Developed space | pavement | 3 (concrete) |
+| Building (no recorded height) | pavement | 3 (concrete) -- remapped, not skipped: a footprint with no height is a sealed surface but no obstacle (building mask, which DOES win on a cell with a recorded height, applies separately) |
 | No Data | vegetation | 3 (short grass) |
 
 Analogous tables cover the same sources as cityles (OpenStreetMap/Standard,
@@ -172,7 +180,8 @@ than half a voxel yields a `buildings_2d` entry whose 3D column is empty.
   ID (max existing ID + running counter). IDs are assumed to be small positive
   integers, as the VoxCity pipeline produces them.
 - `building_type(y, x)` byte, `_FillValue = -127`: constant `building_type`
-  parameter on building cells (default 3, residential 1950–2000).
+  parameter on building cells (default 3, "Residential, > 2000" per PALM's
+  `building_type` table; 1950-2000 is code 2, not the default).
 - `buildings_3d(z, y, x)` byte 0/1, attribute `lod = 2`, `_FillValue = -127`:
   built from the per-cell `[min, max]` segments in `city.buildings.min_heights`,
   falling back to ground extrusion for cells without segments. Written when
@@ -206,12 +215,23 @@ matching cityles.
 
 ## Validation & error handling
 
-`export_palm` raises `ValueError` (before writing anything) when:
+`export_palm` raises `ValueError` (before writing anything, via
+`_check_export_inputs`) for seven kinds of bad user input:
 
 - `city.extras["rectangle_vertices"]` is missing — georeferencing is required;
   a (0,0)-defaulted PALM file would be useless.
-- 2D grid shapes disagree with each other or with the voxel grid's horizontal
-  shape.
+- A 2D grid (land cover, DEM, canopy top, `buildings.ids`,
+  `buildings.min_heights`, `canopy_bottom_height_grid`) or the voxel grid's
+  horizontal shape disagrees with the building heights grid's shape.
+- `meshsize` is non-positive or non-finite (a zero mesh size divides by zero
+  inside a builder; a negative one exports "successfully" with negative
+  coordinates).
+- `building_type`/`soil_type`/`under_tree_vegetation_type` fall outside
+  their PIDS class range (`BYTE_RANGES`).
+- `lad` is negative or non-finite.
+- `trunk_height_ratio`, when explicitly passed, is not a finite number in
+  `[0, 1]`.
+- `buildings_3d` is not exactly `True`, `False`, or `"auto"`.
 
 Built-in consistency validation (the rules PALM checks at runtime, encoded so
 files pass PALM's own checks — user-selected in lieu of a live PALM run):
@@ -231,8 +251,17 @@ files pass PALM's own checks — user-selected in lieu of a live PALM run):
   presence mask (see Buildings), so a violation here indicates an exporter bug.
 - All written arrays free of NaN/inf; byte fields within valid PIDS class
   ranges; `zt` minimum exactly 0.
-- LAD values only within `[bottom, top]` layers and only where fill isn't
-  expected.
+- `lad` values (where not fill) are finite and non-negative.
+
+**Not enforced, deliberately:** "LAD values only within `[bottom, top]`
+layers" -- an earlier draft of this spec listed this as validated, but
+`_validate_static_fields` only ever receives the finished `lad` array, not
+the canopy top/bottom inputs `_build_lad` placed it from, so it has no
+independent reference to re-derive the expected layer range against; and
+`_build_lad`'s own empty-crown fallback (a crown too thin to catch a zlad
+level) deliberately fills exactly one level outside `[bottom, top]` rather
+than dropping the canopy entirely. Both functions' docstrings already say
+this; this spec previously did not agree with them.
 
 These run as an internal `_validate_static_fields()` step before the writer; a
 violation is an exporter bug, so it raises `AssertionError`-style `RuntimeError`

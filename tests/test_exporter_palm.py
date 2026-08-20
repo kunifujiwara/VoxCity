@@ -40,6 +40,7 @@ from voxcity.exporter.palm import (
     _check_export_inputs,
     _get_source_name_mapping,
     _has_elevated_segments,
+    _to_level,
     _validate_static_fields,
     _write_static_driver,
     export_palm,
@@ -131,6 +132,129 @@ class TestMappingTables:
             "vegetation_type": (1, 18), "pavement_type": (1, 15), "water_type": (1, 5),
             "soil_type": (1, 6), "building_type": (1, 6),
         }
+
+
+# Every table entry, hand-transcribed independently of the tables in
+# palm.py (not derived by reading them) and checked against PALM's own
+# documented class tables:
+# https://palm.muk.uni-hannover.de/trac/wiki/doc/app/land_surface_parameters
+# (pavement_type) and https://palm.muk.uni-hannover.de/trac/wiki/doc/app/vegetation_parameters
+# (vegetation_type). This is the regression test for the pavement
+# off-by-one bug: TestMappingTables' existing tests
+# (test_entries_are_category_code_pairs, test_mapping_table_covers_all_source_classes)
+# only ever checked table SHAPE (valid category, in-range code, key set
+# matches the source's class list), and every one of the following
+# entries passed at 221/221 with pavement codes off by one: ESA
+# 'Open water' -> ('vegetation', 3) [wrong category, water misread as
+# vegetation would have been shape-valid too], ESRI 'Built Area' ->
+# ('pavement', 1), Dynamic World 'Built' -> ('pavement', 1), Urbanwatch
+# 'Tree Canopy' -> ('vegetation', 3). A wrong CODE, not just a wrong
+# shape, now fails here -- the same "declaration table pinned only where
+# someone remembered" gap _FIELD_SPECS and BYTE_RANGES already closed
+# elsewhere in this module.
+_EXPECTED_TABLE_ENTRIES = {
+    "OpenStreetMap": {
+        'Bareland': ('vegetation', 1),
+        'Rangeland': ('vegetation', 3),
+        'Shrub': ('vegetation', 16),
+        'Moss and lichen': ('vegetation', 1),
+        'Agriculture land': ('vegetation', 2),
+        'Tree': ('vegetation', 7),
+        'Wet land': ('vegetation', 14),
+        'Mangroves': ('vegetation', 7),
+        'Water': ('water', 1),
+        'Snow and ice': ('vegetation', 13),
+        'Developed space': ('pavement', 3),
+        'Road': ('pavement', 2),
+        'Building': ('building', None),
+        'No Data': ('vegetation', 3),
+    },
+    "Urbanwatch": {
+        'Building': ('building', None),
+        'Road': ('pavement', 2),
+        'Parking Lot': ('pavement', 2),
+        'Tree Canopy': ('vegetation', 7),
+        'Grass/Shrub': ('vegetation', 3),
+        'Agriculture': ('vegetation', 2),
+        'Water': ('water', 1),
+        'Barren': ('vegetation', 1),
+        'Unknown': ('vegetation', 3),
+        'Sea': ('water', 3),
+    },
+    "OpenEarthMapJapan": {
+        'Bareland': ('vegetation', 1),
+        'Rangeland': ('vegetation', 3),
+        'Developed space': ('pavement', 3),
+        'Road': ('pavement', 2),
+        'Tree': ('vegetation', 7),
+        'Water': ('water', 1),
+        'Agriculture land': ('vegetation', 2),
+        'Building': ('building', None),
+        'No Data': ('vegetation', 3),
+    },
+    "ESA WorldCover": {
+        'Trees': ('vegetation', 7),
+        'Shrubland': ('vegetation', 16),
+        'Grassland': ('vegetation', 3),
+        'Cropland': ('vegetation', 2),
+        'Built-up': ('pavement', 3),
+        'Barren / sparse vegetation': ('vegetation', 1),
+        'Snow and ice': ('vegetation', 13),
+        'Open water': ('water', 1),
+        'Herbaceous wetland': ('vegetation', 14),
+        'Mangroves': ('vegetation', 7),
+        'Moss and lichen': ('vegetation', 1),
+    },
+    "ESRI 10m Annual Land Cover": {
+        'No Data': ('vegetation', 3),
+        'Water': ('water', 1),
+        'Trees': ('vegetation', 7),
+        'Grass': ('vegetation', 3),
+        'Flooded Vegetation': ('vegetation', 14),
+        'Crops': ('vegetation', 2),
+        'Scrub/Shrub': ('vegetation', 16),
+        'Built Area': ('pavement', 3),
+        'Bare Ground': ('vegetation', 1),
+        'Snow/Ice': ('vegetation', 13),
+        'Clouds': ('vegetation', 3),
+    },
+    "Dynamic World V1": {
+        'Water': ('water', 1),
+        'Trees': ('vegetation', 7),
+        'Grass': ('vegetation', 3),
+        'Flooded Vegetation': ('vegetation', 14),
+        'Crops': ('vegetation', 2),
+        'Shrub and Scrub': ('vegetation', 16),
+        'Built': ('pavement', 3),
+        'Bare': ('vegetation', 1),
+        'Snow and Ice': ('vegetation', 13),
+    },
+}
+
+_TABLE_ENTRY_CASES = [
+    (source_name, class_name, expected)
+    for source_name, classes in _EXPECTED_TABLE_ENTRIES.items()
+    for class_name, expected in classes.items()
+]
+
+_SOURCE_NAME_TO_TABLE = dict(SOURCE_TABLE_PAIRS)
+
+
+class TestMappingTableValues:
+    def test_expected_entries_cover_every_class_in_every_table(self):
+        # Cross-check so a class added to (or removed from) a table
+        # without updating _EXPECTED_TABLE_ENTRIES to match fails loudly,
+        # rather than the parametrize list below silently covering fewer
+        # (or different) classes than the table actually has.
+        for source_name, table in SOURCE_TABLE_PAIRS:
+            assert set(_EXPECTED_TABLE_ENTRIES[source_name]) == set(table), source_name
+
+    @pytest.mark.parametrize(
+        "source_name, class_name, expected", _TABLE_ENTRY_CASES,
+        ids=[f"{s}:{c}" for s, c, _ in _TABLE_ENTRY_CASES],
+    )
+    def test_table_entry_matches_expected_value(self, source_name, class_name, expected):
+        assert _SOURCE_NAME_TO_TABLE[source_name][class_name] == expected
 
 
 class TestSourceResolution:
@@ -437,6 +561,38 @@ class TestBuildBuildings:
         )
         assert bid[0, 1] == FILL_INT
         assert bid[0, 0] == 100
+
+
+class TestToLevel:
+    """_to_level is the single rounding rule every height-to-level
+    conversion in this module routes through (see its own docstring:
+    "Every height-to-level conversion in this module routes through here
+    so nz-sizing and slice bounds are derived from one rounding rule"),
+    but had no direct test -- only indirect coverage via callers whose
+    own fixtures happen to use mesh-aligned values that can't distinguish
+    round-half-up (``int(v / mesh + 0.5)``) from plain truncation
+    (``int(v / mesh)``, dropping the +0.5): both formulas agree whenever
+    v is an exact multiple of mesh, which every existing fixture used.
+    """
+
+    def test_matches_voxelizer_round_half_up_convention(self):
+        # 3.0 / 2.0 = 1.5 -> +0.5 = 2.0 -> level 2. Plain truncation
+        # (no +0.5) would give level 1 instead -- the case that actually
+        # distinguishes the two formulas.
+        assert _to_level(3.0, 2.0) == 2
+
+    def test_below_half_rounds_down(self):
+        # 2.9 / 2.0 = 1.45 -> +0.5 = 1.95 -> level 1 either way (a
+        # regression to `round()`'s banker's-rounding, or to ceil, could
+        # still pass test_matches_voxelizer_round_half_up_convention
+        # above alone; this pins the other side of the same rule).
+        assert _to_level(2.9, 2.0) == 1
+
+    def test_exact_multiple_of_meshsize(self):
+        assert _to_level(4.0, 2.0) == 2
+
+    def test_zero_is_level_zero(self):
+        assert _to_level(0.0, 2.0) == 0
 
 
 class TestElevatedSegments:
@@ -1621,6 +1777,30 @@ class TestWriter:
             assert nc.variables["buildings_3d"].long_name == "building structure in 3d"
             assert nc.variables["soil_type"].lod == 1
             assert nc.variables["soil_type"].long_name == "soil type classification"
+            # These five were previously checked only self-referentially,
+            # via TestWriterFieldSpecs' parametrized test reading its
+            # expected value from the very _FIELD_SPECS entry it then
+            # compares the written file against -- unable to catch a
+            # wrong value declared in the table itself (a spurious
+            # `lod = 1` added to building_type's spec, for example,
+            # would pass that test, since it would just be comparing the
+            # file to its own, now-also-wrong, expectation). These
+            # values are transcribed independently instead.
+            assert nc.variables["building_id"].units == "1"
+            assert nc.variables["building_id"].long_name == "building id numbers"
+            assert not hasattr(nc.variables["building_id"], "lod")
+            assert nc.variables["building_type"].units == "1"
+            assert nc.variables["building_type"].long_name == "building type classification"
+            assert not hasattr(nc.variables["building_type"], "lod")
+            assert nc.variables["vegetation_type"].units == "1"
+            assert nc.variables["vegetation_type"].long_name == "vegetation type classification"
+            assert not hasattr(nc.variables["vegetation_type"], "lod")
+            assert nc.variables["pavement_type"].units == "1"
+            assert nc.variables["pavement_type"].long_name == "pavement type classification"
+            assert not hasattr(nc.variables["pavement_type"], "lod")
+            assert nc.variables["water_type"].units == "1"
+            assert nc.variables["water_type"].long_name == "water type classification"
+            assert not hasattr(nc.variables["water_type"], "lod")
             assert nc.variables["lad"].units == "m2 m-3"
             assert nc.variables["lad"].long_name == "leaf area density"
             assert nc.variables["surface_fraction"].units == "1"
@@ -2564,6 +2744,40 @@ class TestExportPalmUserInputValueChecks:
             export_palm(make_city(), output_directory=str(out_dir),
                         buildings_3d=value)  # must not raise
 
+    @pytest.mark.parametrize("bad_value", [float("nan"), -2.0, 1.5])
+    def test_invalid_trunk_height_ratio_raises(self, tmp_path, bad_value):
+        # Measured directly: nan and -2.0 both silently fill the entire
+        # canopy column with LAD (both end up sanitizing to "fill from the
+        # ground" somewhere downstream -- nan via _build_lad's own
+        # nan_to_num, -2.0 because a very negative bottom already satisfies
+        # `zlad >= bottom` for every level); 1.5 silently collapses the
+        # crown to a single level via the empty-crown fallback (bottom >
+        # top). None of these crash or produce an obviously wrong shape --
+        # this is the parameter whose misuse is least visible in the
+        # output, which is exactly why it needs its own explicit check.
+        with pytest.raises(ValueError, match="trunk_height_ratio"):
+            export_palm(make_city(), output_directory=str(tmp_path),
+                        trunk_height_ratio=bad_value)
+        assert list(tmp_path.iterdir()) == []
+
+    def test_none_trunk_height_ratio_raises_value_error_not_type_error(self, tmp_path):
+        # Without this check, None reaches a bare float(None) downstream
+        # and raises TypeError -- this module documents ValueError for
+        # every bad user input, so a caller catching ValueError (as the
+        # docstring tells them to) would otherwise miss this one.
+        with pytest.raises(ValueError, match="trunk_height_ratio"):
+            export_palm(make_city(), output_directory=str(tmp_path),
+                        trunk_height_ratio=None)
+        assert list(tmp_path.iterdir()) == []
+
+    def test_boundary_trunk_height_ratio_values_still_work(self, tmp_path):
+        # 0.0 (crown reaches the ground) and 1.0 (crown is a single point
+        # at the top) are both valid, inclusive boundaries.
+        for value in (0.0, 1.0):
+            out_dir = tmp_path / str(value)
+            export_palm(make_city(), output_directory=str(out_dir),
+                        trunk_height_ratio=value)  # must not raise
+
 
 class TestExportPalmAtomicWrite:
     """netCDF4's Dataset(path, "w") truncates its target immediately, so a
@@ -2606,6 +2820,30 @@ class TestExportPalmAtomicWrite:
         with pytest.raises(RuntimeError, match="simulated mid-write crash"):
             export_palm(make_city(), output_directory=str(tmp_path))
         assert list(tmp_path.iterdir()) == []
+
+    def test_replace_failure_under_an_open_handle_cleans_up_and_names_the_cause(
+        self, tmp_path
+    ):
+        # Reproduces the real failure, not a monkeypatch: the ordinary flow
+        # of inspecting a driver (Dataset(out)) and then re-exporting to
+        # the same path. On Windows, os.replace(tmp, out_path) then raises
+        # PermissionError [WinError 5] because out_path is still open --
+        # confirmed directly before this test was written, and the
+        # original code (os.replace called AFTER the try/except, not
+        # inside it) let that raw error leak with the .tmp path in it and
+        # left the .tmp file behind on every retry.
+        good_out = export_palm(make_city(), output_directory=str(tmp_path))
+        original_bytes = Path(good_out).read_bytes()
+        handle = Dataset(good_out)
+        try:
+            with pytest.raises(RuntimeError, match=re.escape(str(Path(good_out)))):
+                export_palm(make_city(), output_directory=str(tmp_path))
+        finally:
+            handle.close()
+        # The target file itself is untouched (os.replace never partially
+        # completes), and no stray .tmp file survives the failed attempt.
+        assert Path(good_out).read_bytes() == original_bytes
+        assert list(Path(tmp_path).glob("*.tmp")) == []
 
 
 # (name, mutator) pairs mirroring palm_module._SHAPE_CHECKED_GRID_ACCESSORS'

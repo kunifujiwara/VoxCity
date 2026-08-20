@@ -410,7 +410,7 @@ export_palm(
     output_directory="output/palm",
     domain_name="voxcity",
     lad=1.0,              # Leaf Area Density (m2/m3) inside tree crowns
-    buildings_3d="auto",  # write the LOD2 building mask only where LOD1 can't express the geometry
+    buildings_3d="auto",  # write the domain-wide LOD2 building mask only when some building needs it (LOD1 alone can't express it)
 )
 ```
 

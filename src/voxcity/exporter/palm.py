@@ -678,14 +678,17 @@ def _validate_static_fields(fields):
       to a single [0, 4] segment is valid LOD2 data).
     - lad values (where not fill) are finite and non-negative.
 
-    Deliberately not enforced here (spec's validation section lists both;
-    neither is silently dropped):
+    Deliberately not enforced here, not silently dropped:
     - "LAD values only within [bottom, top] layers": this function
       receives only the final lad array, not the canopy top/bottom inputs
       _build_lad placed it from, so it has no independent reference to
       re-derive the expected layer range against -- that placement is
       _build_lad's own contract, not something a downstream consumer of
-      its output can re-verify.
+      its output can re-verify. (The design spec's validation section
+      previously listed this as enforced; it does not agree with this
+      docstring or with _build_lad's own empty-crown fallback, which
+      deliberately fills one level outside [bottom, top] -- the spec has
+      been corrected to match the code.)
     """
     problems = []
 
@@ -858,8 +861,8 @@ _DEFAULT_TRUNK_HEIGHT_RATIO = 0.3
 # added grid is covered by construction rather than by remembering to
 # add an `if x is not None: named_grids[...] = x` line -- the same
 # "flat table pinned only where someone remembered" gap _FIELD_SPECS
-# closed for the writer/validator (Unit 5) and BYTE_RANGES closes for
-# class ranges. accessor takes (city, canopy_bottom_height_grid) and
+# closes for the writer/validator and BYTE_RANGES closes for class
+# ranges. accessor takes (city, canopy_bottom_height_grid) and
 # returns the grid or None (grid absent -- nothing to check).
 # tests/test_exporter_palm.py::TestExportPalmShapePreChecksParametrized
 # iterates this same tuple.
@@ -876,7 +879,7 @@ _SHAPE_CHECKED_GRID_ACCESSORS = (
 
 def _check_export_inputs(city, meshsize, building_type, soil_type,
                           under_tree_vegetation_type, lad, buildings_3d,
-                          canopy_bottom_height_grid):
+                          canopy_bottom_height_grid, trunk_height_ratio):
     """Validate export_palm's user-supplied inputs before any builder runs.
 
     Every failure here is a ValueError naming the offending input: bad user
@@ -897,10 +900,19 @@ def _check_export_inputs(city, meshsize, building_type, soil_type,
     _validate_static_fields, producing a RuntimeError that tells the user
     the exporter is broken when they typed the bad value; meshsize=0
     raises ZeroDivisionError inside _to_level, and meshsize<0 exports
-    "successfully" with negative coordinates and a negative dx. A
-    mismatched zt specifically would otherwise pass _validate_static_fields
-    silently, since that function only checks zt for finiteness/minimum,
-    never against the other fields' shapes.
+    "successfully" with negative coordinates and a negative dx. An explicit
+    trunk_height_ratio of nan or a large negative number silently fills the
+    entire canopy column with LAD (both sanitize to "fill from the ground"
+    somewhere downstream); a ratio above 1 silently collapses the crown to
+    a single level via _build_lad's empty-crown fallback; and
+    trunk_height_ratio=None reaches a bare float(None), raising a raw
+    TypeError instead of this module's documented ValueError -- all
+    confirmed directly, and this is also the parameter whose misuse is
+    least visible in the output (no crash, no obviously-wrong shape, just
+    a physically implausible canopy). A mismatched zt specifically would
+    otherwise pass _validate_static_fields silently, since that function
+    only checks zt for finiteness/minimum, never against the other fields'
+    shapes.
 
     Returns (rect, extras, heights, shape, ids, min_heights, canopy_top).
     """
@@ -964,6 +976,28 @@ def _check_export_inputs(city, meshsize, building_type, soil_type,
             f"buildings_3d must be True, False, or 'auto', got {buildings_3d!r}"
         )
 
+    # trunk_height_ratio: a fraction of canopy height (0 = crown reaches
+    # the ground, 1 = crown is a single point at the top), so both ends of
+    # [0, 1] are physically meaningful and inclusive; only checked when the
+    # caller actually passed one (the sentinel means "use the default").
+    # float(...) inside a try, not a bare comparison, because
+    # trunk_height_ratio=None reaches a bare float(None) downstream and
+    # raises TypeError -- this module documents ValueError for every bad
+    # user input, not a mix of the two.
+    if trunk_height_ratio is not _TRUNK_RATIO_SENTINEL:
+        try:
+            ratio_value = float(trunk_height_ratio)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                "trunk_height_ratio must be a finite number in [0, 1], got "
+                f"{trunk_height_ratio!r}"
+            ) from exc
+        if not (np.isfinite(ratio_value) and 0.0 <= ratio_value <= 1.0):
+            raise ValueError(
+                "trunk_height_ratio must be a finite number in [0, 1], got "
+                f"{trunk_height_ratio!r}"
+            )
+
     return rect, extras, heights, shape, ids, min_heights, canopy_top
 
 
@@ -1003,10 +1037,13 @@ def export_palm(city: VoxCity,
     lad : float
         Constant leaf area density (m2/m3) inside tree crowns.
     trunk_height_ratio : float, optional
-        When explicitly provided, canopy bottoms are always recomputed as
-        ``top * ratio``, even when the model already carries a per-cell
-        bottom grid (same sentinel semantics as ``export_cityles``). When
-        omitted: an explicit ``canopy_bottom_height_grid`` wins; otherwise
+        Fraction of canopy height below which there is no leaf area;
+        must be in ``[0, 1]`` when given (0: crown reaches the ground; 1:
+        crown is a single point at the top). When explicitly provided,
+        canopy bottoms are always recomputed as ``top * ratio``, even when
+        the model already carries a per-cell bottom grid (same sentinel
+        semantics as ``export_cityles``). When omitted: an explicit
+        ``canopy_bottom_height_grid`` wins; otherwise
         ``city.tree_canopy.bottom`` when present; otherwise the default
         ratio 0.3.
     canopy_bottom_height_grid : numpy.ndarray, optional
@@ -1045,8 +1082,9 @@ def export_palm(city: VoxCity,
         disagreeing with the building heights grid's shape; a non-positive
         or non-finite *meshsize*; *building_type*/*soil_type*/
         *under_tree_vegetation_type* outside their PIDS class range
-        (``BYTE_RANGES``); a negative or non-finite *lad*; or a
-        *buildings_3d* value other than ``True``/``False``/``"auto"``.
+        (``BYTE_RANGES``); a negative or non-finite *lad*; an explicit
+        *trunk_height_ratio* outside ``[0, 1]``; or a *buildings_3d* value
+        other than ``True``/``False``/``"auto"``.
     RuntimeError
         If the assembled fields fail PALM's documented consistency rules
         (see _validate_static_fields) -- an exporter bug rather than a
@@ -1056,7 +1094,7 @@ def export_palm(city: VoxCity,
     meshsize = float(city.voxels.meta.meshsize)
     rect, extras, heights, shape, ids, min_heights, canopy_top = _check_export_inputs(
         city, meshsize, building_type, soil_type, under_tree_vegetation_type,
-        lad, buildings_3d, canopy_bottom_height_grid,
+        lad, buildings_3d, canopy_bottom_height_grid, trunk_height_ratio,
     )
     land_cover_source = land_cover_source or extras.get("land_cover_source", "Standard")
     _logger.info(f"Exporting PALM static driver (source: {land_cover_source})")
@@ -1191,11 +1229,26 @@ def export_palm(city: VoxCity,
     tmp_out_path = out_path.with_name(out_path.name + ".tmp")
     try:
         _write_static_driver(tmp_out_path, fields, coords, attrs)
-    except Exception:
+        os.replace(tmp_out_path, out_path)
+    except Exception as exc:
+        # os.replace is INSIDE this try, not after it: on Windows,
+        # os.replace(tmp, out_path) raises PermissionError [WinError 5] if
+        # out_path is open elsewhere -- including the ordinary flow of
+        # inspecting a driver with netCDF4.Dataset(...) and then
+        # re-exporting into the same path -- and if that call were outside
+        # the handler, the .tmp file would survive every such attempt and
+        # accumulate (confirmed directly: it does). The target file itself
+        # stays intact either way (os.replace never partially completes),
+        # so re-raising a clear, named error here is about not leaking a
+        # confusing raw PermissionError naming a .tmp path the caller never
+        # asked about -- the same reasoning as the makedirs call above.
         if tmp_out_path.exists():
             tmp_out_path.unlink()
-        raise
-    os.replace(tmp_out_path, out_path)
+        raise RuntimeError(
+            f"failed to write PALM static driver to {out_path} "
+            f"({exc.__class__.__name__}: {exc}); any previous file at that "
+            "path was left untouched"
+        ) from exc
 
     _logger.info(
         f"PALM static driver written: {out_path} "
