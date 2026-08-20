@@ -679,6 +679,49 @@ class TestBuildSurfaceTypes:
         assert f["soil_type"].dtype == np.int8
         assert f["surface_fraction"].dtype == np.float32
 
+    def test_classification_log_reports_building_share_and_breakdown(
+        self, caplog, propagate_voxcity_logs
+    ):
+        # The classification summary is the primary user-facing signal for
+        # whether land cover mapped sensibly; it had no test coverage at
+        # all (deleting the accumulation and log loop was silent). _run()'s
+        # fixture is a 3x2 grid (6 cells) with 1 building cell, so the
+        # building-share line must read "1 cell(s) (16.7%)", and the
+        # itemized per-class lines must still be present (they cover the
+        # other 5 cells; percentages intentionally don't sum to 100% on
+        # their own -- the building-share line is what explains the gap).
+        with caplog.at_level(logging.INFO, logger="voxcity"):
+            self._run()
+        assert "summary" in caplog.text.lower()
+        assert "1 cell(s) (16.7%) are buildings" in caplog.text
+        assert "Bareland" in caplog.text
+        assert "Water" in caplog.text
+
+    def test_building_mask_shape_mismatch_raises(self):
+        # A stale mask from a different grid must fail loudly at the point
+        # that has the wrong input, not silently ignore extra rows via
+        # NumPy broadcasting/fancy-indexing.
+        lc = np.zeros((2, 2))
+        bad_building_mask = np.zeros((4, 2), dtype=bool)
+        good_canopy_mask = np.zeros((2, 2), dtype=bool)
+        with pytest.raises(ValueError):
+            _build_surface_types(
+                lc, 'OpenStreetMap', good_canopy_mask,
+                under_tree_vegetation_type=3, soil_type_code=3,
+                building_mask=bad_building_mask,
+            )
+
+    def test_canopy_mask_shape_mismatch_raises(self):
+        lc = np.zeros((2, 2))
+        good_building_mask = np.zeros((2, 2), dtype=bool)
+        bad_canopy_mask = np.zeros((4, 2), dtype=bool)
+        with pytest.raises(ValueError):
+            _build_surface_types(
+                lc, 'OpenStreetMap', bad_canopy_mask,
+                under_tree_vegetation_type=3, soil_type_code=3,
+                building_mask=good_building_mask,
+            )
+
     def test_out_of_range_raw_index_falls_back_to_default_assignment(self):
         # Negative and absurdly large indices have no entry in
         # index_to_assignment; .get(..., DEFAULT_ASSIGNMENT) must degrade to

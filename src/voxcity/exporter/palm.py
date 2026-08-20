@@ -460,6 +460,18 @@ def _build_surface_types(land_cover_grid, land_cover_source, canopy_mask,
     """
     index_to_assignment, class_names = _build_index_to_palm_map(land_cover_source)
     ny, nx = land_cover_grid.shape
+    if building_mask.shape != (ny, nx) or canopy_mask.shape != (ny, nx):
+        # A shape mismatch (e.g. a stale mask from a different grid) is the
+        # one place in this module that would otherwise produce a wrong
+        # answer quietly: NumPy broadcasting/fancy-indexing on a
+        # differently-shaped boolean mask silently ignores the extra rows
+        # or raises somewhere unrelated, rather than failing at the point
+        # that actually has the wrong input.
+        raise ValueError(
+            "_build_surface_types: building_mask "
+            f"{building_mask.shape} and canopy_mask {canopy_mask.shape} "
+            f"must both match land_cover_grid {(ny, nx)}"
+        )
 
     vegetation_type = np.full((ny, nx), FILL_BYTE, dtype=np.int8)
     pavement_type = np.full((ny, nx), FILL_BYTE, dtype=np.int8)
@@ -511,6 +523,16 @@ def _build_surface_types(land_cover_grid, land_cover_source, canopy_mask,
 
     _logger.info("Land cover -> PALM surface classification summary:")
     total = ny * nx
+    n_building = int(building_mask.sum())
+    if n_building:
+        # mapping_stats only covers non-building cells, so building_mask's
+        # share is logged as its own line -- otherwise the itemized
+        # percentages below sum to ~80% on a 20%-built domain with nothing
+        # explaining the remainder.
+        _logger.info(
+            f"  {n_building} cell(s) ({n_building / total * 100:.1f}%) are "
+            "buildings (classified separately; not counted below)."
+        )
     for (raw_idx, category, code), count in sorted(mapping_stats.items()):
         name = class_names[raw_idx] if 0 <= raw_idx < len(class_names) else 'Unknown'
         _logger.info(
