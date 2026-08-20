@@ -91,6 +91,13 @@ class TestMappingTables:
         assert OSM_CLASS_TO_PALM["Building"] == ("building", None)
         assert URBANWATCH_CLASS_TO_PALM["Sea"] == ("water", 3)
 
+    def test_byte_ranges_match_pids(self):
+        # PIDS-mandated valid class ranges; the validator and the table tests both derive from these.
+        assert BYTE_RANGES == {
+            "vegetation_type": (1, 18), "pavement_type": (1, 15), "water_type": (1, 5),
+            "soil_type": (1, 6), "building_type": (1, 6),
+        }
+
 
 class TestSourceResolution:
     def test_known_sources(self):
@@ -120,6 +127,8 @@ class TestSourceResolution:
 
     def test_index_map_unknown_source_uses_osm_names(self):
         index_to_assignment, class_names = _build_index_to_palm_map('Nope')
+        assert len(class_names) == 14
+        assert class_names[12] == 'Building'
         assert index_to_assignment[0] == ('vegetation', 1)
 
     def test_default_assignment_used_for_unmapped_class_name(self, monkeypatch):
