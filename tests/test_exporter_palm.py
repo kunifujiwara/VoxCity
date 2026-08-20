@@ -1,12 +1,14 @@
 """Tests for voxcity.exporter.palm (PALM static driver exporter)."""
 
 import logging
+import re
 import warnings
 from pathlib import Path
 
 import numpy as np
 import pytest
 from netCDF4 import Dataset
+from pyproj import Transformer
 
 import voxcity.exporter.palm as palm_module
 from voxcity.exporter.palm import (
@@ -26,6 +28,7 @@ from voxcity.exporter.palm import (
     URBANWATCH_CLASS_TO_PALM,
     PalmExporter,
     _FIELD_SPECS,
+    _SHAPE_CHECKED_GRID_ACCESSORS,
     _build_building_mask,
     _build_buildings,
     _build_buildings_3d,
@@ -34,6 +37,7 @@ from voxcity.exporter.palm import (
     _build_lad,
     _build_surface_types,
     _build_zt,
+    _check_export_inputs,
     _get_source_name_mapping,
     _has_elevated_segments,
     _validate_static_fields,
@@ -1863,7 +1867,7 @@ class TestWriterOverwrite:
 
 
 def make_city(ny=4, nx=4, meshsize=2.0, with_overhang=False, with_canopy=True,
-              with_buildings=True, extras=None):
+              with_buildings=True, with_orphan_segment=False, extras=None):
     """Small synthetic VoxCity in the internal south-up orientation.
 
     Cell layout (row, col); valid for any ny, nx >= 3:
@@ -1875,6 +1879,15 @@ def make_city(ny=4, nx=4, meshsize=2.0, with_overhang=False, with_canopy=True,
       building.
     - (2,2): Building (height 6.0; LOD2 segment [4, 6] when with_overhang,
       else [0, 6]) when with_buildings.
+    - (ny-2, 0): orphan-segment cell when with_orphan_segment -- no
+      recorded LOD1 height, but an LOD2 segment topping at 8 m. Exercises
+      the shared building_mask/segment_top_m predicate end-to-end (see
+      _build_building_mask's docstring and export_palm's own inline
+      comment): without segment_top_m actually reaching both
+      _build_buildings and _build_buildings_3d, this cell is invisible as
+      a building and buildings_2d stays fill instead of being repaired to
+      8.0. Independent of with_buildings (heights stays 0.0 here either
+      way).
     - (ny-1, nx-1): Water WITH canopy when with_canopy -- the one cell the
       plan's original fixture never exercised: canopy must NOT override a
       water surface (precedence is building > canopy-over-non-water >
@@ -1904,6 +1917,8 @@ def make_city(ny=4, nx=4, meshsize=2.0, with_overhang=False, with_canopy=True,
         min_heights[2, 2] = [[4.0, 6.0]] if with_overhang else [[0.0, 6.0]]
         land_cover[1, 1] = 12             # Building (has height)
         land_cover[2, 2] = 12
+    if with_orphan_segment:
+        min_heights[ny - 2, 0] = [[0.0, 8.0]]
     land_cover[0, 0] = 8              # Water
     land_cover[0, 1] = 11             # Road
     land_cover[0, 2] = 5              # Tree
@@ -2015,6 +2030,15 @@ class TestExportPalm:
             col = b3d[:, 2, 2]
             assert col[0] == 0 and col[1] == 0  # below the overhang
             assert col[2] == 1                  # level 2 (4-6 m)
+            # z's own values were previously unpinned (only its dimension's
+            # existence was checked): z and zlad deliberately use different
+            # vertical conventions (z is edge-based, cell index * meshsize;
+            # zlad is cell-centre-based -- see _build_lad's docstring), so
+            # the one place the two could be confused had only one side
+            # (zlad, via test_file_contract) actually pinned to exact
+            # values. nz=5 here (heights.max()=10 and the tallest segment
+            # top 10 m both give level 5 at meshsize=2.0).
+            assert nc.variables["z"][:].tolist() == [1.0, 3.0, 5.0, 7.0, 9.0]
 
     def test_buildings_3d_forced_off(self, tmp_path):
         out = export_palm(make_city(with_overhang=True), buildings_3d=False,
@@ -2106,6 +2130,11 @@ class TestPalmExporterAdapter:
         exporter = PalmExporter()
         out = exporter.export(make_city(), str(tmp_path), "mydom")
         assert Path(out).name == "mydom_static"
+        # Not just "the file exists somewhere": a mutant hardcoding
+        # "output/palm" as the write location would still create a file
+        # that exists, just in the wrong place (the repo's own working
+        # directory) -- caught only by pinning the actual parent.
+        assert Path(out).parent == tmp_path
         assert Path(out).exists()
 
     def test_rejects_non_voxcity(self, tmp_path):
@@ -2117,6 +2146,12 @@ class TestPalmExporterAdapter:
         assert "PalmExporter" in ex.__all__
         assert "export_palm" in ex.__all__
         assert ex.PalmExporter is PalmExporter
+        # Dropping "export_palm" from __all__ (while leaving the name
+        # itself defined) survived without this: the two lines above only
+        # ever checked __all__'s contents, never that the star-imported
+        # name in voxcity.exporter actually resolves to this module's
+        # export_palm.
+        assert ex.export_palm is export_palm
 
     def test_forwards_kwargs_to_export_palm(self, tmp_path):
         # Distinctive, non-default building_type (5, not the default 3)
@@ -2357,6 +2392,104 @@ class TestExportPalmAdditionalShapeChecks:
         assert list(tmp_path.iterdir()) == []
 
 
+# Independently computed (NOT copy-pasted from export_palm's own
+# _build_georeference call): a swapped origin_x/origin_y in the attrs dict
+# relocates the simulated domain by ~3.5 million metres for this fixture,
+# a silently catastrophic scientific error that 177 tests previously did
+# not catch (the adjacent origin_lon/origin_lat swap already was caught,
+# which is what made the gap look like an oversight rather than a
+# decision). Comparing against a value nothing in export_palm's own code
+# path produced is the whole point.
+_EXPECTED_ORIGIN_X, _EXPECTED_ORIGIN_Y = Transformer.from_crs(
+    "EPSG:4326", "EPSG:32654", always_xy=True
+).transform(139.7000, 35.6800)
+
+# Every PIDS global attribute export_palm writes with a value independent
+# of wall-clock time, parametrized rather than asserted one-by-one -- see
+# the module's non-vacuity convention and this unit's review history
+# (_FIELD_SPECS, then the parameter surface, now this): a flat table
+# tested entry-by-entry is exactly the shape that lets one entry go
+# unpinned indefinitely.
+_EXPECTED_GLOBAL_ATTRS = [
+    ("Conventions", "CF-1.7"),
+    ("title", "VoxCity PALM static driver: testdom"),
+    ("source", "VoxCity"),
+    ("origin_time", "2000-01-01 00:00:00 +00"),
+    ("origin_lon", pytest.approx(139.7000)),
+    ("origin_lat", pytest.approx(35.6800)),
+    ("origin_x", pytest.approx(_EXPECTED_ORIGIN_X)),
+    ("origin_y", pytest.approx(_EXPECTED_ORIGIN_Y)),
+    ("origin_z", pytest.approx(0.0)),
+]
+
+# Attribute names present in the written file but excluded from
+# _EXPECTED_GLOBAL_ATTRS because they need their own check, not a single
+# expected value: creation_time varies with wall-clock time (format only),
+# comment is a formatted string built from origin_x/origin_y's own EPSG
+# zone (prefix only), and rotation_angle is only near-zero for this
+# axis-aligned fixture, not exactly zero.
+_GLOBAL_ATTRS_WITH_DEDICATED_CHECKS = {"creation_time", "comment", "rotation_angle"}
+
+
+class TestExportPalmGlobalAttributes:
+    """The full PIDS global-attribute block was previously unpinned: not
+    one of the 177 tests as of the last review round asserted origin_x,
+    origin_y, Conventions, title, source, or creation_time, and swapping
+    origin_x/origin_y in the attrs dict -- which relocates the PALM
+    simulation domain by thousands of kilometres -- passed every test.
+    """
+
+    @pytest.fixture(scope="class")
+    def static_path(self, tmp_path_factory):
+        out_dir = tmp_path_factory.mktemp("palm_attrs")
+        return export_palm(make_city(), output_directory=str(out_dir),
+                           domain_name="testdom")
+
+    @pytest.fixture(scope="class")
+    def nc_attrs(self, static_path):
+        with Dataset(static_path) as nc:
+            return {name: getattr(nc, name) for name in nc.ncattrs()}
+
+    @pytest.mark.parametrize("name, expected", _EXPECTED_GLOBAL_ATTRS,
+                             ids=[name for name, _ in _EXPECTED_GLOBAL_ATTRS])
+    def test_attribute_matches_independent_expectation(self, nc_attrs, name, expected):
+        assert nc_attrs[name] == expected
+
+    def test_every_written_attribute_is_accounted_for(self, nc_attrs):
+        # Catches what the parametrized cases above cannot: a mutant
+        # introducing a brand-new, silently-unpinned attribute, or one
+        # that drops author when it IS provided (author/comment aren't
+        # both always present -- author is None-guarded away by the
+        # writer when not passed, matching this call's defaults).
+        expected_names = (
+            {name for name, _ in _EXPECTED_GLOBAL_ATTRS}
+            | _GLOBAL_ATTRS_WITH_DEDICATED_CHECKS
+        )
+        assert set(nc_attrs) == expected_names
+
+    def test_comment_names_the_epsg_zone(self, nc_attrs):
+        assert nc_attrs["comment"].startswith("origin_x/origin_y in EPSG:32654")
+
+    def test_creation_time_matches_documented_format(self, nc_attrs):
+        assert re.match(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \+00$",
+                        nc_attrs["creation_time"])
+
+    def test_rotation_angle_is_near_zero_for_axis_aligned_rect(self, nc_attrs):
+        assert abs(nc_attrs["rotation_angle"]) < 0.5
+
+    def test_author_and_comment_suffix_appear_when_provided(self, tmp_path):
+        # author/comment are None-guarded out of the file when absent
+        # (TestWriterAttrsGuard already pins that at the writer level);
+        # this is the orchestrator-level proof that passing them actually
+        # reaches the written file.
+        out = export_palm(make_city(), output_directory=str(tmp_path),
+                          author="Test Author", comment="extra detail")
+        with Dataset(out) as nc:
+            assert nc.author == "Test Author"
+            assert nc.comment.startswith("origin_x/origin_y in EPSG:32654")
+            assert nc.comment.endswith("; extra detail")
+
+
 class TestExportPalmUserInputValueChecks:
     """building_type/soil_type/under_tree_vegetation_type/lad/meshsize/
     buildings_3d previously escaped the ValueError pre-check boundary
@@ -2469,3 +2602,172 @@ class TestExportPalmAtomicWrite:
         with pytest.raises(RuntimeError, match="simulated mid-write crash"):
             export_palm(make_city(), output_directory=str(tmp_path))
         assert list(tmp_path.iterdir()) == []
+
+
+# (name, mutator) pairs mirroring palm_module._SHAPE_CHECKED_GRID_ACCESSORS'
+# city-derived entries (canopy_bottom_height_grid is a call-time kwarg, not
+# a city attribute, and has its own dedicated test above), each shrinking
+# that one grid to an incompatible shape.
+def _small_min_heights():
+    mh = np.empty((2, 2), dtype=object)
+    for i in range(2):
+        for j in range(2):
+            mh[i, j] = []
+    return mh
+
+
+_SHAPE_CHECK_MUTATORS = {
+    "land_cover": lambda city: setattr(city.land_cover, "classes",
+                                       np.zeros((2, 2), dtype=int)),
+    "dem": lambda city: setattr(city.dem, "elevation", np.zeros((2, 2))),
+    "canopy_top": lambda city: setattr(city.tree_canopy, "top", np.zeros((2, 2))),
+    "buildings.ids": lambda city: setattr(city.buildings, "ids",
+                                          np.zeros((2, 2), dtype=int)),
+    "buildings.min_heights": lambda city: setattr(city.buildings, "min_heights",
+                                                   _small_min_heights()),
+}
+
+
+class TestExportPalmShapePreChecksParametrized:
+    """Parametrized over every city-derived grid export_palm shape-checks,
+    driven by the same _SHAPE_CHECKED_GRID_ACCESSORS table production
+    reads from -- so a newly added grid is covered by construction rather
+    than by someone remembering to add a one-off test. Before this class,
+    2 of the 6 named_grids checks (land_cover, canopy_top) had no
+    dedicated test anywhere in this module: only dem, buildings.ids,
+    buildings.min_heights, and canopy_bottom_height_grid did.
+    """
+
+    def test_mutator_table_matches_every_city_derived_grid_the_production_code_checks(self):
+        # If a new grid is added to palm_module._SHAPE_CHECKED_GRID_ACCESSORS
+        # without a matching entry in _SHAPE_CHECK_MUTATORS, this fails --
+        # closing the loop so this test class cannot silently fall behind
+        # production's own list of checked grids.
+        city_derived_names = {
+            name for name, _ in _SHAPE_CHECKED_GRID_ACCESSORS
+            if name != "canopy_bottom_height_grid"
+        }
+        assert set(_SHAPE_CHECK_MUTATORS) == city_derived_names
+
+    @pytest.mark.parametrize("name", sorted(_SHAPE_CHECK_MUTATORS))
+    def test_mismatched_grid_raises_naming_it(self, tmp_path, name):
+        # match= is the exact "<name> grid shape" prefix
+        # _check_export_inputs' own named_grids loop produces, not just
+        # the bare grid name: for "land_cover" specifically, a bare-name
+        # match is satisfiable by a completely different, coincidental
+        # source -- _build_surface_types has its own internal shape guard
+        # whose message happens to contain the substring "land_cover_grid"
+        # too, so a bare match="land_cover" would still pass even with
+        # _check_export_inputs' own land_cover check deleted (confirmed
+        # directly). The full prefix is unique to this pre-check.
+        city = make_city()
+        _SHAPE_CHECK_MUTATORS[name](city)
+        with pytest.raises(ValueError, match=re.escape(f"{name} grid shape")):
+            export_palm(city, output_directory=str(tmp_path))
+        assert list(tmp_path.iterdir()) == []
+
+
+class TestExportPalmMiscCoverage:
+    """Smaller gaps found in the same review pass: each is cheap and
+    isolated, so grouped in one class rather than scattered.
+    """
+
+    def test_default_trunk_height_ratio_constant_is_0_3(self):
+        # Direct assertion on the named constant, not just inferable
+        # through crown geometry (TestExportPalmCanopyBottomResolution's
+        # branch4 test already proves the constant is actually USED; this
+        # proves the constant itself is the documented 0.3, matching
+        # export_cityles's own inline default).
+        assert palm_module._DEFAULT_TRUNK_HEIGHT_RATIO == 0.3
+
+    def test_missing_land_cover_source_in_extras_falls_back_to_standard(self, tmp_path):
+        # extras has no 'land_cover_source' key at all (distinct from
+        # make_city's own default extras, which always sets one) --
+        # exercises the `extras.get("land_cover_source", "Standard")`
+        # fallback, and 'Standard' must itself resolve without raising
+        # (it aliases OpenStreetMap; see _get_source_name_mapping).
+        city = make_city(extras={"rectangle_vertices": RECT})
+        out = export_palm(city, output_directory=str(tmp_path))  # must not raise
+        with Dataset(out) as nc:
+            nc.set_auto_mask(False)
+            # OSM/Standard raw index 0 is Bareland -> vegetation code 1.
+            assert nc.variables["vegetation_type"][3, 0] == 1
+
+    def test_none_extras_treated_as_missing_rectangle_vertices(self, tmp_path):
+        # city.extras is a plain dict by the VoxCity dataclass's own
+        # default_factory, but nothing stops a caller from setting it to
+        # None outright; `extras = city.extras or {}` must degrade to the
+        # ordinary "missing rectangle_vertices" ValueError rather than
+        # crashing with AttributeError on `None.get(...)`.
+        city = make_city()
+        city.extras = None
+        with pytest.raises(ValueError, match="rectangle_vertices"):
+            export_palm(city, output_directory=str(tmp_path))
+        assert list(tmp_path.iterdir()) == []
+
+    def test_inf_canopy_top_reads_as_no_canopy_not_spuriously_covered(self, tmp_path):
+        # (3,2) is plain Bareland in the default fixture, untouched by
+        # with_canopy -- setting it to +inf here is a deliberate, isolated
+        # mutation exercising canopy_present's nan_to_num sanitization (see
+        # export_palm's own inline comment above canopy_present). +inf, not
+        # NaN: `np.nan > 0.0` is already False in plain numpy (NaN
+        # comparisons are always False), so a NaN cell reads as "no
+        # canopy" whether or not nan_to_num runs at all -- it cannot
+        # distinguish this line from a no-op (confirmed directly: removing
+        # the nan_to_num call still passed a NaN-based version of this
+        # test). +inf is the case that actually flips: `np.inf > 0.0` is
+        # True, so without sanitization this cell would be spuriously
+        # counted as canopy-covered here while _build_lad -- which
+        # sanitizes its own `top` input the same way -- treats it as bare,
+        # the exact disagreement the shared sanitization exists to prevent.
+        city = make_city()
+        city.tree_canopy.top[3, 2] = np.inf
+        out = export_palm(city, output_directory=str(tmp_path))  # must not raise
+        with Dataset(out) as nc:
+            nc.set_auto_mask(False)
+            # Bareland's own code (1), NOT under_tree_vegetation_type's
+            # default (3) -- proving the +inf cell was excluded from
+            # canopy_mask rather than spuriously counted as canopy-covered.
+            assert nc.variables["vegetation_type"][3, 2] == 1
+
+    def test_no_tree_canopy_model_treated_as_no_canopy(self, tmp_path):
+        # city.tree_canopy is typed as required (CanopyGrid, not Optional)
+        # but nothing enforces that at runtime; `canopy_top = ... if
+        # city.tree_canopy is not None else None` and the canopy-bottom
+        # resolution's own `city.tree_canopy is not None` guard both cover
+        # this, and both are exercised by the same single city here.
+        city = make_city(with_canopy=False)
+        city.tree_canopy = None
+        out = export_palm(city, output_directory=str(tmp_path))  # must not raise
+        with Dataset(out) as nc:
+            assert "lad" not in nc.variables
+
+    def test_domain_name_with_path_separator_creates_nested_directory(self, tmp_path):
+        # Regression for the makedirs fix: makedirs was keyed on
+        # output_directory, not on out_path.parent, so a domain_name
+        # containing a path separator hit the same PermissionError
+        # [Errno 13] the makedirs call exists to prevent.
+        out = export_palm(make_city(), output_directory=str(tmp_path),
+                          domain_name="a/b")
+        assert Path(out) == tmp_path / "a" / "b_static"
+        assert Path(out).exists()
+
+    def test_orphan_segment_cell_is_repaired_end_to_end(
+        self, tmp_path, caplog, propagate_voxcity_logs
+    ):
+        # The shared building_mask/segment_top_m predicate
+        # (_build_building_mask's docstring, and export_palm's own inline
+        # comment above building_mask) had no end-to-end test: make_city's
+        # existing buildings all have heights >= their segment tops, so
+        # passing np.zeros(shape) as segment_top_m to either builder, or
+        # building the mask from heights alone, both previously survived.
+        with caplog.at_level(logging.WARNING, logger="voxcity"):
+            out = export_palm(make_city(with_orphan_segment=True),
+                              output_directory=str(tmp_path))
+        with Dataset(out) as nc:
+            nc.set_auto_mask(False)
+            # (ny-2, 0) = (2, 0) for the default 4x4 fixture.
+            assert nc.variables["buildings_2d"][2, 0] == np.float32(8.0)
+            assert nc.variables["building_id"][2, 0] != FILL_INT
+            assert nc.variables["building_type"][2, 0] == 3  # default building_type
+        assert "repair" in caplog.text.lower()

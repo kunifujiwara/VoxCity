@@ -841,13 +841,25 @@ def _write_static_driver(path, fields, coords, attrs):
 
 _TRUNK_RATIO_SENTINEL = object()  # internal sentinel -- never pass this
 
+# Applied when no explicit ratio, canopy_bottom_height_grid, or
+# city.tree_canopy.bottom is available (see _check_export_inputs'
+# sibling resolution logic in export_palm). A named constant, not an
+# inline literal, so its value is directly assertable from a test
+# (tests/test_exporter_palm.py checks this equals cityles.py's own
+# default 0.3) rather than only inferable from crown geometry.
+_DEFAULT_TRUNK_HEIGHT_RATIO = 0.3
+
 # (name, accessor) pairs for every grid export_palm must shape-check
 # against building heights before any builder runs. A single source of
 # truth for _check_export_inputs' named_grids loop below, so a newly
 # added grid is covered by construction rather than by remembering to
-# add an `if x is not None: named_grids[...] = x` line. accessor takes
-# (city, canopy_bottom_height_grid) and returns the grid or None (grid
-# absent -- nothing to check).
+# add an `if x is not None: named_grids[...] = x` line -- the same
+# "flat table pinned only where someone remembered" gap _FIELD_SPECS
+# closed for the writer/validator (Unit 5) and BYTE_RANGES closes for
+# class ranges. accessor takes (city, canopy_bottom_height_grid) and
+# returns the grid or None (grid absent -- nothing to check).
+# tests/test_exporter_palm.py::TestExportPalmShapePreChecksParametrized
+# iterates this same tuple.
 _SHAPE_CHECKED_GRID_ACCESSORS = (
     ("land_cover", lambda city, _cbhg: city.land_cover.classes),
     ("dem", lambda city, _cbhg: city.dem.elevation),
@@ -1048,7 +1060,7 @@ def export_palm(city: VoxCity,
 
     # ── canopy bottom resolution (export_cityles sentinel semantics) ──
     user_specified_ratio = trunk_height_ratio is not _TRUNK_RATIO_SENTINEL
-    ratio = float(trunk_height_ratio) if user_specified_ratio else 0.3
+    ratio = float(trunk_height_ratio) if user_specified_ratio else _DEFAULT_TRUNK_HEIGHT_RATIO
     if canopy_top is None:
         canopy_top = np.zeros(shape, dtype=np.float64)
     if user_specified_ratio:
@@ -1097,6 +1109,12 @@ def export_palm(city: VoxCity,
     canopy_present = np.nan_to_num(
         np.asarray(canopy_top, dtype=np.float64), nan=0.0, posinf=0.0, neginf=0.0
     ) > 0.0
+    # `& ~building_mask` is redundant-but-kept: _build_surface_types' own
+    # tier 1 already excludes every building_mask cell before it ever looks
+    # at canopy_mask (see its docstring), so this term has no effect on
+    # today's output. Kept anyway as a second, independent guard against a
+    # future refactor of that precedence -- the same reasoning as
+    # _segment_top_m's redundant max(0.0, ...) floor.
     canopy_mask = canopy_present & ~building_mask
 
     surfaces = _build_surface_types(
@@ -1150,12 +1168,14 @@ def export_palm(city: VoxCity,
         "author": author,
     }
 
-    # exist_ok=True: a missing parent directory otherwise surfaces as
-    # netCDF4's confusing "PermissionError [Errno 13]" on Windows rather
-    # than a clear "no such directory" -- match cityles.py's adapter, which
-    # makedirs the output location before writing for the same reason.
-    os.makedirs(output_directory, exist_ok=True)
     out_path = Path(output_directory) / f"{domain_name}_static"
+    # exist_ok=True, keyed on out_path.parent (not output_directory) so a
+    # domain_name containing a path separator (e.g. "a/b") also gets its
+    # nested parent created -- otherwise it would hit the same confusing
+    # netCDF4 "PermissionError [Errno 13]" on Windows this call exists to
+    # prevent, matching cityles.py's adapter, which makedirs the output
+    # location before writing for the same reason.
+    os.makedirs(out_path.parent, exist_ok=True)
 
     # Write to a temp sibling and rename into place on success, rather than
     # writing out_path directly: netCDF4's Dataset(path, "w") truncates the
@@ -1187,9 +1207,12 @@ class PalmExporter:
     """Exporter adapter to write a VoxCity model to a PALM static driver.
 
     ``**kwargs`` here forward to export_palm's own optional parameters
-    (e.g. ``building_type=``, ``buildings_3d=``), matching the Exporter
-    protocol's generic ``export(obj, output_directory, base_filename,
-    **kwargs)`` shape. export_palm itself deliberately does NOT take
+    (e.g. ``building_type=``, ``buildings_3d=``), the same shape every
+    other exporter adapter in this package follows by convention (see
+    e.g. CityLesExporter). Note the Exporter protocol itself
+    (voxcity.exporter.Exporter) does NOT declare ``**kwargs`` -- this is a
+    convention shared by the concrete adapters, not an enforced part of
+    the protocol. export_palm itself deliberately does NOT take
     ``**kwargs``: with 14 parameters, silently swallowing an unrecognised
     one (e.g. a typo'd ``buildings3d=True``) would drop it with no error
     rather than failing loudly, so an unknown keyword passed through this
