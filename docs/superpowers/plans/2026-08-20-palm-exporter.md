@@ -364,23 +364,24 @@ def _build_index_to_palm_map(land_cover_source):
     indices still resolve deterministically.
     """
     try:
-        from ..utils.lc import get_land_cover_classes
-        class_dict = get_land_cover_classes(land_cover_source)
-        class_names = list(class_dict.values()) if class_dict else []
+        class_names = list(get_land_cover_classes(land_cover_source).values())
     except Exception:
-        class_names = []
-    if not class_names:
-        from ..utils.lc import get_land_cover_classes
+        # get_land_cover_classes has no else branch: an unrecognised source
+        # raises rather than returning a default (UnboundLocalError today).
+        # Fall back to the OSM class order so raw indices still resolve.
         class_names = list(get_land_cover_classes('OpenStreetMap').values())
 
     name_to_assignment = _get_source_name_mapping(land_cover_source)
-    index_to_assignment = {}
-    for idx, class_name in enumerate(class_names):
-        index_to_assignment[idx] = name_to_assignment.get(class_name, DEFAULT_ASSIGNMENT)
+    index_to_assignment = {
+        idx: name_to_assignment.get(name, DEFAULT_ASSIGNMENT)
+        for idx, name in enumerate(class_names)
+    }
     return index_to_assignment, class_names
 ```
 
-Note: `get_land_cover_classes` returns `None` implicitly for unknown sources (no else branch), hence the `if class_dict else []` guard and OSM-name fallback.
+`get_land_cover_classes` is imported once at module scope (`from ..utils.lc import get_land_cover_classes`, alongside the module's other imports) rather than locally inside this function — it defers nothing and breaks no import cycle, since `voxcity/utils/__init__.py` already does `from .lc import *` and `palm.py` already imports `..utils.logging`, so `utils.lc` is always already loaded by the time this module executes.
+
+Note: `get_land_cover_classes` does **not** return `None` for an unknown source — verified by execution, it raises `UnboundLocalError` (`src/voxcity/utils/lc.py` is an if/elif chain with no else branch and no initializer for the local it returns). The `try/except` above is written against that real failure mode rather than a defensive `None` check, and is kept as a `try/except` (rather than checking source-name membership) so it stays correct if `lc.py` is later changed to return `None` or raise a different exception.
 
 - [ ] **Step 4: Run tests to verify they pass**
 
