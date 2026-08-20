@@ -213,8 +213,15 @@ files pass PALM's own checks — user-selected in lieu of a live PALM run):
   building cells.
 - `soil_type` present wherever vegetation or pavement is set.
 - `surface_fraction` sums to 1.0 on classified cells.
-- `buildings_3d` columns all have `building_id`/`building_type`; `buildings_2d`
-  is consistent with `buildings_3d` where both exist.
+- **Presence**-consistency between LOD1 and LOD2: a cell is a building in every
+  building output or in none of them. Concretely, for every cell,
+  `buildings_3d.any(axis=0)`, `buildings_2d != fill`, `building_id != fill` and
+  `building_type != fill` must all agree. This is **not** a magnitude check:
+  `buildings_2d` may legitimately exceed the 3D column's top (e.g. a recorded
+  height of 20 m alongside a single `[0, 4]` segment is valid LOD2 data), so the
+  validator must not compare heights against 3D extents or it will reject valid
+  cities. The builders establish this invariant by construction via the shared
+  presence mask (see Buildings), so a violation here indicates an exporter bug.
 - All written arrays free of NaN/inf; byte fields within valid PIDS class
   ranges; `zt` minimum exactly 0.
 - LAD values only within `[bottom, top]` layers and only where fill isn't
