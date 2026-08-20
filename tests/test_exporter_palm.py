@@ -32,6 +32,7 @@ from voxcity.exporter.palm import (
     _build_zt,
     _get_source_name_mapping,
     _has_elevated_segments,
+    _validate_static_fields,
 )
 from voxcity.utils.lc import get_land_cover_classes
 
@@ -997,3 +998,78 @@ class TestBuildLad:
         assert zlad.tolist() == [0.0, 1.0, 3.0, 5.0]
         assert list(lad[:, 0, 0]) == [np.float32(1.0)] * 4  # inf bottom -> ground
         assert list(lad[:, 0, 1]) == [np.float32(1.0)] * 4  # NaN bottom -> ground
+
+
+def _valid_fields():
+    """Minimal internally consistent 1x2 field set: veg cell + building cell."""
+    zt = np.array([[0.0, 1.0]], dtype=np.float32)
+    b2d = np.array([[FILL_FLOAT, 8.0]], dtype=np.float32)
+    bid = np.array([[FILL_INT, 5]], dtype=np.int32)
+    btype = np.array([[FILL_BYTE, 3]], dtype=np.int8)
+    veg = np.array([[3, FILL_BYTE]], dtype=np.int8)
+    pav = np.full((1, 2), FILL_BYTE, dtype=np.int8)
+    wat = np.full((1, 2), FILL_BYTE, dtype=np.int8)
+    soil = np.array([[3, FILL_BYTE]], dtype=np.int8)
+    sf = np.full((3, 1, 2), FILL_FLOAT, dtype=np.float32)
+    sf[:, 0, 0] = [1.0, 0.0, 0.0]
+    return {
+        "zt": zt, "buildings_2d": b2d, "building_id": bid,
+        "building_type": btype, "vegetation_type": veg,
+        "pavement_type": pav, "water_type": wat, "soil_type": soil,
+        "surface_fraction": sf, "buildings_3d": None, "lad": None,
+    }
+
+
+class TestValidator:
+    def test_valid_fields_pass(self):
+        _validate_static_fields(_valid_fields())  # no raise
+
+    def test_zt_min_nonzero_fails(self):
+        f = _valid_fields()
+        f["zt"] = f["zt"] + 1.0
+        with pytest.raises(RuntimeError, match="zt"):
+            _validate_static_fields(f)
+
+    def test_two_surface_types_fail(self):
+        f = _valid_fields()
+        f["pavement_type"][0, 0] = 1  # cell now veg AND pavement
+        with pytest.raises(RuntimeError, match="exactly one"):
+            _validate_static_fields(f)
+
+    def test_surface_type_on_building_fails(self):
+        f = _valid_fields()
+        f["vegetation_type"][0, 1] = 3
+        with pytest.raises(RuntimeError, match="building cells"):
+            _validate_static_fields(f)
+
+    def test_missing_soil_fails(self):
+        f = _valid_fields()
+        f["soil_type"][0, 0] = FILL_BYTE
+        with pytest.raises(RuntimeError, match="soil_type"):
+            _validate_static_fields(f)
+
+    def test_bad_fraction_sum_fails(self):
+        f = _valid_fields()
+        f["surface_fraction"][0, 0, 0] = 0.5
+        with pytest.raises(RuntimeError, match="surface_fraction"):
+            _validate_static_fields(f)
+
+    def test_building_without_id_fails(self):
+        f = _valid_fields()
+        f["building_id"][0, 1] = FILL_INT
+        with pytest.raises(RuntimeError, match="building_id"):
+            _validate_static_fields(f)
+
+    def test_out_of_range_code_fails(self):
+        f = _valid_fields()
+        f["vegetation_type"][0, 0] = 99
+        with pytest.raises(RuntimeError, match="vegetation_type"):
+            _validate_static_fields(f)
+
+    def test_buildings_3d_column_without_2d_fails(self):
+        f = _valid_fields()
+        b3d = np.zeros((2, 1, 2), dtype=np.int8)
+        b3d[0, 0, 0] = 1  # column (0,0) has no buildings_2d
+        f["buildings_3d"] = b3d
+        with pytest.raises(RuntimeError, match="buildings_3d"):
+            _validate_static_fields(f)

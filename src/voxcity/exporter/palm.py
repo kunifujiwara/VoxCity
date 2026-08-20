@@ -613,3 +613,121 @@ def _build_lad(canopy_top, canopy_bottom, meshsize, lad_value, building_mask):
         col[in_crown] = np.float32(lad_value)
         lad[:, i, j] = col
     return lad, zlad
+
+
+# dtype the writer must produce for each field (see _write_static_driver):
+# an int8<->int16 slip here is a silently non-PIDS-conformant file (`byte`
+# vs `short`), so this is asserted explicitly rather than left to the
+# writer's netCDF4 calls to fail loudly (they wouldn't -- netCDF4 happily
+# casts on write).
+_REQUIRED_DTYPES = {
+    "zt": np.float32,
+    "buildings_2d": np.float32,
+    "surface_fraction": np.float32,
+    "building_id": np.int32,
+    "building_type": np.int8,
+    "vegetation_type": np.int8,
+    "pavement_type": np.int8,
+    "water_type": np.int8,
+    "soil_type": np.int8,
+}
+# Optional fields (may be None): checked only when present.
+_OPTIONAL_DTYPES = {
+    "buildings_3d": np.int8,
+    "lad": np.float32,
+}
+
+
+def _validate_static_fields(fields):
+    """Enforce PALM's documented runtime consistency rules before writing.
+
+    A violation is an exporter bug (the builders should never produce one),
+    so this raises RuntimeError rather than silently correcting.
+    """
+    problems = []
+
+    for name, dtype in _REQUIRED_DTYPES.items():
+        arr = fields[name]
+        if arr.dtype != dtype:
+            problems.append(
+                f"{name} has dtype {arr.dtype}, expected {np.dtype(dtype)}"
+            )
+    for name, dtype in _OPTIONAL_DTYPES.items():
+        arr = fields.get(name)
+        if arr is not None and arr.dtype != dtype:
+            problems.append(
+                f"{name} has dtype {arr.dtype}, expected {np.dtype(dtype)}"
+            )
+
+    zt = fields["zt"]
+    if not np.isfinite(zt).all():
+        problems.append("zt contains non-finite values")
+    elif abs(float(zt.min())) > 1e-4:
+        problems.append(f"zt minimum is {float(zt.min())}, expected 0")
+
+    veg = fields["vegetation_type"] != FILL_BYTE
+    pav = fields["pavement_type"] != FILL_BYTE
+    wat = fields["water_type"] != FILL_BYTE
+    bld = fields["buildings_2d"] != np.float32(FILL_FLOAT)
+
+    n_types = veg.astype(int) + pav.astype(int) + wat.astype(int)
+    if (n_types[~bld] != 1).any():
+        problems.append("non-building cells must have exactly one surface type")
+    if (n_types[bld] != 0).any():
+        problems.append("building cells must have no surface type")
+
+    soil = fields["soil_type"] != FILL_BYTE
+    if ((veg | pav) != soil).any():
+        problems.append("soil_type must be set exactly where vegetation or pavement is")
+
+    sf = fields["surface_fraction"]
+    classified = veg | pav | wat
+    if classified.any() and not np.allclose(sf.sum(axis=0)[classified], 1.0):
+        problems.append("surface_fraction must sum to 1 on classified cells")
+
+    if (bld & (fields["building_id"] == FILL_INT)).any():
+        problems.append("building cells missing building_id")
+    if (bld & (fields["building_type"] == FILL_BYTE)).any():
+        problems.append("building cells missing building_type")
+
+    for name, (lo, hi) in BYTE_RANGES.items():
+        arr = fields[name]
+        set_mask = arr != FILL_BYTE
+        if set_mask.any():
+            vals = arr[set_mask]
+            if (vals < lo).any() or (vals > hi).any():
+                problems.append(f"{name} values outside valid range [{lo}, {hi}]")
+
+    # LOD1/LOD2 presence invariant is bidirectional: a cell is a building in
+    # every building output or in none of them (see _build_building_mask).
+    # buildings_2d may legitimately exceed a shorter 3D column's top (a 20 m
+    # buildings_2d height next to a single [0, 4] segment is valid LOD2
+    # data) -- this deliberately never compares magnitudes, only presence.
+    b3d = fields.get("buildings_3d")
+    if b3d is not None:
+        col = b3d.astype(bool).any(axis=0)
+        has_id = fields["building_id"] != FILL_INT
+        has_type = fields["building_type"] != FILL_BYTE
+        presence_checks = (
+            (col & ~bld, "buildings_3d column present without a buildings_2d height"),
+            (bld & ~col, "buildings_2d height present without a buildings_3d column"),
+            (col & ~has_id, "buildings_3d column present without a building_id"),
+            (has_id & ~col, "building_id present without a buildings_3d column"),
+            (col & ~has_type, "buildings_3d column present without a building_type"),
+            (has_type & ~col, "building_type present without a buildings_3d column"),
+        )
+        for mask, message in presence_checks:
+            if mask.any():
+                problems.append(message)
+
+    lad = fields.get("lad")
+    if lad is not None:
+        data = lad[lad != np.float32(FILL_FLOAT)]
+        if data.size and (not np.isfinite(data).all() or (data < 0).any()):
+            problems.append("lad contains negative or non-finite values")
+
+    if problems:
+        raise RuntimeError(
+            "PALM static driver consistency check failed: " + "; ".join(problems)
+        )
+
