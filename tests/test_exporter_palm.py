@@ -1077,6 +1077,242 @@ class TestValidator:
             _validate_static_fields(f)
 
 
+# field name -> a same-shape, wrong-dtype copy of the value _valid_fields()
+# assigns it. Values are preserved exactly (only .astype changes), so each
+# case trips only the dtype check -- not any value-based rule -- proving the
+# dtype check is independently exercised rather than riding along with one
+# of the value checks above.
+_WRONG_DTYPE_CASES = [
+    ("zt", np.float64),
+    ("buildings_2d", np.float64),
+    ("surface_fraction", np.float64),
+    ("building_id", np.int64),
+    ("building_type", np.int16),
+    ("vegetation_type", np.int16),
+    ("pavement_type", np.int16),
+    ("water_type", np.int16),
+    ("soil_type", np.int16),
+]
+
+
+class TestValidatorDtypes:
+    """Dtype is the actual file contract (byte vs short); assert it directly.
+
+    Every case below only changes dtype (via .astype, values unchanged), so
+    a failure here can only be the dtype check -- verified per-field by
+    breaking _REQUIRED_DTYPES/_OPTIONAL_DTYPES and confirming the matching
+    case here (and only that case) starts failing.
+    """
+
+    @pytest.mark.parametrize("field, wrong_dtype", _WRONG_DTYPE_CASES)
+    def test_wrong_dtype_fails(self, field, wrong_dtype):
+        f = _valid_fields()
+        f[field] = f[field].astype(wrong_dtype)
+        with pytest.raises(RuntimeError, match=field):
+            _validate_static_fields(f)
+
+    def test_buildings_3d_wrong_dtype_fails(self):
+        f = _valid_fields()
+        # Column present exactly where buildings_2d/building_id/building_type
+        # already are (cell (0,1)), so no presence rule fires -- isolates
+        # the dtype check from TestValidatorBuildings3dPresence below.
+        b3d = np.zeros((1, 1, 2), dtype=np.int16)
+        b3d[0, 0, 1] = 1
+        f["buildings_3d"] = b3d
+        with pytest.raises(RuntimeError, match="buildings_3d"):
+            _validate_static_fields(f)
+
+    def test_lad_wrong_dtype_fails(self):
+        f = _valid_fields()
+        # All-fill: the lad value-range rule only inspects non-fill cells,
+        # so an all-fill array of the wrong dtype trips only the dtype check.
+        f["lad"] = np.full((1, 1, 2), FILL_FLOAT, dtype=np.float64)
+        with pytest.raises(RuntimeError, match="lad"):
+            _validate_static_fields(f)
+
+
+def _presence_fields(bld, col, has_id, has_type):
+    """1x1 field set isolating exactly one of the six LOD1/LOD2 presence
+    directions the validator checks between buildings_3d, buildings_2d,
+    building_id, and building_type (see _validate_static_fields'
+    ``presence_checks``). Surface-type fields are left all-fill throughout
+    (irrelevant to these checks); a resulting "exactly one surface type"
+    complaint on a non-building (bld=False) cell is an expected, harmless
+    side effect of that unrelated pre-existing rule -- the match= patterns
+    used against this fixture are the six presence-direction messages
+    verbatim and cannot be satisfied by that rule's text.
+    """
+    zt = np.zeros((1, 1), dtype=np.float32)
+    b2d = np.array([[8.0 if bld else FILL_FLOAT]], dtype=np.float32)
+    bid = np.array([[5 if has_id else FILL_INT]], dtype=np.int32)
+    btype = np.array([[3 if has_type else FILL_BYTE]], dtype=np.int8)
+    b3d = np.array([[[1 if col else 0]]], dtype=np.int8)
+    return {
+        "zt": zt, "buildings_2d": b2d, "building_id": bid,
+        "building_type": btype,
+        "vegetation_type": np.full((1, 1), FILL_BYTE, dtype=np.int8),
+        "pavement_type": np.full((1, 1), FILL_BYTE, dtype=np.int8),
+        "water_type": np.full((1, 1), FILL_BYTE, dtype=np.int8),
+        "soil_type": np.full((1, 1), FILL_BYTE, dtype=np.int8),
+        "surface_fraction": np.full((3, 1, 1), FILL_FLOAT, dtype=np.float32),
+        "buildings_3d": b3d, "lad": None,
+    }
+
+
+class TestValidatorBuildings3dPresence:
+    """The LOD1/LOD2 presence invariant is bidirectional (see the spec's
+    validation section): buildings_3d column presence, buildings_2d,
+    building_id, and building_type must all agree per cell. Each of the six
+    directions below flips exactly one of (bld, col, has_id, has_type) away
+    from a fully-consistent baseline, chosen so that direction -- and only
+    that direction -- fires among the six; verified by hand (see the
+    per-case comments) rather than by running the other five as negative
+    assertions, since the point is a regression in any single direction is
+    caught by its own dedicated test rather than only riding along with a
+    sibling direction's test (e.g. the original col-without-2d case above
+    also happens to leave building_id/building_type unset, so on its own it
+    would not prove those two directions are independently reachable).
+    """
+
+    def test_buildings_3d_column_without_2d_fails(self):
+        f = _presence_fields(bld=False, col=True, has_id=True, has_type=True)
+        with pytest.raises(
+            RuntimeError, match="buildings_3d column present without a buildings_2d height"
+        ):
+            _validate_static_fields(f)
+
+    def test_2d_without_buildings_3d_column_fails(self):
+        f = _presence_fields(bld=True, col=False, has_id=False, has_type=False)
+        with pytest.raises(
+            RuntimeError, match="buildings_2d height present without a buildings_3d column"
+        ):
+            _validate_static_fields(f)
+
+    def test_buildings_3d_column_without_building_id_fails(self):
+        f = _presence_fields(bld=True, col=True, has_id=False, has_type=True)
+        with pytest.raises(
+            RuntimeError, match="buildings_3d column present without a building_id"
+        ):
+            _validate_static_fields(f)
+
+    def test_building_id_without_buildings_3d_column_fails(self):
+        f = _presence_fields(bld=False, col=False, has_id=True, has_type=False)
+        with pytest.raises(
+            RuntimeError, match="building_id present without a buildings_3d column"
+        ):
+            _validate_static_fields(f)
+
+    def test_buildings_3d_column_without_building_type_fails(self):
+        f = _presence_fields(bld=True, col=True, has_id=True, has_type=False)
+        with pytest.raises(
+            RuntimeError, match="buildings_3d column present without a building_type"
+        ):
+            _validate_static_fields(f)
+
+    def test_building_type_without_buildings_3d_column_fails(self):
+        f = _presence_fields(bld=False, col=False, has_id=False, has_type=True)
+        with pytest.raises(
+            RuntimeError, match="building_type present without a buildings_3d column"
+        ):
+            _validate_static_fields(f)
+
+
+class TestValidatorAgainstRealBuilders:
+    """The _valid_fields() fixture above is the linchpin of every validator
+    test: if it were subtly invalid in a way no rule catches, every test
+    that mutates it would be weakened. Cross-check the validator against
+    fields produced by the real builders (not the hand-rolled fixture) for
+    a small synthetic city, proving the builders and validator actually
+    agree -- which is the point of this unit.
+    """
+
+    def test_builder_output_passes_validation(self):
+        # 3x3 grid: one plain building (extruded, no segments), one
+        # overhang building (LOD2 geometry rising above ground, forcing
+        # buildings_3d), one canopy cell, one water cell, one road cell,
+        # bare ground elsewhere.
+        heights = np.array([
+            [0.0, 0.0, 0.0],
+            [0.0, 8.0, 0.0],
+            [0.0, 0.0, 6.0],
+        ])
+        ids = np.array([
+            [0, 0, 0],
+            [0, 3, 0],
+            [0, 0, 0],
+        ])
+        min_heights = np.empty((3, 3), dtype=object)
+        for i in range(3):
+            for j in range(3):
+                min_heights[i, j] = []
+        min_heights[2, 2] = [[4.0, 6.0]]  # overhang: starts above ground
+
+        land_cover = np.zeros((3, 3), dtype=int)  # 0 = Bareland (OSM)
+        land_cover[0, 0] = 8   # Water
+        land_cover[0, 1] = 11  # Road
+        land_cover[1, 2] = 5   # Tree
+
+        canopy_top = np.zeros((3, 3))
+        canopy_top[1, 2] = 5.0
+        canopy_bottom = canopy_top * 0.3
+
+        meshsize = 2.0
+        building_mask, segment_top_m = _build_building_mask(heights, min_heights)
+        buildings_2d, building_id, building_type = _build_buildings(
+            heights, ids, building_type=3,
+            segment_top_m=segment_top_m, building_mask=building_mask,
+        )
+        buildings_3d = _build_buildings_3d(
+            heights, min_heights, meshsize,
+            segment_top_m=segment_top_m, building_mask=building_mask,
+        )
+        canopy_mask = (canopy_top > 0.0) & ~building_mask
+        surfaces = _build_surface_types(
+            land_cover, 'OpenStreetMap', canopy_mask,
+            under_tree_vegetation_type=3, soil_type_code=3,
+            building_mask=building_mask,
+        )
+        lad, zlad = _build_lad(
+            canopy_top, canopy_bottom, meshsize, lad_value=1.0,
+            building_mask=building_mask,
+        )
+        zt, _origin_z = _build_zt(np.zeros((3, 3)))
+
+        fields = {
+            "zt": zt,
+            "buildings_2d": buildings_2d,
+            "building_id": building_id,
+            "building_type": building_type,
+            "buildings_3d": buildings_3d,
+            "lad": lad,
+            **surfaces,
+        }
+        _validate_static_fields(fields)  # no raise -- builders and validator agree
+
+
+class TestValidatorLadRange:
+    """The lad value-range rule (negative/non-finite lad values, checked
+    only on non-fill cells) has no coverage anywhere in the plan's given
+    TestValidator tests -- found during the (a) audit of this unit's test
+    suite. Isolated the same way as the dtype tests: every other lad cell
+    stays fill, so only the one deliberately-bad value can trip a rule.
+    """
+
+    def test_lad_negative_value_fails(self):
+        f = _valid_fields()
+        f["lad"] = np.full((1, 1, 2), FILL_FLOAT, dtype=np.float32)
+        f["lad"][0, 0, 0] = -1.0
+        with pytest.raises(RuntimeError, match="lad contains negative or non-finite"):
+            _validate_static_fields(f)
+
+    def test_lad_non_finite_value_fails(self):
+        f = _valid_fields()
+        f["lad"] = np.full((1, 1, 2), FILL_FLOAT, dtype=np.float32)
+        f["lad"][0, 0, 0] = np.nan
+        with pytest.raises(RuntimeError, match="lad contains negative or non-finite"):
+            _validate_static_fields(f)
+
+
 class TestWriter:
     def _write(self, tmp_path, with_3d=False, with_lad=True):
         fields = _valid_fields()
@@ -1145,4 +1381,111 @@ class TestWriter:
             assert "buildings_3d" not in nc.variables
             assert "lad" not in nc.variables
             assert "z" not in nc.dimensions
+            assert "zlad" not in nc.dimensions
+
+    def test_round_trip_values_and_fill_placement(self, tmp_path):
+        # Structure and dtypes are covered above; this checks the actual
+        # data values read back, including fill placement -- the thing
+        # set_auto_mask(False) exists to protect, and the single most
+        # likely thing to break silently (e.g. a transposed write, or a
+        # fill value read back masked instead of literal).
+        path = self._write(tmp_path, with_3d=True, with_lad=True)
+        with Dataset(path) as nc:
+            nc.set_auto_mask(False)
+            assert nc.variables["zt"][:].tolist() == [[0.0, 1.0]]
+            b2d = nc.variables["buildings_2d"][:]
+            assert b2d[0, 0] == np.float32(FILL_FLOAT)
+            assert b2d[0, 1] == np.float32(8.0)
+            assert nc.variables["building_id"][:].tolist() == [[FILL_INT, 5]]
+            assert nc.variables["building_type"][:].tolist() == [[FILL_BYTE, 3]]
+            assert nc.variables["vegetation_type"][:].tolist() == [[3, FILL_BYTE]]
+            assert nc.variables["soil_type"][:].tolist() == [[3, FILL_BYTE]]
+            sf = nc.variables["surface_fraction"][:]
+            assert sf[:, 0, 0].tolist() == [1.0, 0.0, 0.0]
+            assert sf[:, 0, 1].tolist() == [np.float32(FILL_FLOAT)] * 3
+            b3d = nc.variables["buildings_3d"][:]
+            assert b3d[:, 0, 1].tolist() == [1, 1]
+            assert b3d[:, 0, 0].tolist() == [0, 0]
+            lad = nc.variables["lad"][:]
+            assert lad[:, 0, 0].tolist() == [0.0, 1.0]
+            assert lad[:, 0, 1].tolist() == [np.float32(FILL_FLOAT)] * 2
+
+    def test_variable_attributes(self, tmp_path):
+        # PALM reads `lod` to decide how to interpret buildings_2d vs
+        # buildings_3d, so these are the attributes most load-bearing for
+        # a real PALM run, not just descriptive metadata.
+        path = self._write(tmp_path, with_3d=True, with_lad=True)
+        with Dataset(path) as nc:
+            assert nc.variables["buildings_2d"].lod == 1
+            assert nc.variables["buildings_2d"].units == "m"
+            assert nc.variables["buildings_2d"].long_name == "building height"
+            assert nc.variables["buildings_3d"].lod == 2
+            assert nc.variables["buildings_3d"].units == "1"
+            assert nc.variables["buildings_3d"].long_name == "building structure in 3d"
+            assert nc.variables["soil_type"].lod == 1
+            assert nc.variables["soil_type"].long_name == "soil type classification"
+            assert nc.variables["lad"].units == "m2 m-3"
+            assert nc.variables["lad"].long_name == "leaf area density"
+            assert nc.variables["zt"].units == "m"
+            assert nc.variables["zt"].long_name == "terrain height"
+            assert nc.variables["x"].units == "m"
+            assert nc.variables["x"].long_name == "distance to origin in x-direction"
+            assert nc.variables["y"].long_name == "distance to origin in y-direction"
+            assert nc.variables["z"].long_name == "height above origin"
+            assert nc.variables["zlad"].long_name == "height above ground"
+
+    def test_reopenable_and_self_consistent(self, tmp_path):
+        # nsurface_fraction's own values must match the IDX_* constants
+        # (not just have the right size), and coordinate variables must
+        # hold exactly the values passed in coords -- otherwise a PALM run
+        # would silently misinterpret which fraction slot is which surface.
+        path = self._write(tmp_path, with_3d=True, with_lad=True)
+        with Dataset(path) as nc:
+            nc.set_auto_mask(False)
+            assert nc.variables["nsurface_fraction"][:].tolist() == [
+                IDX_VEGETATION, IDX_PAVEMENT, IDX_WATER
+            ]
+            assert nc.variables["x"][:].tolist() == [1.0, 3.0]
+            assert nc.variables["y"][:].tolist() == [1.0]
+            assert nc.variables["z"][:].tolist() == [1.0, 3.0]
+            assert nc.variables["zlad"][:].tolist() == [0.0, 1.0]
+        # Re-open with a fresh Dataset handle (not the writer's own) to
+        # prove the file is a complete, standalone artifact on disk.
+        with Dataset(path) as nc2:
+            assert nc2.dimensions["x"].size == 2
+            assert nc2.dimensions["nsurface_fraction"].size == 3
+
+
+class TestWriterOverwrite:
+    def test_rewriting_the_same_path_truncates_stale_content(self, tmp_path):
+        # Decision, pinned: Dataset(path, "w") truncates rather than merging.
+        # Kept deliberately (not guarded against) because export_palm always
+        # regenerates the full static driver from the current VoxCity model
+        # in one call -- there is no partial-update use case -- and every
+        # other exporter in this package (cityles.py's `open(filename, 'w')`
+        # writers) truncates the same way. A stale variable surviving a
+        # re-export (e.g. a leftover `lad` from a run that had canopy, on a
+        # domain that no longer does) would be silent wrong data, which is
+        # worse than requiring a full re-export.
+        fields = _valid_fields()
+        fields["lad"] = np.full((1, 1, 2), FILL_FLOAT, dtype=np.float32)
+        coords = {
+            "x": np.array([1.0, 3.0], dtype=np.float32),
+            "y": np.array([1.0], dtype=np.float32),
+            "zlad": np.array([0.0], dtype=np.float32),
+        }
+        attrs = {"Conventions": "CF-1.7"}
+        path = tmp_path / "dom_static"
+        _write_static_driver(path, fields, coords, attrs)
+        with Dataset(path) as nc:
+            assert "lad" in nc.variables
+            assert "zlad" in nc.dimensions
+
+        fields_no_lad = _valid_fields()  # lad stays None
+        _write_static_driver(
+            path, fields_no_lad,
+            {"x": coords["x"], "y": coords["y"]}, attrs,
+        )
+        with Dataset(path) as nc:
+            assert "lad" not in nc.variables
             assert "zlad" not in nc.dimensions

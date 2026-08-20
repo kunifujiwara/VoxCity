@@ -1251,12 +1251,13 @@ git commit -m "feat(palm): leaf area density (lad/zlad) builder"
 
 - [ ] **Step 1: Write failing tests**
 
-Append to `tests/test_exporter_palm.py`:
+Append to `tests/test_exporter_palm.py`. As shipped, `_validate_static_fields`
+is added to the single consolidated `from voxcity.exporter.palm import (...)`
+block at the top of the file rather than a standalone import line here — same
+"all test imports at the top" convention already established by earlier
+tasks (see Task 2's note):
 
 ```python
-from voxcity.exporter.palm import _validate_static_fields
-
-
 def _valid_fields():
     """Minimal internally consistent 1x2 field set: veg cell + building cell."""
     zt = np.array([[0.0, 1.0]], dtype=np.float32)
@@ -1339,9 +1340,36 @@ Expected: FAIL — ImportError
 
 - [ ] **Step 3: Implement**
 
-Append to `src/voxcity/exporter/palm.py`:
+Superseded during implementation (see the "REQUIRED CHANGES" this task actually
+shipped with): the LOD1/LOD2 presence check below is bidirectional across all
+four of buildings_3d/buildings_2d/building_id/building_type (not the
+one-directional `col & ~bld` check originally sketched here), and every
+field's dtype is asserted explicitly. Append to `src/voxcity/exporter/palm.py`:
 
 ```python
+# dtype the writer must produce for each field (see _write_static_driver):
+# an int8<->int16 slip here is a silently non-PIDS-conformant file (`byte`
+# vs `short`), so this is asserted explicitly rather than left to the
+# writer's netCDF4 calls to fail loudly (they wouldn't -- netCDF4 happily
+# casts on write).
+_REQUIRED_DTYPES = {
+    "zt": np.float32,
+    "buildings_2d": np.float32,
+    "surface_fraction": np.float32,
+    "building_id": np.int32,
+    "building_type": np.int8,
+    "vegetation_type": np.int8,
+    "pavement_type": np.int8,
+    "water_type": np.int8,
+    "soil_type": np.int8,
+}
+# Optional fields (may be None): checked only when present.
+_OPTIONAL_DTYPES = {
+    "buildings_3d": np.int8,
+    "lad": np.float32,
+}
+
+
 def _validate_static_fields(fields):
     """Enforce PALM's documented runtime consistency rules before writing.
 
@@ -1349,6 +1377,20 @@ def _validate_static_fields(fields):
     so this raises RuntimeError rather than silently correcting.
     """
     problems = []
+
+    for name, dtype in _REQUIRED_DTYPES.items():
+        arr = fields[name]
+        if arr.dtype != dtype:
+            problems.append(
+                f"{name} has dtype {arr.dtype}, expected {np.dtype(dtype)}"
+            )
+    for name, dtype in _OPTIONAL_DTYPES.items():
+        arr = fields.get(name)
+        if arr is not None and arr.dtype != dtype:
+            problems.append(
+                f"{name} has dtype {arr.dtype}, expected {np.dtype(dtype)}"
+            )
+
     zt = fields["zt"]
     if not np.isfinite(zt).all():
         problems.append("zt contains non-finite values")
@@ -1388,11 +1430,27 @@ def _validate_static_fields(fields):
             if (vals < lo).any() or (vals > hi).any():
                 problems.append(f"{name} values outside valid range [{lo}, {hi}]")
 
+    # LOD1/LOD2 presence invariant is bidirectional: a cell is a building in
+    # every building output or in none of them (see _build_building_mask).
+    # buildings_2d may legitimately exceed a shorter 3D column's top (a 20 m
+    # buildings_2d height next to a single [0, 4] segment is valid LOD2
+    # data) -- this deliberately never compares magnitudes, only presence.
     b3d = fields.get("buildings_3d")
     if b3d is not None:
         col = b3d.astype(bool).any(axis=0)
-        if (col & ~bld).any():
-            problems.append("buildings_3d column without a buildings_2d height")
+        has_id = fields["building_id"] != FILL_INT
+        has_type = fields["building_type"] != FILL_BYTE
+        presence_checks = (
+            (col & ~bld, "buildings_3d column present without a buildings_2d height"),
+            (bld & ~col, "buildings_2d height present without a buildings_3d column"),
+            (col & ~has_id, "buildings_3d column present without a building_id"),
+            (has_id & ~col, "building_id present without a buildings_3d column"),
+            (col & ~has_type, "buildings_3d column present without a building_type"),
+            (has_type & ~col, "building_type present without a buildings_3d column"),
+        )
+        for mask, message in presence_checks:
+            if mask.any():
+                problems.append(message)
 
     lad = fields.get("lad")
     if lad is not None:
@@ -1405,6 +1463,18 @@ def _validate_static_fields(fields):
             "PALM static driver consistency check failed: " + "; ".join(problems)
         )
 ```
+
+Note: the shipped test suite adds several classes beyond the Step-1 block
+above (kept in sync because their pre-strengthening equivalents would not
+run against the real dtype/presence checks): `TestValidatorDtypes`
+(parametrized dtype-mismatch cases for every required and optional field),
+`TestValidatorBuildings3dPresence` (one isolated test per one of the six
+bidirectional presence directions, via a `_presence_fields(bld, col,
+has_id, has_type)` helper), `TestValidatorAgainstRealBuilders` (builds
+fields from the real `_build_*` functions for a small synthetic city and
+asserts the validator accepts them, proving builders and validator agree),
+and `TestValidatorLadRange` (the `lad` negative/non-finite rule had no
+coverage in the original Step-1 block).
 
 - [ ] **Step 4: Run tests to verify they pass**
 
@@ -1428,12 +1498,14 @@ git commit -m "feat(palm): PIDS/runtime consistency validator"
 
 - [ ] **Step 1: Write failing tests**
 
-Append to `tests/test_exporter_palm.py`:
+Append to `tests/test_exporter_palm.py`. As shipped, `_write_static_driver`
+and `from netCDF4 import Dataset` are both added to the file's top-level
+imports rather than imported locally here (same convention as Task 8's
+Step 1; the plan's own per-test `from netCDF4 import Dataset` lines inside
+`test_dims_dtypes_and_fills`/`test_optional_vars_absent` below are likewise
+consolidated to the top of the file, not left as local imports):
 
 ```python
-from voxcity.exporter.palm import _write_static_driver
-
-
 class TestWriter:
     def _write(self, tmp_path, with_3d=False, with_lad=True):
         fields = _valid_fields()
@@ -1464,7 +1536,6 @@ class TestWriter:
         return path
 
     def test_dims_dtypes_and_fills(self, tmp_path):
-        from netCDF4 import Dataset
         path = self._write(tmp_path, with_3d=True)
         with Dataset(path) as nc:
             nc.set_auto_mask(False)
@@ -1498,7 +1569,6 @@ class TestWriter:
             assert nc.origin_lon == pytest.approx(139.7)
 
     def test_optional_vars_absent(self, tmp_path):
-        from netCDF4 import Dataset
         path = self._write(tmp_path, with_3d=False, with_lad=False)
         with Dataset(path) as nc:
             assert "buildings_3d" not in nc.variables
@@ -1514,13 +1584,25 @@ Expected: FAIL — ImportError
 
 - [ ] **Step 3: Implement**
 
-Append to `src/voxcity/exporter/palm.py`:
+Superseded during implementation: `from netCDF4 import Dataset` is hoisted to
+the module header (alongside the other third-party imports), not imported
+locally inside this function as first sketched here. `netCDF4` is a hard
+dependency (`pyproject.toml`: `netCDF4 = "*"`) with no optional-import guard
+anywhere in this package, so there is no import-time cost to avoid and no
+existing deferred-import pattern to match: `voxcity/exporter/netcdf.py` never
+imports `netCDF4` directly at all (it defers the *optional* `xarray`
+dependency behind a `try/except`, and only ever names `netcdf4` as a string
+passed to `xr.Dataset.to_netcdf(engine=...)`), so it is not the precedent this
+task originally assumed it was. Append to `src/voxcity/exporter/palm.py`:
 
 ```python
 def _write_static_driver(path, fields, coords, attrs):
-    """Write the PIDS static driver NetCDF file (NETCDF4 format)."""
-    from netCDF4 import Dataset
+    """Write the PIDS static driver NetCDF file (NETCDF4 format).
 
+    Truncates and overwrites an existing file at ``path`` (netCDF4's
+    ``"w"`` mode), matching how every other exporter in this package
+    writes its output file.
+    """
     with Dataset(str(path), "w", format="NETCDF4") as nc:
         for key, value in attrs.items():
             if value is not None:
@@ -1583,7 +1665,31 @@ def _write_static_driver(path, fields, coords, attrs):
                   long_name="leaf area density")
 ```
 
-Note: `var.set_auto_mask(False)` before assignment prevents netCDF4 from masking the fill values we intentionally store.
+Note, corrected during implementation: `var.set_auto_mask(False)` at *write*
+time turned out to have no effect on what is stored in the file -- verified
+directly (write a fill value with and without the write-side call, in both
+cases the raw file holds the literal fill float; only the *read*-side
+`nc.set_auto_mask(False)` determines whether a fill value comes back as a
+plain value or as a masked (`--`) entry of a `numpy.ma.MaskedArray`). The
+call is kept (harmless, and protective if `data` were ever a masked array),
+but it is not the load-bearing line the original text claimed; every test
+in this module that inspects fill values disables masking on the *read*
+side instead (`nc.set_auto_mask(False)` right after `Dataset(path)`), which
+is what actually matters.
+
+The shipped test suite also adds, beyond the Step-1 `TestWriter` block
+above: `test_round_trip_values_and_fill_placement` (actual data values and
+fill placement, not just structure/dtypes), `test_variable_attributes`
+(`lod`/`units`/`long_name` on every variable that carries them, since PALM
+reads `lod` to decide how to interpret buildings), `test_reopenable_and_
+self_consistent` (`nsurface_fraction`'s own values match `IDX_*`, coordinate
+values round-trip, and a second independent `Dataset` handle can open the
+file), and a `TestWriterOverwrite` class pinning that re-writing the same
+path truncates stale content (a leftover `lad` variable from an earlier
+export does not survive a re-export that no longer has canopy) -- the
+decision from the design's open question on overwrite behavior: truncate,
+matching every other exporter in this package (`cityles.py`'s `open(filename,
+'w')` writers).
 
 - [ ] **Step 4: Run tests to verify they pass**
 
