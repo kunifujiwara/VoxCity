@@ -24,10 +24,8 @@ from PIL import Image, ImageDraw
 from io import BytesIO
 import math
 import numpy as np
-try:
-    from osgeo import gdal, osr
-except ImportError:  # GDAL is optional: only save_oemj_as_geotiff needs it.
-    gdal = osr = None
+import rasterio
+from rasterio.transform import from_origin
 import pyproj
 from ..errors import ProcessingError
 
@@ -285,47 +283,33 @@ def save_as_geotiff(image, polygon, zoom, bbox, bounds, output_path):
         The output GeoTIFF will have 3 bands (RGB) and use the Web Mercator
         projection (EPSG:3857) for compatibility with most GIS software.
     """
-    min_x, min_y, max_x, max_y = bounds
-    
-    # Calculate georeferencing coordinates
-    lon_upper_left, lat_upper_left = num2deg(min_x + bbox[0]/256, min_y + bbox[1]/256, zoom)
-    lon_lower_right, lat_lower_right = num2deg(min_x + bbox[2]/256, min_y + bbox[3]/256, zoom)
-    
-    # Create transformation from WGS84 to Web Mercator
-    wgs84 = pyproj.CRS('EPSG:4326')
-    web_mercator = pyproj.CRS('EPSG:3857')
-    transformer = pyproj.Transformer.from_crs(wgs84, web_mercator, always_xy=True)
-    
-    # Transform coordinates to Web Mercator
-    upper_left_x, upper_left_y = transformer.transform(lon_upper_left, lat_upper_left)
-    lower_right_x, lower_right_y = transformer.transform(lon_lower_right, lat_lower_right)
-    
-    # Calculate pixel size
-    pixel_size_x = (lower_right_x - upper_left_x) / image.width
-    pixel_size_y = (upper_left_y - lower_right_y) / image.height
-    
-    # Ensure output directory exists
+    min_x, min_y, _, _ = bounds
+
+    lon_ul, lat_ul = num2deg(min_x + bbox[0] / 256, min_y + bbox[1] / 256, zoom)
+    lon_lr, lat_lr = num2deg(min_x + bbox[2] / 256, min_y + bbox[3] / 256, zoom)
+
+    transformer = pyproj.Transformer.from_crs("EPSG:4326", "EPSG:3857", always_xy=True)
+    upper_left_x, upper_left_y = transformer.transform(lon_ul, lat_ul)
+    lower_right_x, lower_right_y = transformer.transform(lon_lr, lat_lr)
+
     out_dir = os.path.dirname(output_path)
     if out_dir:
         os.makedirs(out_dir, exist_ok=True)
 
-    # Create GeoTIFF
-    driver = gdal.GetDriverByName('GTiff')
-    dataset = driver.Create(output_path, image.width, image.height, 3, gdal.GDT_Byte)
-    
-    # Set geotransform and projection
-    dataset.SetGeoTransform((upper_left_x, pixel_size_x, 0, upper_left_y, 0, -pixel_size_y))
-    
-    srs = osr.SpatialReference()
-    srs.ImportFromEPSG(3857)  # Web Mercator
-    dataset.SetProjection(srs.ExportToWkt())
-    
-    # Write image data
-    for i in range(3):
-        band = dataset.GetRasterBand(i + 1)
-        band.WriteArray(np.array(image)[:,:,i])
-    
-    dataset = None
+    arr = np.asarray(image)
+    transform = from_origin(
+        upper_left_x,
+        upper_left_y,
+        (lower_right_x - upper_left_x) / image.width,
+        (upper_left_y - lower_right_y) / image.height,
+    )
+    with rasterio.open(
+        output_path, "w", driver="GTiff",
+        height=image.height, width=image.width, count=3,
+        dtype="uint8", crs="EPSG:3857", transform=transform,
+    ) as dst:
+        for i in range(3):
+            dst.write(arr[:, :, i], i + 1)
 
 def save_oemj_as_geotiff(polygon, filepath, zoom=16, *, ssl_verify=True, allow_insecure_ssl=False, allow_http_fallback=False, timeout_s=30):
     """Download and save OpenEarthMap Japan imagery as a georeferenced GeoTIFF file.

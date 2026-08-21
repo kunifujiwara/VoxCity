@@ -1,5 +1,8 @@
 """Tests for voxcity.downloader.oemj."""
 import pytest
+import numpy as np
+import rasterio
+from PIL import Image
 
 import voxcity.downloader.oemj as oemj
 from voxcity.errors import ProcessingError
@@ -34,3 +37,26 @@ class TestSaveOemjAsGeotiffPropagates:
 
         with pytest.raises(ProcessingError, match="no tiles"):
             oemj.save_oemj_as_geotiff(POLYGON, str(tmp_path / "lc.tif"))
+
+
+class TestSaveAsGeotiffUsesRasterio:
+    """The writer must not need GDAL, and must georeference north-up in 3857."""
+
+    def test_writes_readable_georeferenced_raster_without_gdal(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(oemj, "gdal", None, raising=False)
+        monkeypatch.setattr(oemj, "osr", None, raising=False)
+
+        arr = np.zeros((8, 6, 3), dtype=np.uint8)
+        arr[0, 0] = (255, 0, 0)          # asymmetric marker: north-west pixel
+        image = Image.fromarray(arr)
+        out = tmp_path / "lc.tif"
+
+        oemj.save_as_geotiff(image, POLYGON, 16, (0, 0, 6, 8), (58000, 25800, 58001, 25801), str(out))
+
+        with rasterio.open(out) as src:
+            assert src.count == 3
+            assert (src.width, src.height) == (6, 8)
+            assert src.crs.to_epsg() == 3857
+            assert src.transform.e < 0          # north-up
+            assert tuple(src.read()[:, 0, 0]) == (255, 0, 0)
+
