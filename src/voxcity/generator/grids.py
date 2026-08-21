@@ -136,23 +136,23 @@ def get_land_cover_grid(rectangle_vertices, meshsize, source, output_dir, print_
             timeout_s=timeout_s,
         )
         if not os.path.exists(geotiff_path):
-            raise FileNotFoundError(
+            raise ProcessingError(
                 f"OEMJ download failed; expected GeoTIFF not found: {geotiff_path}. "
                 "You can try setting ssl_verify=False or allow_http_fallback=True in kwargs."
             )
         try:
             with rasterio.open(geotiff_path) as src:
-                n_bands, width, height = src.count, src.width, src.height
+                n_bands = src.count
         except Exception as exc:
             raise ProcessingError(
                 f"OEMJ GeoTIFF at {geotiff_path} could not be read "
                 f"({exc.__class__.__name__}: {exc}); the download or the write "
                 "did not complete."
             ) from exc
-        if n_bands < 3 or width == 0 or height == 0:
+        if n_bands < 3:
             raise ProcessingError(
-                f"OEMJ GeoTIFF at {geotiff_path} could not be read as a 3-band "
-                f"image ({n_bands} band(s), {width}x{height})."
+                f"OEMJ GeoTIFF at {geotiff_path} has {n_bands} band(s); expected "
+                "at least 3 (RGB)."
             )
     elif source == 'OpenStreetMap':
         land_cover_gdf = load_land_cover_gdf_from_osm(rectangle_vertices, **_cache_kwargs)

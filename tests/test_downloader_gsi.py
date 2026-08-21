@@ -1,5 +1,7 @@
 """Tests for voxcity.downloader.gsi module."""
 import math
+import sys
+
 import numpy as np
 import pytest
 
@@ -415,13 +417,16 @@ class TestSaveDemAsGeotiffUsesRasterio:
         import rasterio
         from voxcity.downloader import gsi
 
-        monkeypatch.setattr(gsi, "gdal", None, raising=False)
-        monkeypatch.setattr(gsi, "osr", None, raising=False)
+        monkeypatch.setitem(sys.modules, "osgeo", None)
 
         arr = np.arange(256 * 256, dtype=np.float32).reshape(256, 256)
         out = tmp_path / "dem.tif"
+        x_min, y_min, zoom = 29000, 12900, 15
 
-        result = gsi.save_dem_as_geotiff(arr, (29000, 12900, 29000, 12900), 15, str(out))
+        result = gsi.save_dem_as_geotiff(arr, (x_min, y_min, x_min, y_min), zoom, str(out))
+
+        expected_origin = gsi.tile_bounds_mercator(x_min, y_min, zoom)
+        expected_pixel = (2 * gsi._MERC_MAX) / (2.0 ** zoom) / gsi.GSI_TILE_SIZE
 
         assert result == str(out)
         with rasterio.open(out) as src:
@@ -429,6 +434,9 @@ class TestSaveDemAsGeotiffUsesRasterio:
             assert src.dtypes[0] == "float32"
             assert src.crs.to_epsg() == 3857
             assert src.transform.e < 0
+            assert src.transform.c == pytest.approx(expected_origin[0])
+            assert src.transform.f == pytest.approx(expected_origin[3])
+            assert src.transform.a == pytest.approx(expected_pixel)
             assert src.nodata == float(gsi.GSI_NODATA)
             assert src.read(1)[0, 0] == 0.0
 
