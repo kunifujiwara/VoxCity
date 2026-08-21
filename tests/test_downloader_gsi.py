@@ -433,7 +433,7 @@ class TestSaveDemAsGeotiffUsesRasterio:
             assert src.count == 1
             assert src.dtypes[0] == "float32"
             assert src.crs.to_epsg() == 3857
-            assert src.transform.e < 0
+            assert src.transform.e == pytest.approx(-expected_pixel)
             assert src.transform.c == pytest.approx(expected_origin[0])
             assert src.transform.f == pytest.approx(expected_origin[3])
             assert src.transform.a == pytest.approx(expected_pixel)

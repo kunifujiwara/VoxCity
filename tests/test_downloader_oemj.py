@@ -90,12 +90,15 @@ class TestSaveAsGeotiffUsesRasterio:
         expected_ul_x, expected_ul_y = transformer.transform(lon_ul, lat_ul)
         expected_lr_x, expected_lr_y = transformer.transform(lon_lr, lat_lr)
         expected_pixel_width = (expected_lr_x - expected_ul_x) / image.width
+        expected_pixel_height = (expected_ul_y - expected_lr_y) / image.height
 
         with rasterio.open(out) as src:
             assert src.count == 3
             assert (src.width, src.height) == (6, 8)
             assert src.crs.to_epsg() == 3857
-            assert src.transform.e < 0          # north-up
+            # magnitude, not just sign: the fixture is 6x8, so pinning this
+            # catches a width/height mix-up in the pixel-size calculation.
+            assert src.transform.e == pytest.approx(-expected_pixel_height)
             assert src.transform.c == pytest.approx(expected_ul_x)
             assert src.transform.f == pytest.approx(expected_ul_y)
             assert src.transform.a == pytest.approx(expected_pixel_width)
