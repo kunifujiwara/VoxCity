@@ -29,6 +29,7 @@ try:
 except ImportError:  # GDAL is optional: only save_oemj_as_geotiff needs it.
     gdal = osr = None
 import pyproj
+from ..errors import ProcessingError
 
 __all__ = ["save_oemj_as_geotiff"]
 
@@ -357,22 +358,30 @@ def save_oemj_as_geotiff(polygon, filepath, zoom=16, *, ssl_verify=True, allow_i
         - The polygon should be relatively small to avoid memory issues
         - The output GeoTIFF will be in Web Mercator projection (EPSG:3857)
     """
-    try:
-        tiles, bounds = download_tiles(
-            polygon,
-            zoom,
-            ssl_verify=ssl_verify,
-            allow_insecure_ssl=allow_insecure_ssl,
-            allow_http_fallback=allow_http_fallback,
-            timeout_s=timeout_s,
+    tiles, bounds = download_tiles(
+        polygon,
+        zoom,
+        ssl_verify=ssl_verify,
+        allow_insecure_ssl=allow_insecure_ssl,
+        allow_http_fallback=allow_http_fallback,
+        timeout_s=timeout_s,
+    )
+    if not tiles:
+        raise ProcessingError(
+            f"OEMJ tile download returned no tiles for zoom {zoom}. Check the "
+            "polygon coordinates, and note that OEMJ only covers Japan."
         )
-        if not tiles:
-            raise ValueError("No tiles were downloaded. Please check the polygon coordinates and zoom level.")
 
-        composed_image = compose_image(tiles, bounds)
-        cropped_image, bbox = crop_image(composed_image, polygon, bounds, zoom, mask_outside=False)
+    composed_image = compose_image(tiles, bounds)
+    cropped_image, bbox = crop_image(composed_image, polygon, bounds, zoom, mask_outside=False)
+    try:
         save_as_geotiff(cropped_image, polygon, zoom, bbox, bounds, filepath)
-        print(f"GeoTIFF saved as '{filepath}' in Web Mercator projection (EPSG:3857).")
-    except Exception as e:
-        print(f"An error occurred: {str(e)}")
-        print("Please check the polygon coordinates and zoom level, and ensure you have an active internet connection.")
+    except Exception as exc:
+        # A partially written file reads as a valid but empty raster downstream.
+        if os.path.exists(filepath):
+            os.unlink(filepath)
+        raise ProcessingError(
+            f"OEMJ GeoTIFF write failed for {filepath} "
+            f"({exc.__class__.__name__}: {exc})"
+        ) from exc
+    print(f"GeoTIFF saved as '{filepath}' in Web Mercator projection (EPSG:3857).")
