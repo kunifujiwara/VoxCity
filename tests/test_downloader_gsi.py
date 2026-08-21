@@ -407,6 +407,32 @@ class TestAutoMergeSave:
                 save_gsi_dem_as_geotiff(self._verts(), str(out), sleep=0)
 
 
+class TestSaveDemAsGeotiffUsesRasterio:
+    """The DEM writer must not need GDAL either."""
+
+    def test_writes_readable_raster_without_gdal(self, monkeypatch, tmp_path):
+        import numpy as np
+        import rasterio
+        from voxcity.downloader import gsi
+
+        monkeypatch.setattr(gsi, "gdal", None, raising=False)
+        monkeypatch.setattr(gsi, "osr", None, raising=False)
+
+        arr = np.arange(256 * 256, dtype=np.float32).reshape(256, 256)
+        out = tmp_path / "dem.tif"
+
+        result = gsi.save_dem_as_geotiff(arr, (29000, 12900, 29000, 12900), 15, str(out))
+
+        assert result == str(out)
+        with rasterio.open(out) as src:
+            assert src.count == 1
+            assert src.dtypes[0] == "float32"
+            assert src.crs.to_epsg() == 3857
+            assert src.transform.e < 0
+            assert src.nodata == float(gsi.GSI_NODATA)
+            assert src.read(1)[0, 0] == 0.0
+
+
 class TestPackageExport:
     def test_exported_from_downloader(self):
         import voxcity.downloader as dl

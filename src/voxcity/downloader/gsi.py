@@ -23,10 +23,8 @@ import time
 
 import numpy as np
 import requests
-try:
-    from osgeo import gdal, osr
-except ImportError:  # GDAL is optional: only save_gsi_dem_as_geotiff needs it.
-    gdal = osr = None
+import rasterio
+from rasterio.transform import from_origin
 
 __all__ = ["save_gsi_dem_as_geotiff"]
 
@@ -274,18 +272,14 @@ def save_dem_as_geotiff(array, tile_range, zoom, filepath, nodata=GSI_NODATA):
         os.makedirs(out_dir, exist_ok=True)
 
     height, width = array.shape
-    driver = gdal.GetDriverByName("GTiff")
-    dataset = driver.Create(filepath, width, height, 1, gdal.GDT_Float32)
-    dataset.SetGeoTransform((origin_minx, pixel, 0, origin_maxy, 0, -pixel))
-
-    srs = osr.SpatialReference()
-    srs.ImportFromEPSG(3857)
-    dataset.SetProjection(srs.ExportToWkt())
-
-    band = dataset.GetRasterBand(1)
-    band.WriteArray(np.asarray(array, dtype=np.float32))
-    band.SetNoDataValue(float(nodata))
-    dataset = None
+    with rasterio.open(
+        filepath, "w", driver="GTiff",
+        height=height, width=width, count=1,
+        dtype="float32", crs="EPSG:3857",
+        transform=from_origin(origin_minx, origin_maxy, pixel, pixel),
+        nodata=float(nodata),
+    ) as dst:
+        dst.write(np.asarray(array, dtype=np.float32), 1)
     return filepath
 
 
