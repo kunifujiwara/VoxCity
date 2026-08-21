@@ -356,3 +356,12 @@ footprint cell. A domain with buildings therefore needs the urban surface
 model enabled alongside the LSM and a radiation scheme; dynamics-only
 namelists accept the driver as plain topography. Recorded in the README's
 PALM section and the module docstring.
+
+**Cross-version confirmation (2026-08-22):** the same small-city driver was
+run unchanged under **PALM v25.10.1** (fresh gfortran build) and completed
+identically (27 timesteps, exit 0, all outputs). A source diff confirmed the
+input contracts the exporter relies on -- the zu-grid check (PAC0337), the
+pavement class table, the building-footprint/USM rule (DRV0021), and the zlad
+check -- are byte-identical between v25.04 and v25.10.1. Also established:
+PALM's OpenACC GPU mode rejects building-resolved topography outright
+(PAC0359), so urban drivers are CPU-only as of v25.10.1.
