@@ -60,3 +60,23 @@ class TestSaveAsGeotiffUsesRasterio:
             assert src.transform.e < 0          # north-up
             assert tuple(src.read()[:, 0, 0]) == (255, 0, 0)
 
+
+class TestGetLandCoverGridRejectsUnreadableRaster:
+    """Existence is not readability: a header-only TIFF used to sail through."""
+
+    def test_unreadable_geotiff_raises(self, monkeypatch, tmp_path):
+        from voxcity.generator import grids
+
+        geotiff = tmp_path / "land_cover.tif"
+
+        def fake_save(polygon, filepath, **kwargs):
+            open(filepath, "wb").write(b"II*\x00")   # TIFF magic, nothing else
+
+        monkeypatch.setattr(grids, "save_oemj_as_geotiff", fake_save)
+
+        with pytest.raises(ProcessingError, match="could not be read"):
+            grids.get_land_cover_grid(
+                POLYGON, 5, "OpenEarthMapJapan", str(tmp_path),
+                print_class_info=False, gridvis=False,
+            )
+
