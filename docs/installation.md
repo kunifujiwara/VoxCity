@@ -1,11 +1,11 @@
 # Installation
 
-VoxCity runs on **Python 3.12**. GDAL is the one dependency that is easiest to
+VoxCity runs on **Python 3.10-3.13**. GDAL is the one dependency that is easiest to
 install through conda; everything else is available from PyPI.
 
 ## Requirements
 
-- Python 3.12
+- Python 3.10-3.13
 - GDAL (install via conda-forge, see below)
 - A Google Earth Engine account for the cloud-served data sources
   (see {doc}`guides/earth_engine`)

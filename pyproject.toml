@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "voxcity"
-version = "1.6.0"
+version = "1.6.3"
 description = "voxcity is an easy and one-stop tool to output 3d city models for microclimate simulation by integrating multiple geospatial open-data"
 readme = "README.md"
 license = "MIT"
@@ -10,13 +10,14 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
 ]
 packages = [
     {include = "voxcity", from = "src"}
 ]
 
 [tool.poetry.dependencies]
-python = ">=3.10,<3.13"
+python = ">=3.10,<3.14"
 pandas = ">=1.5,<3"
 requests = "*"
 pyproj = ">=3.4,<4"

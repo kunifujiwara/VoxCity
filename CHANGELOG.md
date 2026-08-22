@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.6.3 (2026-08-22)
+
+### Changed
+
+- Python support widened to `>=3.10,<3.14`. Google Colab now ships Python
+  3.13, which the previous `<3.13` cap silently excluded — `pip install
+  voxcity` there failed with "No matching distribution found". The full
+  dependency set (including `numba`/`llvmlite` and the optional `taichi`
+  GPU extra) resolves and the test suite passes on 3.13.
+
 ## 2.0.0 (2026-07-21)
 
 ### Breaking

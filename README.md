@@ -102,7 +102,7 @@ That's it — see the [Usage Guide](#usage-guide) to visualize, export, and simu
 
 ## Installation
 
-Make sure you have Python 3.12 installed. GDAL is the one dependency best installed via conda; everything else comes from pip.
+Make sure you have Python 3.10-3.13 installed. GDAL is the one dependency best installed via conda; everything else comes from pip.
 
 ### For Local Environment
 
