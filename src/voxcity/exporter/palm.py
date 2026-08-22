@@ -49,6 +49,16 @@ FILL_FLOAT = -9999.0
 FILL_INT = -9999
 FILL_BYTE = -127
 
+# Voxel class codes, mirroring generator/voxelizer.py's GROUND_CODE/
+# TREE_CODE/BUILDING_CODE (re-declared here, not imported, the same way
+# simulator_gpu's solar/visibility integration modules do -- voxelizer.py
+# is a heavier generator-side import this exporter module otherwise has no
+# reason to pull in). >=1 (not enumerated below) is the positive
+# land-cover class stamped on the single ground-surface voxel.
+_VOXEL_GROUND_CODE = -1
+_VOXEL_TREE_CODE = -2
+_VOXEL_BUILDING_CODE = -3
+
 # surface_fraction index order per PIDS
 IDX_VEGETATION = 0
 IDX_PAVEMENT = 1
@@ -345,6 +355,122 @@ def _build_building_mask(heights, min_heights):
     segment_top_m = _segment_top_m(min_heights, h.shape)
     mask = (h > 0.0) | (segment_top_m > 0.0)
     return mask, segment_top_m
+
+
+def _reconcile_buildings_with_voxels(voxel_classes, heights, min_heights, meshsize):
+    """Add LOD2 segments for building columns the 2-D grids miss but the
+    voxel grid does not.
+
+    Root cause (see the PALM-driver design doc / the 149-column field
+    report this fix addresses): VoxCity's LOD2 pipeline voxelizes detailed
+    building SHELLS -- partial-coverage edge cells, complex geometry, small
+    structures -- while the 2-D heights/min_heights grids rasterize
+    footprints. A column can end up with a real ``building_id`` (> 0) and
+    real -3 voxels in ``city.voxels.classes`` while ``heights`` stays 0.0
+    and ``min_heights`` stays an empty list -- invisible to
+    _build_building_mask. Every other simulator in this ecosystem (wind
+    LBM, solar, view) runs on the voxel grid, so PALM must not silently run
+    on a different city.
+
+    This is additive reconciliation, not a second presence rule: it
+    *synthesizes* min_heights segments for the voxel-only columns (from
+    contiguous runs of -3 in that column) and hands the augmented
+    min_heights back to the caller, which must feed it into the ONE
+    existing call to _build_building_mask before building_mask reaches
+    _build_buildings/_build_buildings_3d (see that function's docstring:
+    "so the two outputs agree on which cells are buildings"). A voxel-only
+    column becomes, from that point on, an ordinary orphan-segment cell
+    (heights == 0, min_heights non-empty) -- the exact case
+    _build_buildings' existing repair path already handles (it raises
+    buildings_2d to the segment top and logs a WARNING), and
+    _build_buildings_3d already turns arbitrary min_heights segments into
+    exact zu-level occupancy, so the reconciled 3-D mask comes from the
+    real voxel column shape, not a blind ground-up extrusion.
+
+    Height/segment datum matches generator/voxelizer.py and
+    importer/integrate.py exactly (same rounding convention _to_level
+    documents elsewhere in this module): for a column, let
+    ``ground_level`` = 1 + the highest k whose voxel is ground/land-cover
+    solid (``_VOXEL_GROUND_CODE`` or a positive land-cover code -- trees
+    ``_VOXEL_TREE_CODE`` and buildings ``_VOXEL_BUILDING_CODE`` are never
+    terrain). A contiguous run of building voxels from k=a to k=b
+    (inclusive) becomes the segment
+    ``[(a - ground_level) * meshsize, (b + 1 - ground_level) * meshsize]``;
+    the top of that segment simplifies to
+    ``(b - (ground_level - 1)) * meshsize`` -- i.e. exactly
+    ``(top_k_building - terrain_top_k) * meshsize``, height above local
+    terrain in meters, the same datum _build_buildings already uses.
+
+    Building presence is decided purely by ``_VOXEL_BUILDING_CODE`` (-3):
+    tree voxels (-2) are never reconciled into buildings.
+
+    Returns ``(min_heights, n_reconciled_columns)``. ``min_heights`` is
+    returned unchanged (same object) when there is nothing to reconcile,
+    including when ``voxel_classes`` is ``None`` (pure-2D models / no voxel
+    grid available) -- callers must treat that as "behave exactly as
+    before this fix". A column with -3 voxels but no ground/land-cover
+    voxel beneath them at all (should not happen given the voxelizer's own
+    invariants -- every column always has a ground datum) is skipped with
+    a warning rather than guessed at, and does not count toward
+    n_reconciled_columns.
+    """
+    if voxel_classes is None:
+        return min_heights, 0
+
+    existing_mask, _ = _build_building_mask(heights, min_heights)
+    has_building_voxel = np.any(voxel_classes == _VOXEL_BUILDING_CODE, axis=2)
+    to_reconcile = has_building_voxel & ~existing_mask
+    if not to_reconcile.any():
+        return min_heights, 0
+
+    is_ground = (voxel_classes == _VOXEL_GROUND_CODE) | (voxel_classes >= 1)
+    min_heights = np.asarray(min_heights, dtype=object).copy()
+    n_reconciled = 0
+    for i, j in zip(*np.nonzero(to_reconcile)):
+        ground_ks = np.nonzero(is_ground[i, j, :])[0]
+        if ground_ks.size == 0:
+            _logger.warning(
+                f"PALM voxel reconciliation: column ({i}, {j}) has a "
+                "building voxel (-3) but no ground/land-cover voxel "
+                "beneath it in city.voxels.classes; skipping (cannot "
+                "derive a height datum for this column)."
+            )
+            continue
+
+        ground_level = int(ground_ks.max()) + 1
+        building_ks = np.nonzero(
+            voxel_classes[i, j, :] == _VOXEL_BUILDING_CODE
+        )[0]
+        # Contiguous runs of building_ks, e.g. [4, 5, 6, 9, 10] -> [(4, 6),
+        # (9, 10)]: a voxel-only column can hold multiple disjoint runs
+        # (e.g. a shell with a gap), each becoming its own LOD2 segment.
+        run_start = prev = int(building_ks[0])
+        runs = []
+        for k in building_ks[1:]:
+            k = int(k)
+            if k != prev + 1:
+                runs.append((run_start, prev))
+                run_start = k
+            prev = k
+        runs.append((run_start, prev))
+
+        cell = min_heights[i, j]
+        if not isinstance(cell, list):
+            cell = []
+        for a, b in runs:
+            lo = (a - ground_level) * meshsize
+            hi = (b + 1 - ground_level) * meshsize
+            cell.append([lo, hi])
+        min_heights[i, j] = cell
+        n_reconciled += 1
+
+    if n_reconciled:
+        _logger.info(
+            f"PALM driver: {n_reconciled} building column(s) reconciled "
+            "from the voxel grid (present as -3 in city.voxels.classes but "
+            "missing from city.buildings.heights/min_heights)."
+        )
+    return min_heights, n_reconciled
 
 
 def _build_buildings(heights, ids, building_type, segment_top_m, building_mask):
@@ -1166,6 +1292,18 @@ def export_palm(city: VoxCity,
     # ── build all fields ──
     geo = _build_georeference(rect)
     zt, origin_z = _build_zt(city.dem.elevation)
+    # Reconcile against the voxel grid BEFORE the one _build_building_mask
+    # call below: VoxCity's LOD2 shell voxelization can mark a column a
+    # building (-3 voxels, real building_id) that the 2-D heights/
+    # min_heights rasterization missed entirely (see
+    # _reconcile_buildings_with_voxels' docstring for the root cause).
+    # Synthesizing min_heights segments here -- rather than a second,
+    # independent presence rule downstream -- keeps the single presence
+    # predicate intact (see the comment below).
+    voxel_classes = city.voxels.classes if city.voxels is not None else None
+    min_heights, _n_voxel_reconciled = _reconcile_buildings_with_voxels(
+        voxel_classes, heights, min_heights, meshsize,
+    )
     # One presence predicate feeds both LOD1 and LOD2 so the two cannot
     # disagree (see _build_building_mask): a cell is a building if it has a
     # positive height or LOD2 geometry rising above ground.

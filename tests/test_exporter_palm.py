@@ -3125,3 +3125,103 @@ class TestExportPalmMiscCoverage:
             assert nc.variables["building_id"][2, 0] != FILL_INT
             assert nc.variables["building_type"][2, 0] == 3  # default building_type
         assert "repair" in caplog.text.lower()
+
+
+def _voxels_with_column(ny, nx, nz, column_specs, fill=0):
+    """Voxel classes grid (ny, nx, nz) int32, ``fill`` (default air/0)
+    everywhere except the columns in ``column_specs``: ``{(i, j): [class at
+    k=0, class at k=1, ...]}``, one entry per z level (padded implicitly by
+    ``fill`` -- ``column_specs`` values must have length <= nz).
+    """
+    grid = np.full((ny, nx, nz), fill, dtype=np.int32)
+    for (i, j), col in column_specs.items():
+        for k, v in enumerate(col):
+            grid[i, j, k] = v
+    return grid
+
+
+class TestVoxelBuildingReconciliation:
+    """export_palm must reconcile buildings_2d/building_id/buildings_3d with
+    city.voxels.classes: VoxCity's LOD2 pipeline voxelizes detailed building
+    shells (partial-coverage edge cells, small structures) that the 2-D
+    heights/min_heights rasterization can miss entirely, leaving a column
+    with a real building_id (> 0) and real -3 voxels in city.voxels.classes
+    but heights == 0.0 and an empty min_heights list -- invisible to
+    _build_building_mask before this fix. Every other simulator in this
+    ecosystem (wind LBM, solar, view) runs on the voxel grid, so PALM must
+    not silently simulate a different city (root-caused: a real 50x50 Tokyo
+    LOD2 tile lost 149/1155 building columns this way).
+    """
+
+    def test_voxel_only_building_column_reconciled(self, tmp_path):
+        # (3, 1): ground/land-cover voxel at k=3, building voxels k=4..7.
+        # terrain_top_k=3, top_k_building=7 (inclusive) ->
+        # height = (7 - 3) * meshsize = (7 - 3) * 2.0 = 8.0 m, matching the
+        # datum _build_buildings already uses (height above local terrain).
+        city = make_city()
+        ny, nx = city.buildings.heights.shape
+        classes = _voxels_with_column(
+            ny, nx, 8, {(3, 1): [-1, -1, -1, 1, -3, -3, -3, -3]},
+        )
+        city.voxels = VoxelGrid(classes=classes, meta=city.voxels.meta)
+        # A real building_id, per the bug report -- ids IS set on these
+        # columns even though heights/min_heights are not.
+        city.buildings.ids[3, 1] = 42
+
+        out = export_palm(city, output_directory=str(tmp_path), buildings_3d=True)
+        with Dataset(out) as nc:
+            nc.set_auto_mask(False)
+            assert nc.variables["buildings_2d"][3, 1] == np.float32(8.0)
+            assert nc.variables["building_id"][3, 1] == 42
+            assert nc.variables["building_type"][3, 1] == 3  # exporter default
+            b3d = nc.variables["buildings_3d"][:]
+            zu = nc.variables["z"][:]
+            # LOD2 occupancy must come from the actual voxel column (levels
+            # inside [0, 8] m), not a blind full-column extrusion.
+            expected = ((zu >= 0.0) & (zu <= 8.0)).astype(np.int8)
+            assert list(b3d[:, 3, 1]) == list(expected)
+            assert b3d[:, 3, 1].sum() > 0
+
+    def test_tree_only_voxel_column_not_reconciled(self, tmp_path):
+        # (3, 2): ground voxel at k=3, TREE voxels (-2) at k=4,5 -- no -3
+        # anywhere in the column. Trees must never become buildings.
+        city = make_city()
+        ny, nx = city.buildings.heights.shape
+        classes = _voxels_with_column(
+            ny, nx, 8, {(3, 2): [-1, -1, -1, 1, -2, -2, 0, 0]},
+        )
+        city.voxels = VoxelGrid(classes=classes, meta=city.voxels.meta)
+
+        out = export_palm(city, output_directory=str(tmp_path))
+        with Dataset(out) as nc:
+            nc.set_auto_mask(False)
+            assert nc.variables["buildings_2d"][3, 2] == np.float32(FILL_FLOAT)
+            assert nc.variables["building_id"][3, 2] == FILL_INT
+
+    def test_all_air_voxel_grid_leaves_2d_buildings_unchanged(self, tmp_path):
+        # make_city()'s default voxel grid is all zeros (air/no data)
+        # everywhere -- no -3 anywhere -- so reconciliation must be a true
+        # no-op against the pre-existing 2D-derived buildings (the "no
+        # voxel building data" / pure-2D-equivalent path).
+        out = export_palm(make_city(), output_directory=str(tmp_path))
+        with Dataset(out) as nc:
+            nc.set_auto_mask(False)
+            assert nc.variables["buildings_2d"][1, 1] == np.float32(10.0)
+            assert nc.variables["building_id"][1, 1] == 7
+            assert nc.variables["buildings_2d"][2, 2] == np.float32(6.0)
+            assert nc.variables["building_id"][2, 2] == 8
+
+    def test_reconciliation_logs_reconciled_column_count(
+        self, tmp_path, caplog, propagate_voxcity_logs
+    ):
+        city = make_city()
+        ny, nx = city.buildings.heights.shape
+        classes = _voxels_with_column(
+            ny, nx, 8, {(3, 1): [-1, -1, -1, 1, -3, -3, -3, -3]},
+        )
+        city.voxels = VoxelGrid(classes=classes, meta=city.voxels.meta)
+        city.buildings.ids[3, 1] = 42
+
+        with caplog.at_level(logging.INFO, logger="voxcity"):
+            export_palm(city, output_directory=str(tmp_path))
+        assert re.search(r"\b1\b.*reconcil", caplog.text, re.IGNORECASE)

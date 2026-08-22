@@ -31,7 +31,12 @@ Key conveniences confirmed against the codebase:
   the voxel grid for this field. It is built directly from
   `city.buildings.heights`/`min_heights` (per-cell `[min, max]` segments,
   extruded to a byte 0/1 mask) in `_build_buildings_3d`, at whatever `nz` the
-  tallest height/segment requires.
+  tallest height/segment requires. (Update 2026-08-22: this is no longer the
+  whole story for building *presence* -- see "Voxel-grid reconciliation" below.
+  `min_heights` itself is now reconciled against `city.voxels.classes` before
+  either LOD1 or LOD2 building fields are built, so `buildings_3d` for a
+  reconciled column IS effectively derived from the voxel grid, via
+  synthesized `min_heights` segments.)
 - **Rotation conventions agree.** VoxCity's `rotation_angle` (degrees clockwise,
   derived from `rectangle_vertices` via `compute_rotation_angle`) matches the PIDS
   `rotation_angle` global attribute definition.
@@ -365,3 +370,66 @@ pavement class table, the building-footprint/USM rule (DRV0021), and the zlad
 check -- are byte-identical between v25.04 and v25.10.1. Also established:
 PALM's OpenACC GPU mode rejects building-resolved topography outright
 (PAC0359), so urban drivers are CPU-only as of v25.10.1.
+
+## Voxel-grid reconciliation (fixed 2026-08-22): 149 missing building columns
+
+The first real PALM run through VoxCityApp (a 50x50 Tokyo LOD2 tile) exposed
+a root-caused data bug: the exported static driver omitted **149 of 1155**
+building columns present in the model's voxel grid. Every one of the 149
+columns had `city.buildings.heights == 0.0` and an **empty**
+`min_heights` list, yet a real `building_id` (> 0) and real `-3`
+(building) voxels in `city.voxels.classes` -- some up to ~160 m of tower,
+some 1-2 voxel-tall shell fragments.
+
+**Root cause:** VoxCity's LOD2 pipeline voxelizes the detailed building
+SHELLS (partial-coverage edge cells, complex geometry, small structures)
+directly into `city.voxels.classes`, while the 2-D `heights`/`min_heights`
+grids are a separate footprint rasterization that can miss those same
+cells entirely. `export_palm` derived building presence exclusively from
+`_build_building_mask(heights, min_heights)` -- the voxel grid was never
+consulted for presence, so PALM silently simulated open street through
+149 real building columns (wrong local radiation/wind, pedestrian comfort
+computed "inside" buildings). Every other simulator in this ecosystem
+(wind LBM, solar, view) runs on the voxel grid, so this was PALM running
+on a materially different city than the rest of the toolchain.
+
+**Fix (additive, not a rewrite of the presence rule):** a new function,
+`_reconcile_buildings_with_voxels`, runs once, immediately before the
+single existing `_build_building_mask` call in `export_palm`. For every
+column where `city.voxels.classes` contains a `-3` voxel that the
+existing heights/min_heights mask does not already cover, it derives LOD2
+segments directly from that column's contiguous `-3` runs (same datum
+`generator/voxelizer.py`/`importer/integrate.py` already use: segment top
+in meters = `(top_k_building - terrain_top_k) * meshsize`, terrain being
+the topmost ground/land-cover solid voxel, never `-2` trees) and appends
+them to that column's (previously empty) `min_heights`. From that point
+on the reconciled column is an ordinary orphan-segment cell -- the
+pre-existing `_build_buildings` repair path raises `buildings_2d` to the
+segment top (and logs the existing WARNING), and `_build_buildings_3d`
+turns the same segments into exact zu-level occupancy, so the LOD2 mask
+for a reconciled column reflects the real voxel shape, not a blind
+ground-up extrusion. `building_id`/`building_type` need no special
+handling: `city.buildings.ids` already carries the real id at these
+columns, so the existing `_build_buildings` id/type logic picks it up
+once the column is inside `building_mask`. The one presence predicate
+(`_build_building_mask`) still feeds both LOD1 and LOD2 -- reconciliation
+happens on its *input* (`min_heights`), not as a second, parallel rule.
+
+Guard: when `city.voxels` is `None`, reconciliation is a no-op (today's
+behavior is preserved exactly) -- currently unreachable via `export_palm`
+itself since `_check_export_inputs` already requires `city.voxels.classes`
+unconditionally for the pre-existing shape check.
+
+Logged: `PALM driver: N building column(s) reconciled from the voxel grid
+...` at INFO whenever N > 0.
+
+**Real-model verification** (the scenario that surfaced the bug, re-run
+after the fix): voxel-grid building columns = 1155; driver building
+columns before the fix = 1006 (gap 149); after the fix = 1155 (gap 0).
+
+**Tests:** `tests/test_exporter_palm.py::TestVoxelBuildingReconciliation`
+-- a voxel-only column is reconciled into `buildings_2d`/`building_id`/
+`buildings_3d`; a tree-only (`-2`) voxel column is never reconciled into a
+building; an all-air voxel grid (no `city.voxels` building data) leaves
+the pre-existing 2-D-derived buildings unchanged; the reconciled-column
+count is logged. Full suite: 300 -> 304 tests, all passing.
