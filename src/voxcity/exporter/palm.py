@@ -216,7 +216,12 @@ def _build_georeference(rectangle_vertices):
     rect = normalize_rectangle_vertices(rectangle_vertices, warn=False)
     origin_lon = float(rect[0][0])
     origin_lat = float(rect[0][1])
-    rotation_angle = float(compute_rotation_angle(rect))
+    # PALM hard-rejects rotation_angle outside [0, 360] with DRV0041 at
+    # parameter checking. compute_rotation_angle returns a signed angle, and
+    # even an axis-aligned rectangle can come back as a tiny NEGATIVE value
+    # from floating-point noise (observed: -0.000802 deg killing a real run),
+    # so every un-normalized export is one FP sign away from aborting.
+    rotation_angle = float(compute_rotation_angle(rect)) % 360.0
 
     zone = min(max(int((origin_lon + 180.0) // 6.0) + 1, 1), 60)
     epsg = (32600 if origin_lat >= 0.0 else 32700) + zone

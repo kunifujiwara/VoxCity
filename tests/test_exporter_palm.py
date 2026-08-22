@@ -353,6 +353,27 @@ class TestGeoreference:
         geo = _build_georeference(rotated_rect)
         assert geo["rotation_angle"] == pytest.approx(30.0, abs=0.01)
 
+    def test_negative_rotation_normalizes_into_palm_range(self):
+        # PALM rejects rotation_angle outside [0, 360] with DRV0041 at
+        # parameter checking, and compute_rotation_angle returns a SIGNED
+        # angle — a real run died on -0.000802 deg from floating-point noise
+        # on an essentially axis-aligned rectangle, so every un-normalized
+        # export is one FP sign away from aborting. This fixture is the
+        # mirror of test_rotated_rectangle_angle: the same 1000 m x 900 m
+        # Tokyo box rotated 30 deg COUNTER-clockwise, i.e.
+        # compute_rotation_angle(rect) == -30.0 exactly (empirically
+        # confirmed by direct call before pinning here). The exporter must
+        # wrap it into [0, 360): -30 -> 330.
+        ccw_rect = [
+            (139.7, 35.67999999999999),
+            (139.69595758122145, 35.685687167858035),
+            (139.703737219788, 35.68933527429561),
+            (139.70777963856654, 35.68364836649665),
+        ]
+        geo = _build_georeference(ccw_rect)
+        assert geo["rotation_angle"] == pytest.approx(330.0, abs=0.01)
+        assert 0.0 <= geo["rotation_angle"] < 360.0
+
 
 class TestBuildZt:
     def test_shift_to_zero_min(self):
