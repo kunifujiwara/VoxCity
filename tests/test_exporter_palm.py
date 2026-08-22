@@ -1,7 +1,9 @@
 """Tests for voxcity.exporter.palm (PALM static driver exporter)."""
 
 import logging
+import os
 import re
+import sys
 import warnings
 from pathlib import Path
 
@@ -2867,6 +2869,16 @@ class TestExportPalmAtomicWrite:
             export_palm(make_city(), output_directory=str(tmp_path))
         assert list(tmp_path.iterdir()) == []
 
+    @pytest.mark.skipif(
+        sys.platform != "win32",
+        reason=(
+            "POSIX rename(2) succeeds over an open destination -- the open "
+            "handle keeps the old inode alive -- so os.replace never fails "
+            "here and there is no error for export_palm to wrap. The branch "
+            "itself is covered on every platform by "
+            "test_replace_failure_is_wrapped_and_cleans_up below."
+        ),
+    )
     def test_replace_failure_under_an_open_handle_cleans_up_and_names_the_cause(
         self, tmp_path
     ):
@@ -2888,6 +2900,39 @@ class TestExportPalmAtomicWrite:
             handle.close()
         # The target file itself is untouched (os.replace never partially
         # completes), and no stray .tmp file survives the failed attempt.
+        assert Path(good_out).read_bytes() == original_bytes
+        assert list(Path(tmp_path).glob("*.tmp")) == []
+
+    def test_replace_failure_is_wrapped_and_cleans_up(self, tmp_path, monkeypatch):
+        # The open-handle test above can only provoke a real os.replace
+        # failure on Windows, so on Linux/macOS that except branch would go
+        # untested. Inject the failure at os.replace itself -- which is what
+        # the Windows sharing violation ultimately surfaces as -- so the
+        # wrapping, the cause chain and the .tmp cleanup are pinned
+        # everywhere, not just on the maintainer's machine.
+        good_out = export_palm(make_city(), output_directory=str(tmp_path))
+        original_bytes = Path(good_out).read_bytes()
+
+        real_replace = os.replace
+
+        def fail_replacing_our_tmp(src, dst, *args, **kwargs):
+            # Only our temp sibling fails; anything else still really runs,
+            # so patching the shared os module stays contained.
+            if str(src).endswith(".tmp"):
+                raise PermissionError(13, "simulated sharing violation")
+            return real_replace(src, dst, *args, **kwargs)
+
+        monkeypatch.setattr(palm_module.os, "replace", fail_replacing_our_tmp)
+
+        with pytest.raises(
+            RuntimeError, match=re.escape(str(Path(good_out)))
+        ) as exc_info:
+            export_palm(make_city(), output_directory=str(tmp_path))
+
+        # The error names the path the caller asked for, not the .tmp it
+        # never knew about, and keeps the real cause attached.
+        assert ".tmp" not in str(exc_info.value)
+        assert isinstance(exc_info.value.__cause__, PermissionError)
         assert Path(good_out).read_bytes() == original_bytes
         assert list(Path(tmp_path).glob("*.tmp")) == []
 
