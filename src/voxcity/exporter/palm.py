@@ -248,6 +248,23 @@ def _build_georeference(rectangle_vertices):
     }
 
 
+def _ground_level(voxel_classes):
+    """Per-column ground datum: 1 + the highest k whose voxel is ground
+    (_VOXEL_GROUND_CODE) or land cover (>= 1); -1 where no such voxel.
+
+    This is THE datum rule -- _build_zt (terrain quantization) and
+    _reconcile_buildings_with_voxels (LOD2 segment synthesis) both route
+    through it so the exported terrain frame and the building/tree levels
+    can never disagree (spec 2026-08-24-palm-exporter-alignment §Design 1).
+    """
+    classes = np.asarray(voxel_classes)
+    is_ground = (classes == _VOXEL_GROUND_CODE) | (classes >= 1)
+    nz = classes.shape[2]
+    has = is_ground.any(axis=2)
+    top = nz - 1 - np.argmax(is_ground[:, :, ::-1], axis=2)
+    return np.where(has, top + 1, -1).astype(np.int64)
+
+
 def _build_zt(dem_grid):
     """Terrain height, shifted so its minimum is exactly 0.
 

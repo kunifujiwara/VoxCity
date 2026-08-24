@@ -41,6 +41,7 @@ from voxcity.exporter.palm import (
     _build_zt,
     _check_export_inputs,
     _get_source_name_mapping,
+    _ground_level,
     _has_elevated_segments,
     _to_level,
     _validate_static_fields,
@@ -413,6 +414,34 @@ class TestBuildZt:
         original = dem.copy()
         _build_zt(dem)
         assert np.array_equal(dem, original)
+
+
+class TestGroundLevel:
+    """_ground_level: the ONE per-column ground-datum rule (spec §Design 1)."""
+
+    def test_max_ground_k_plus_one(self):
+        classes = np.zeros((1, 2, 6), dtype=np.int8)
+        classes[0, 0, 0:2] = -1          # ground voxels k=0..1 -> datum 2
+        classes[0, 1, 0] = -1
+        classes[0, 1, 1] = 7             # land cover >= 1 counts as ground
+        classes[0, 1, 2] = -1            # highest ground at k=2 -> datum 3
+        gl = _ground_level(classes)
+        assert gl.shape == (1, 2)
+        assert gl.dtype.kind == "i"
+        assert gl[0, 0] == 2
+        assert gl[0, 1] == 3
+
+    def test_trees_and_buildings_are_not_ground(self):
+        classes = np.zeros((1, 1, 5), dtype=np.int8)
+        classes[0, 0, 0] = -1            # ground k=0
+        classes[0, 0, 1] = -3            # building
+        classes[0, 0, 2] = -2            # tree
+        assert _ground_level(classes)[0, 0] == 1
+
+    def test_no_datum_is_minus_one(self):
+        classes = np.zeros((1, 1, 4), dtype=np.int8)
+        classes[0, 0, 1] = -3            # building floating on nothing
+        assert _ground_level(classes)[0, 0] == -1
 
 
 def _empty_min_heights(ny, nx):
