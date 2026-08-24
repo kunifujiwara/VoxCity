@@ -256,6 +256,13 @@ def _ground_level(voxel_classes):
     _reconcile_buildings_with_voxels (LOD2 segment synthesis) both route
     through it so the exported terrain frame and the building/tree levels
     can never disagree (spec 2026-08-24-palm-exporter-alignment §Design 1).
+
+    It unifies the DATUM RULE, not the NO-DATUM POLICY: what to do with a
+    column that returns -1 is deliberately each caller's own decision
+    (_build_zt substitutes the domain minimum so the terrain field stays
+    complete; _reconcile_buildings_with_voxels skips the column and warns
+    rather than inventing a building on a datum it does not have). Do not
+    unify those two fallbacks -- they answer different questions.
     """
     classes = np.asarray(voxel_classes)
     nz = classes.shape[2]
@@ -279,10 +286,32 @@ def _build_zt(voxel_classes, dem_grid, meshsize):
     aligned cell-for-cell with the voxcity voxel model (spec
     2026-08-24-palm-exporter-alignment-design.md).
 
+    The quantization is exact in the float32 REPRESENTATION, not to any
+    metric tolerance. A non-dyadic ``meshsize`` (2.2, 1/3, ...) is not
+    exactly representable in binary, so ``k * meshsize`` carries a
+    rounding error that grows with k -- at meshsize 2.2 and ~1000 cells of
+    relief the residue off an exact metric multiple reaches ~4e-4 m, and
+    no fixed tolerance in metres holds for all inputs. The invariant that
+    DOES hold for every meshsize is the round-trip::
+
+        k = np.round(zt.astype(np.float64) / meshsize)   # exact level
+        np.float32(k * meshsize) == zt                   # bit-exact
+
+    i.e. the integer level is always recoverable, which is what PALM's
+    re-discretization actually depends on. Assert that, never ``abs(zt %
+    meshsize) < eps``.
+
     ``origin_z`` (PIDS global attr, absolute elevation of domain z = 0)
     stays the minimum finite DEM value, exactly as before quantization;
     the zero plane sits within one cell of it, an accepted georeferencing
-    imprecision. ``dem_grid`` no longer influences any cell's height.
+    imprecision. ``dem_grid`` no longer influences any cell's height in
+    any branch -- it survives only as ``origin_z``.
+
+    Two no-datum rules cover columns where ``_ground_level`` returns -1
+    (no ground or land-cover voxel anywhere in the column): a column with
+    no datum takes the domain's MINIMUM ground level, so the terrain field
+    stays complete and gains no spurious relief; and if NO column has a
+    datum the terrain is flat zero. Both warn.
 
     Falls back to the legacy continuous-DEM behavior (with a warning) when
     no voxel grid is available -- alignment is impossible then anyway.
@@ -297,7 +326,10 @@ def _build_zt(voxel_classes, dem_grid, meshsize):
             "domain will NOT be cell-aligned with the voxel model)."
         )
         if not finite.any():
-            return np.zeros(dem.shape, dtype=np.float32), 0.0
+            # origin_z is 0.0 here by construction; return the computed
+            # value rather than a second literal, so the one expression
+            # at the top stays the only definition of origin_z.
+            return np.zeros(dem.shape, dtype=np.float32), origin_z
         zt = dem.copy()
         zt[~finite] = origin_z
         zt -= origin_z
@@ -308,9 +340,8 @@ def _build_zt(voxel_classes, dem_grid, meshsize):
     if not ok.any():
         _logger.warning(
             "PALM zt: no column has a ground datum (no ground/land-cover "
-            "voxel anywhere), so the exported terrain is entirely flat -- "
-            "any relief in the DEM is NOT represented. This usually means "
-            "the voxel grid is empty or all-air."
+            "voxel anywhere), so the exported terrain is entirely flat. "
+            "This usually means the voxel grid is empty or all-air."
         )
         return np.zeros(gl.shape, dtype=np.float32), origin_z
     if (~ok).any():

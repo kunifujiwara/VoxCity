@@ -419,6 +419,25 @@ class TestBuildZt:
         assert np.array_equal(dem, original)
 
 
+def _assert_zt_round_trips(zt, meshsize):
+    """Assert the ONE quantization invariant that holds for every meshsize:
+    zt's float32 bits are exactly what ``level * meshsize`` rounds to, so
+    the integer level round-trips. Returns the recovered levels.
+
+    Do NOT assert a metric tolerance (``abs(zt % meshsize) < eps``)
+    instead: a non-dyadic meshsize is not binary-representable, so the
+    residue off an exact metric multiple grows with the level -- ~4e-4 m
+    at meshsize 2.2 with ~1000 cells of relief. Exactness lives in the
+    float32 REPRESENTATION, which is also what PALM's re-discretization
+    actually consumes.
+    """
+    zt = np.asarray(zt)
+    assert zt.dtype == np.float32
+    k = np.round(zt.astype(np.float64) / meshsize)
+    np.testing.assert_array_equal(np.float32(k * meshsize), zt)
+    return k
+
+
 class TestBuildZtQuantized:
     def _classes(self, gl_grid, nz=8):
         """Voxel grid whose ground occupies k=0..gl-1 per column."""
@@ -435,16 +454,48 @@ class TestBuildZtQuantized:
         # gl*ms = [[4, 6], [10, 4]] -> min-shift by 4
         np.testing.assert_allclose(zt, [[0.0, 2.0], [6.0, 0.0]])
 
-    def test_zt_values_are_exact_meshsize_multiples(self):
+    def test_zt_round_trips_to_exact_levels(self):
         classes = self._classes([[1, 4, 2]])
         zt, _ = _build_zt(classes, np.array([[1.3, 8.9, 3.3]]), 2.5)
-        res = np.abs(zt / 2.5 - np.round(zt / 2.5))
-        assert res.max() < 1e-6
+        k = _assert_zt_round_trips(zt, 2.5)
+        np.testing.assert_array_equal(k, [[0.0, 3.0, 1.0]])
+
+    def test_zt_round_trips_for_non_dyadic_meshsize_and_deep_relief(self):
+        # The regime where a METRIC tolerance fails: 2.2 is not exactly
+        # representable in binary, so the residue off an exact metric
+        # multiple grows with the level and blows past any fixed epsilon
+        # (~4e-4 m by ~1000 cells). The float32 round-trip still holds
+        # bit-exactly -- that is the real invariant.
+        classes = self._classes([[3, 111, 205]], nz=210)
+        zt, _ = _build_zt(classes, np.zeros((1, 3)), 2.2)
+        k = _assert_zt_round_trips(zt, 2.2)
+        np.testing.assert_array_equal(k, [[0.0, 108.0, 202.0]])
+        # ... and demonstrate that the old metric form would NOT have held
+        # here, so this case genuinely covers the broken regime.
+        assert np.abs(zt - k * 2.2).max() > 1e-6
 
     def test_origin_z_still_min_finite_dem(self):
         classes = self._classes([[2, 2]])
         _, origin_z = _build_zt(classes, np.array([[7.5, np.nan]]), 2.0)
         assert origin_z == 7.5
+
+    def test_all_nan_dem_with_voxels_gives_zero_origin_z(self):
+        # origin_z's `else 0.0` fallback on the LIVE (voxel) path. The
+        # TestBuildZt case that looks like it covers this routes through
+        # the voxel_classes-is-None branch instead.
+        classes = self._classes([[2, 3]])
+        zt, origin_z = _build_zt(classes, np.full((1, 2), np.nan), 2.0)
+        assert origin_z == 0.0
+        np.testing.assert_allclose(zt, [[0.0, 2.0]])   # terrain unaffected
+
+    def test_inf_dem_with_voxels_excluded_from_origin_z(self):
+        # isfinite, NOT ~isnan: +/-inf must be excluded from the minimum.
+        # Under ~isnan this origin_z would be -inf.
+        classes = self._classes([[2, 3], [3, 2]])
+        dem = np.array([[-np.inf, 4.5], [9.0, np.inf]])
+        zt, origin_z = _build_zt(classes, dem, 2.0)
+        assert origin_z == 4.5
+        np.testing.assert_allclose(zt, [[0.0, 2.0], [2.0, 0.0]])
 
     def test_no_datum_column_falls_back_to_domain_min(self, caplog,
                                                       propagate_voxcity_logs):
@@ -2301,7 +2352,15 @@ def make_city(ny=4, nx=4, meshsize=2.0, with_overhang=False, with_canopy=True,
         canopy_top[0, 2] = 6.0
         canopy_top[1, 1] = 5.0             # over the building -> must be cleared
         canopy_top[ny - 1, nx - 1] = 4.0   # over water -> must not override it
-    voxels = VoxelGrid(classes=np.zeros((ny, nx, 8), dtype=np.int32), meta=meta)
+    # One uniform ground layer at k=0: every column has a REAL ground datum
+    # (gl == 1 everywhere), which is what a voxelized city always has. An
+    # all-air grid would instead send every export_palm test in this module
+    # through _build_zt's degenerate "no column has a datum" branch, so the
+    # normal terrain path would go untested here. Uniform gl means zt is
+    # still flat zero after min-shifting, so no assertion below moves.
+    _vox = np.zeros((ny, nx, 8), dtype=np.int32)
+    _vox[:, :, 0] = -1
+    voxels = VoxelGrid(classes=_vox, meta=meta)
     if extras is None:
         extras = {"rectangle_vertices": RECT,
                   "land_cover_source": "OpenStreetMap"}
@@ -2334,11 +2393,13 @@ class TestExportPalm:
             assert abs(nc.rotation_angle) < 0.5
             assert nc.origin_z == pytest.approx(0.0)
             assert nc.origin_time == "2000-01-01 00:00:00 +00"
-            # terrain comes from the VOXEL grid, not the DEM: make_city()'s
-            # default voxel grid is all air, so no column has a ground datum
-            # and zt is flat zero -- the DEM's 1.5 m row (which the
-            # pre-quantization exporter wrote here) is deliberately ignored.
-            # origin_z above still reports the DEM minimum (0.0).
+            # terrain comes from the VOXEL grid, not the DEM. make_city()'s
+            # ground is one uniform layer (gl == 1 in every column), so the
+            # terrain is genuinely flat here -- and the DEM's 1.5 m row,
+            # which the pre-quantization exporter wrote into zt[3, :], is
+            # deliberately ignored. origin_z still reports the DEM minimum.
+            # See test_zt_written_from_voxel_ground_not_dem for the case
+            # where voxel ground and DEM actually disagree.
             assert nc.variables["zt"][3, 0] == pytest.approx(0.0)
             assert (nc.variables["zt"][:] == 0.0).all()
             # buildings
@@ -2385,8 +2446,7 @@ class TestExportPalm:
             assert zt[3, 0] == pytest.approx(4.0)   # (4 - 2) * 2.0 m
             assert zt[0, 0] == pytest.approx(0.0)   # min-shifted datum
             assert nc.origin_z == pytest.approx(0.0)  # still the DEM minimum
-            residual = np.abs(zt / 2.0 - np.round(zt / 2.0))
-            assert residual.max() < 1e-6
+            _assert_zt_round_trips(zt, 2.0)
 
     def test_canopy_over_water_keeps_water_type(self, tmp_path):
         # The highest-value fixture cell: (ny-1, nx-1) is both water (per
@@ -3364,9 +3424,9 @@ class TestVoxelBuildingReconciliation:
             assert nc.variables["buildings_2d"][3, 2] == np.float32(FILL_FLOAT)
             assert nc.variables["building_id"][3, 2] == FILL_INT
 
-    def test_all_air_voxel_grid_leaves_2d_buildings_unchanged(self, tmp_path):
-        # make_city()'s default voxel grid is all zeros (air/no data)
-        # everywhere -- no -3 anywhere -- so reconciliation must be a true
+    def test_no_building_voxels_leaves_2d_buildings_unchanged(self, tmp_path):
+        # make_city()'s default voxel grid is bare ground (one -1 layer,
+        # air above) -- no -3 anywhere -- so reconciliation must be a true
         # no-op against the pre-existing 2D-derived buildings (the "no
         # voxel building data" / pure-2D-equivalent path).
         out = export_palm(make_city(), output_directory=str(tmp_path))
