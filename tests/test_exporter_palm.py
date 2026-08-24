@@ -43,6 +43,7 @@ from voxcity.exporter.palm import (
     _get_source_name_mapping,
     _ground_level,
     _has_elevated_segments,
+    _reconcile_buildings_with_voxels,
     _to_level,
     _validate_static_fields,
     _write_static_driver,
@@ -3451,3 +3452,111 @@ class TestVoxelBuildingReconciliation:
         with caplog.at_level(logging.INFO, logger="voxcity"):
             export_palm(city, output_directory=str(tmp_path))
         assert re.search(r"\b1\b.*reconcil", caplog.text, re.IGNORECASE)
+
+
+def test_reconcile_datum_matches_ground_level_helper():
+    """The reconcile path's per-column datum must be exactly _ground_level's.
+
+    Both callers share the DATUM RULE; only their NO-DATUM POLICY differs
+    (_build_zt substitutes the domain minimum, _reconcile_buildings_with_
+    voxels skips the column). This pins the datum agreement itself -- a
+    column-by-column check derived independently from _ground_level's own
+    output, not from re-deriving the rule inline -- so the two can never
+    silently drift apart again.
+    """
+    ny, nx, nz, meshsize = 3, 2, 10, 2.0
+    classes = np.zeros((ny, nx, nz), dtype=np.int32)
+
+    # (0, 0): land-cover-only ground, contiguous k=0..2 (code 2, not
+    # _VOXEL_GROUND_CODE) -> ground_level = 3. Building run k=4..6.
+    classes[0, 0, 0:3] = 2
+    classes[0, 0, 4:7] = -3
+
+    # (0, 1): NON-contiguous ground: _VOXEL_GROUND_CODE at k=0, a land-cover
+    # voxel (code 3) at k=3 with air (k=1, k=2) between them -- the datum
+    # must come from the HIGHEST ground/land-cover k (3) -> ground_level=4,
+    # not from the first one seen. Single building voxel at k=5.
+    classes[0, 1, 0] = -1
+    classes[0, 1, 3] = 3
+    classes[0, 1, 5] = -3
+
+    # (1, 0): NO-DATUM column -- building voxels present but no ground or
+    # land-cover voxel anywhere in the column. Must be skipped, not
+    # reconciled, and must not raise.
+    classes[1, 0, 2:5] = -3
+
+    # (1, 1): ground k=0..1 -> ground_level=2. Two DISJOINT building runs
+    # (k=3 and k=5..6) separated by a TREE voxel (k=4, -2) that must not be
+    # treated as part of a building run.
+    classes[1, 1, 0:2] = -1
+    classes[1, 1, 3] = -3
+    classes[1, 1, 4] = -2
+    classes[1, 1, 5:7] = -3
+
+    # (2, :): bare ground only, no building voxels -- not touched at all.
+    classes[2, :, 0] = -1
+
+    heights = np.zeros((ny, nx))
+    min_heights = np.empty((ny, nx), dtype=object)
+    for i in range(ny):
+        for j in range(nx):
+            min_heights[i, j] = []
+
+    gl = _ground_level(classes)
+    assert list(gl[0]) == [3, 4]
+    assert gl[1, 0] == -1
+    assert gl[1, 1] == 2
+
+    result, n_reconciled = _reconcile_buildings_with_voxels(
+        classes, heights, min_heights, meshsize
+    )
+
+    def expected_segment(a, b, ground_level):
+        return [(a - ground_level) * meshsize, (b + 1 - ground_level) * meshsize]
+
+    # (0, 0): ground_level=3 (from _ground_level), run (4, 6).
+    assert result[0, 0] == [expected_segment(4, 6, int(gl[0, 0]))]
+    # (0, 1): ground_level=4, run (5, 5).
+    assert result[0, 1] == [expected_segment(5, 5, int(gl[0, 1]))]
+    # (1, 0): no datum -- skipped, min_heights left untouched.
+    assert result[1, 0] == []
+    # (1, 1): ground_level=2, two disjoint runs (3, 3) and (5, 6).
+    assert result[1, 1] == [
+        expected_segment(3, 3, int(gl[1, 1])),
+        expected_segment(5, 6, int(gl[1, 1])),
+    ]
+    # (2, *): no building voxels -- untouched.
+    assert result[2, 0] == []
+    assert result[2, 1] == []
+
+    # Only the three columns with a real datum AND a building run count.
+    assert n_reconciled == 3
+
+
+def test_reconcile_no_datum_column_skipped_and_warns(caplog, propagate_voxcity_logs):
+    """A building-voxel column with no ground/land-cover voxel beneath it is
+    skipped (not reconciled) and logs the exact warning text below -- pinned
+    because a refactor of the datum computation must not change it."""
+    ny, nx, nz, meshsize = 2, 2, 5, 2.0
+    classes = np.zeros((ny, nx, nz), dtype=np.int32)
+    classes[0, 1, 1:3] = -3  # building voxels, no ground anywhere in column
+
+    heights = np.zeros((ny, nx))
+    min_heights = np.empty((ny, nx), dtype=object)
+    for i in range(ny):
+        for j in range(nx):
+            min_heights[i, j] = []
+
+    with caplog.at_level(logging.WARNING, logger="voxcity"):
+        result, n_reconciled = _reconcile_buildings_with_voxels(
+            classes, heights, min_heights, meshsize
+        )
+
+    assert result[0, 1] == []
+    assert n_reconciled == 0
+    assert (
+        "PALM voxel reconciliation: column (0, 1) has a building voxel "
+        "(-3) but no ground/land-cover voxel beneath it in "
+        "city.voxels.classes; skipping (cannot derive a height datum "
+        "for this column)."
+    ) in caplog.text

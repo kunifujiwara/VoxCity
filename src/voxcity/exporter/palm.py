@@ -513,12 +513,12 @@ def _reconcile_buildings_with_voxels(voxel_classes, heights, min_heights, meshsi
     if not to_reconcile.any():
         return min_heights, 0
 
-    is_ground = (voxel_classes == _VOXEL_GROUND_CODE) | (voxel_classes >= 1)
+    gl_grid = _ground_level(voxel_classes)
     min_heights = np.asarray(min_heights, dtype=object).copy()
     n_reconciled = 0
     for i, j in zip(*np.nonzero(to_reconcile)):
-        ground_ks = np.nonzero(is_ground[i, j, :])[0]
-        if ground_ks.size == 0:
+        ground_level = int(gl_grid[i, j])
+        if ground_level < 0:
             _logger.warning(
                 f"PALM voxel reconciliation: column ({i}, {j}) has a "
                 "building voxel (-3) but no ground/land-cover voxel "
@@ -527,7 +527,6 @@ def _reconcile_buildings_with_voxels(voxel_classes, heights, min_heights, meshsi
             )
             continue
 
-        ground_level = int(ground_ks.max()) + 1
         building_ks = np.nonzero(
             voxel_classes[i, j, :] == _VOXEL_BUILDING_CODE
         )[0]
