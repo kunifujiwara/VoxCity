@@ -267,21 +267,55 @@ def _ground_level(voxel_classes):
     return np.where(has, top + 1, -1).astype(np.int64)
 
 
-def _build_zt(dem_grid):
-    """Terrain height, shifted so its minimum is exactly 0.
+def _build_zt(voxel_classes, dem_grid, meshsize):
+    """Terrain height for the static driver, QUANTIZED to the voxel grid.
 
-    Returns (zt float32 (y, x), origin_z) where origin_z is the subtracted
-    minimum (recorded as the PIDS global attribute ``origin_z``). NaN/inf
-    cells take the minimum of the finite cells (i.e. 0 after shifting).
+    Each column's terrain top is ``_ground_level(voxel_classes) * meshsize``
+    (min-shifted so min(zt) == 0), so every value is an exact multiple of
+    ``meshsize``. PALM's own terrain rounding (empirically closest to ceil,
+    but modified further by its topography filter) then becomes the
+    IDENTITY regardless of which rule it applies -- on exact multiples of
+    dz, ceil == floor == nint. This is what keeps PALM's discretized world
+    aligned cell-for-cell with the voxcity voxel model (spec
+    2026-08-24-palm-exporter-alignment-design.md).
+
+    ``origin_z`` (PIDS global attr, absolute elevation of domain z = 0)
+    stays the minimum finite DEM value, exactly as before quantization;
+    the zero plane sits within one cell of it, an accepted georeferencing
+    imprecision. ``dem_grid`` no longer influences any cell's height.
+
+    Falls back to the legacy continuous-DEM behavior (with a warning) when
+    no voxel grid is available -- alignment is impossible then anyway.
     """
-    zt = np.asarray(dem_grid, dtype=np.float64).copy()
-    finite = np.isfinite(zt)
-    if not finite.any():
-        return np.zeros(zt.shape, dtype=np.float32), 0.0
-    min_val = float(zt[finite].min())
-    zt[~finite] = min_val
-    zt -= min_val
-    return zt.astype(np.float32), min_val
+    dem = np.asarray(dem_grid, dtype=np.float64)
+    finite = np.isfinite(dem)
+    origin_z = float(dem[finite].min()) if finite.any() else 0.0
+    if voxel_classes is None:
+        _logger.warning(
+            "PALM zt: no voxel grid on the model; falling back to "
+            "continuous DEM heights (PALM will re-round them and the "
+            "domain will NOT be cell-aligned with the voxel model)."
+        )
+        if not finite.any():
+            return np.zeros(dem.shape, dtype=np.float32), 0.0
+        zt = dem.copy()
+        zt[~finite] = origin_z
+        zt -= origin_z
+        return zt.astype(np.float32), origin_z
+
+    gl = _ground_level(voxel_classes).astype(np.float64)
+    ok = gl >= 0
+    if not ok.any():
+        return np.zeros(gl.shape, dtype=np.float32), origin_z
+    if (~ok).any():
+        _logger.warning(
+            f"PALM zt: {int((~ok).sum())} column(s) have no ground datum "
+            "(no ground/land-cover voxel); using the domain minimum "
+            "ground level for them."
+        )
+        gl = np.where(ok, gl, gl[ok].min())
+    zt = (gl - gl.min()) * float(meshsize)
+    return zt.astype(np.float32), origin_z
 
 
 def _clean_heights(heights):
@@ -1310,7 +1344,11 @@ def export_palm(city: VoxCity,
 
     # ── build all fields ──
     geo = _build_georeference(rect)
-    zt, origin_z = _build_zt(city.dem.elevation)
+    voxel_classes = city.voxels.classes if city.voxels is not None else None
+    # zt is derived from the VOXEL GRID (not the raw DEM) so every terrain
+    # height is an exact multiple of meshsize and PALM's own re-rounding is
+    # the identity -- see _build_zt.
+    zt, origin_z = _build_zt(voxel_classes, city.dem.elevation, meshsize)
     # Reconcile against the voxel grid BEFORE the one _build_building_mask
     # call below: VoxCity's LOD2 shell voxelization can mark a column a
     # building (-3 voxels, real building_id) that the 2-D heights/
@@ -1319,7 +1357,6 @@ def export_palm(city: VoxCity,
     # Synthesizing min_heights segments here -- rather than a second,
     # independent presence rule downstream -- keeps the single presence
     # predicate intact (see the comment below).
-    voxel_classes = city.voxels.classes if city.voxels is not None else None
     min_heights, _n_voxel_reconciled = _reconcile_buildings_with_voxels(
         voxel_classes, heights, min_heights, meshsize,
     )

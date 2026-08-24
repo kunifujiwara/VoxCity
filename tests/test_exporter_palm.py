@@ -377,9 +377,12 @@ class TestGeoreference:
 
 
 class TestBuildZt:
+    """The legacy continuous-DEM path, still reachable as the
+    ``voxel_classes is None`` fallback of the quantized _build_zt."""
+
     def test_shift_to_zero_min(self):
         dem = np.array([[3.0, 5.0], [4.0, 7.0]])
-        zt, origin_z = _build_zt(dem)
+        zt, origin_z = _build_zt(None, dem, 2.0)
         assert zt.dtype == np.float32
         assert origin_z == pytest.approx(3.0)
         assert zt.min() == pytest.approx(0.0)
@@ -387,20 +390,20 @@ class TestBuildZt:
 
     def test_nan_replaced_with_min_before_shift(self):
         dem = np.array([[np.nan, 5.0], [4.0, 7.0]])
-        zt, origin_z = _build_zt(dem)
+        zt, origin_z = _build_zt(None, dem, 2.0)
         assert origin_z == pytest.approx(4.0)
         assert zt[0, 0] == pytest.approx(0.0)
         assert np.isfinite(zt).all()
 
     def test_all_nan_becomes_flat_zero(self):
         dem = np.full((2, 2), np.nan)
-        zt, origin_z = _build_zt(dem)
+        zt, origin_z = _build_zt(None, dem, 2.0)
         assert origin_z == 0.0
         assert (zt == 0.0).all()
 
     def test_inf_replaced_with_finite_min_before_shift(self):
         dem = np.array([[-np.inf, 5.0], [4.0, np.inf]])
-        zt, origin_z = _build_zt(dem)
+        zt, origin_z = _build_zt(None, dem, 2.0)
         assert origin_z == pytest.approx(4.0)
         assert zt[0, 0] == pytest.approx(0.0)  # -inf takes the finite min
         assert zt[1, 1] == pytest.approx(0.0)  # +inf takes the finite min too
@@ -412,8 +415,55 @@ class TestBuildZt:
         # function from rewriting the caller's array in place.
         dem = np.array([[3.0, 5.0], [4.0, 7.0]], dtype=np.float64)
         original = dem.copy()
-        _build_zt(dem)
+        _build_zt(None, dem, 2.0)
         assert np.array_equal(dem, original)
+
+
+class TestBuildZtQuantized:
+    def _classes(self, gl_grid, nz=8):
+        """Voxel grid whose ground occupies k=0..gl-1 per column."""
+        gl = np.asarray(gl_grid)
+        classes = np.zeros(gl.shape + (nz,), dtype=np.int8)
+        for i, j in np.ndindex(gl.shape):
+            classes[i, j, :gl[i, j]] = -1
+        return classes
+
+    def test_zt_is_ground_level_times_meshsize_min_shifted(self):
+        classes = self._classes([[2, 3], [5, 2]])
+        dem = np.array([[3.9, 6.1], [9.7, 4.2]])
+        zt, origin_z = _build_zt(classes, dem, 2.0)
+        # gl*ms = [[4, 6], [10, 4]] -> min-shift by 4
+        np.testing.assert_allclose(zt, [[0.0, 2.0], [6.0, 0.0]])
+
+    def test_zt_values_are_exact_meshsize_multiples(self):
+        classes = self._classes([[1, 4, 2]])
+        zt, _ = _build_zt(classes, np.array([[1.3, 8.9, 3.3]]), 2.5)
+        res = np.abs(zt / 2.5 - np.round(zt / 2.5))
+        assert res.max() < 1e-6
+
+    def test_origin_z_still_min_finite_dem(self):
+        classes = self._classes([[2, 2]])
+        _, origin_z = _build_zt(classes, np.array([[7.5, np.nan]]), 2.0)
+        assert origin_z == 7.5
+
+    def test_no_datum_column_falls_back_to_domain_min(self, caplog,
+                                                      propagate_voxcity_logs):
+        classes = self._classes([[3, 2]])
+        classes[0, 1, :] = 0                        # strip its ground
+        classes[0, 1, 1] = -3                       # floating building
+        with caplog.at_level(logging.WARNING):
+            zt, _ = _build_zt(classes, np.array([[5.0, 5.0]]), 2.0)
+        assert zt[0, 1] == 0.0                      # domain-min ground level
+        assert any("no ground datum" in r.message for r in caplog.records)
+
+    def test_none_voxels_falls_back_to_continuous_dem(self, caplog,
+                                                      propagate_voxcity_logs):
+        dem = np.array([[10.0, 11.3], [12.9, np.nan]])
+        with caplog.at_level(logging.WARNING):
+            zt, origin_z = _build_zt(None, dem, 2.0)
+        assert origin_z == 10.0
+        np.testing.assert_allclose(zt, [[0.0, 1.3], [2.9, 0.0]])
+        assert any("falling back" in r.message for r in caplog.records)
 
 
 class TestGroundLevel:
@@ -1578,7 +1628,7 @@ class TestValidatorAgainstRealBuilders:
             canopy_top, canopy_bottom, meshsize, lad_value=1.0,
             building_mask=building_mask,
         )
-        zt, _origin_z = _build_zt(np.zeros((3, 3)))
+        zt, _origin_z = _build_zt(None, np.zeros((3, 3)), meshsize)
 
         fields = {
             "zt": zt,
@@ -2264,8 +2314,13 @@ class TestExportPalm:
             assert abs(nc.rotation_angle) < 0.5
             assert nc.origin_z == pytest.approx(0.0)
             assert nc.origin_time == "2000-01-01 00:00:00 +00"
-            # terrain: dem row 3 = 1.5
-            assert nc.variables["zt"][3, 0] == pytest.approx(1.5)
+            # terrain comes from the VOXEL grid, not the DEM: make_city()'s
+            # default voxel grid is all air, so no column has a ground datum
+            # and zt is flat zero -- the DEM's 1.5 m row (which the
+            # pre-quantization exporter wrote here) is deliberately ignored.
+            # origin_z above still reports the DEM minimum (0.0).
+            assert nc.variables["zt"][3, 0] == pytest.approx(0.0)
+            assert (nc.variables["zt"][:] == 0.0).all()
             # buildings
             assert nc.variables["buildings_2d"][1, 1] == np.float32(10.0)
             assert nc.variables["building_id"][1, 1] == 7
@@ -2287,6 +2342,31 @@ class TestExportPalm:
             assert lad[1, 0, 2] == np.float32(0.0)
             # canopy over building cleared
             assert (lad[:, 1, 1] == np.float32(FILL_FLOAT)).all()
+
+    def test_zt_written_from_voxel_ground_not_dem(self, tmp_path):
+        # End-to-end pin for the quantized-terrain contract: the DEM is
+        # continuous (row 3 = 1.5 m) and DISAGREES with the voxel ground, and
+        # the voxel grid is what must win -- every written zt an exact
+        # multiple of meshsize, so PALM's own re-rounding is the identity.
+        city = make_city()
+        ny, nx = city.buildings.heights.shape
+        classes = _voxels_with_column(
+            ny, nx, 8,
+            # datum 2 everywhere except (3, 0) at datum 4 -> +2 cells
+            {(i, j): [-1, -1] for i in range(ny) for j in range(nx)},
+        )
+        classes[3, 0, :4] = -1
+        city.voxels = VoxelGrid(classes=classes, meta=city.voxels.meta)
+
+        out = export_palm(city, output_directory=str(tmp_path))
+        with Dataset(out) as nc:
+            nc.set_auto_mask(False)
+            zt = nc.variables["zt"][:]
+            assert zt[3, 0] == pytest.approx(4.0)   # (4 - 2) * 2.0 m
+            assert zt[0, 0] == pytest.approx(0.0)   # min-shifted datum
+            assert nc.origin_z == pytest.approx(0.0)  # still the DEM minimum
+            residual = np.abs(zt / 2.0 - np.round(zt / 2.0))
+            assert residual.max() < 1e-6
 
     def test_canopy_over_water_keeps_water_type(self, tmp_path):
         # The highest-value fixture cell: (ny-1, nx-1) is both water (per
