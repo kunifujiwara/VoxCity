@@ -448,13 +448,33 @@ class TestBuildZtQuantized:
 
     def test_no_datum_column_falls_back_to_domain_min(self, caplog,
                                                       propagate_voxcity_logs):
-        classes = self._classes([[3, 2]])
-        classes[0, 1, :] = 0                        # strip its ground
-        classes[0, 1, 1] = -3                       # floating building
+        # THREE valid columns at DISTINCT datums (2, 5, 8) so min, max and
+        # mean of the valid set all differ -- the no-datum column's expected
+        # value is reachable only by min. With coincident datums this test
+        # would pass under any reduction (a min->max mutant survived the
+        # whole suite on the original 1x2 fixture).
+        classes = self._classes([[2, 5, 8, 0]], nz=10)
+        classes[0, 3, 1] = -3                       # floating building, no ground
         with caplog.at_level(logging.WARNING):
-            zt, _ = _build_zt(classes, np.array([[5.0, 5.0]]), 2.0)
-        assert zt[0, 1] == 0.0                      # domain-min ground level
+            zt, _ = _build_zt(classes, np.array([[5.0, 5.0, 5.0, 5.0]]), 2.0)
+        # gl -> [2, 5, 8, 2(min)] -> min-shift by 2 -> [0, 3, 6, 0] * 2.0
+        np.testing.assert_allclose(zt, [[0.0, 6.0, 12.0, 0.0]])
+        assert zt[0, 3] == 0.0        # min (max would be 12.0, mean 6.0)
         assert any("no ground datum" in r.message for r in caplog.records)
+
+    def test_all_columns_no_datum_warns_about_flat_terrain(
+            self, caplog, propagate_voxcity_logs):
+        # The loudest possible outcome -- an entire domain of flat terrain
+        # out of a DEM with real relief -- must not be silent. This is the
+        # branch an all-air voxel grid takes, which most end-to-end tests
+        # in this module traverse.
+        classes = np.zeros((2, 2, 6), dtype=np.int8)   # all air, no ground
+        dem = np.array([[10.0, 40.0], [25.0, 80.0]])   # real relief, ignored
+        with caplog.at_level(logging.WARNING):
+            zt, origin_z = _build_zt(classes, dem, 2.0)
+        assert (zt == 0.0).all()
+        assert origin_z == 10.0       # origin_z is unaffected by the branch
+        assert any("flat" in r.message for r in caplog.records)
 
     def test_none_voxels_falls_back_to_continuous_dem(self, caplog,
                                                       propagate_voxcity_logs):

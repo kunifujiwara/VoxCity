@@ -306,6 +306,12 @@ def _build_zt(voxel_classes, dem_grid, meshsize):
     gl = _ground_level(voxel_classes).astype(np.float64)
     ok = gl >= 0
     if not ok.any():
+        _logger.warning(
+            "PALM zt: no column has a ground datum (no ground/land-cover "
+            "voxel anywhere), so the exported terrain is entirely flat -- "
+            "any relief in the DEM is NOT represented. This usually means "
+            "the voxel grid is empty or all-air."
+        )
         return np.zeros(gl.shape, dtype=np.float32), origin_z
     if (~ok).any():
         _logger.warning(
