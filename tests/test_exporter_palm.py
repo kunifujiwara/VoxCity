@@ -443,6 +443,43 @@ class TestGroundLevel:
         classes[0, 0, 1] = -3            # building floating on nothing
         assert _ground_level(classes)[0, 0] == -1
 
+    def test_empty_z_axis_returns_all_minus_one(self):
+        # nz == 0: no voxel data at all. The code this helper replaces
+        # short-circuits gracefully on this shape (has_building_voxel is
+        # all-False before any datum work runs), so this must not crash.
+        classes = np.zeros((2, 3, 0), dtype=np.int8)
+        gl = _ground_level(classes)
+        assert gl.shape == (2, 3)
+        assert gl.dtype.kind == "i"
+        assert (gl == -1).all()
+
+    def test_land_cover_only_column_no_ground_code_present(self):
+        # A column whose ONLY ground signal is a positive land-cover code,
+        # with no -1 anywhere -- pins the `>= 1` clause independently of
+        # the `== _VOXEL_GROUND_CODE` clause.
+        classes = np.zeros((2, 2, 4), dtype=np.int8)
+        classes[0, 0, 2] = 5              # land cover only, highest at k=2
+        assert _ground_level(classes)[0, 0] == 3
+        # every other column has no ground signal at all
+        assert _ground_level(classes)[0, 1] == -1
+        assert _ground_level(classes)[1, 0] == -1
+        assert _ground_level(classes)[1, 1] == -1
+
+    def test_non_contiguous_ground_run_uses_highest_not_first_run_end(self):
+        # Ground at a low k, then air, then ground/land-cover again higher
+        # up. A "find the end of the first ground run" implementation would
+        # stop after the first run and be wrong; the datum must be the
+        # highest ground voxel in the whole column.
+        classes = np.zeros((2, 2, 8), dtype=np.int8)
+        classes[1, 1, 0] = -1             # first ground run: k=0
+        classes[1, 1, 1] = -1             # ... k=1 (end of first run)
+        classes[1, 1, 2] = 0              # air gap
+        classes[1, 1, 3] = 0              # air gap
+        classes[1, 1, 4] = -1             # second ground run starts: k=4
+        classes[1, 1, 5] = 7              # land cover, highest ground at k=5
+        classes[1, 1, 6] = 0              # air above the second run
+        assert _ground_level(classes)[1, 1] == 6
+
 
 def _empty_min_heights(ny, nx):
     mh = np.empty((ny, nx), dtype=object)

@@ -258,8 +258,10 @@ def _ground_level(voxel_classes):
     can never disagree (spec 2026-08-24-palm-exporter-alignment §Design 1).
     """
     classes = np.asarray(voxel_classes)
-    is_ground = (classes == _VOXEL_GROUND_CODE) | (classes >= 1)
     nz = classes.shape[2]
+    if nz == 0:
+        return np.full(classes.shape[:2], -1, dtype=np.int64)
+    is_ground = (classes == _VOXEL_GROUND_CODE) | (classes >= 1)
     has = is_ground.any(axis=2)
     top = nz - 1 - np.argmax(is_ground[:, :, ::-1], axis=2)
     return np.where(has, top + 1, -1).astype(np.int64)
