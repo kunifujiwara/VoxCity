@@ -1,4 +1,4 @@
-# PALM terrain-alignment harness
+# PALM alignment harness (terrain + buildings)
 
 Manually-run integration scripts, **not pytest targets**. There is
 deliberately no `__init__.py` here and nothing is named `test_*`: these need a
@@ -7,17 +7,26 @@ collect them.
 
 ## What this proves
 
-`voxcity.exporter.palm._build_zt` derives terrain from the **voxel grid**:
+`voxcity.exporter.palm` derives **both** terrain and buildings from the
+**voxel grid**:
 
 ```
-zt = (_ground_level(voxel_classes) - min) * meshsize
+zt      = (_ground_level(voxel_classes) - min) * meshsize
+heights = the column's contiguous -3 runs, relative to _ground_level
 ```
 
-Every terrain height is therefore an exact multiple of `meshsize`, and on
+Every exported height is therefore an exact multiple of `meshsize`, and on
 exact multiples of `dz` PALM's own re-discretization (`ceil`, `floor` and
 `nint` all agree) becomes the identity. The claim is that PALM's simulated
 world then sits cell-for-cell on the voxcity voxel model. This harness checks
 that claim against a **real PALM run**, not against a mock.
+
+The building half of the claim needs a fixture whose 2-D
+`buildings.heights` **disagree** with its voxel columns — a fixture built
+from tidy `n * meshsize` heights agrees with the voxel grid no matter what
+the exporter does, and would have passed straight through the
+double-rounding defect. `stage_fixture.py` asserts the disagreement (and
+the exporter's resolution of it) in its self-check before staging.
 
 ## The loop
 
@@ -31,11 +40,16 @@ that claim against a **real PALM run**, not against a mock.
 Arguments are `[JOB] [CORES]`, default `align1 1`. The script
 
 * builds a 20x20 x 40 fixture at `meshsize 2.0` with three terraces, a water
-  strip with stepped banks, a 1-voxel hut, a mid-rise, a tower, and two tree
-  patches with elevated crowns (see its module docstring);
-* self-checks the fixture against `_ground_level` and `_build_zt` **before**
-  staging, so a fixture that stopped encoding reality fails here rather than
-  silently weakening the run;
+  strip with stepped banks, a 1-voxel hut, a mid-rise, a tower, an arcade
+  with a 2-cell gap in its voxel column (which also puts the export on the
+  LOD2 `buildings_3d` path), and two tree patches with elevated crowns (see
+  its module docstring);
+* gives every building a **continuous** height that disagrees with its voxel
+  column (`3.2 / 6.8 / 21.7 / 12.4 m` against `1 / 4 / 12 / 7` cells);
+* self-checks the fixture against `_ground_level`, `_build_zt` and
+  `_buildings_from_voxels` **before** staging — including that every
+  building's continuous height really does disagree — so a fixture that
+  stopped encoding reality fails here rather than silently weakening the run;
 * stages it through the app's real exporter path
   (`backend.palm_driver.stage_inputs`, with `PALM_SURFACE_NETCDF=1` set before
   `backend.config` is imported);
@@ -72,6 +86,18 @@ takes a few minutes. When it is done, `MONITORING/<JOB>_stdout.000` ends with
 
 Exit 0 = aligned (any mismatch was explained by PALM's own topography
 filter), exit 1 = hard mismatch or an untrustworthy input file.
+
+Buildings are counted from `topo_all == 1` (absolute z), never from the
+file's own `buildings_3d`: PALM writes that one terrain-relative and copies
+its second slot into its first (`data_output_topo_and_surface_setup_mod.f90`,
+"Set lowest grid point in output"), so every ground-mounted column reads one
+cell taller than it is. Confirmed on this fixture's 1-voxel hut, whose PALM
+`buildings_3d` column is `[1, 1, 0, ...]` while `topo_all` correctly has a
+single building cell.
+
+Last run (2026-08-25, PALM v25.10.1, 1 rank, LOD2 fixture):
+`solid 0 / building 0 / canopy 0` mismatching columns of 400,
+`PALM-FILTER RESIDUE: 0  HARD: 0`, verdict **ALIGNED**.
 
 ## Run it on ONE rank
 

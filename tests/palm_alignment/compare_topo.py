@@ -33,6 +33,11 @@ columns of real runs (printed again on every invocation, see ``probe()``):
   RAW z index equals voxcity's own k with NO shift. No level is dropped
   before comparing.
 
+* ``buildings_3d``, when PALM writes one, is NOT comparable cell-for-cell
+  with the voxel column: it is terrain-relative and PALM copies its second
+  slot into its first on output (see the ``got_b3`` comment in ``main``).
+  Buildings are counted from ``topo_all == 1`` in every case.
+
 WHY A MISMATCH CAN STILL BE BENIGN
 ----------------------------------
 PALM runs ``filter_topography`` (topography_mod.f90) before it starts. It
@@ -277,13 +282,25 @@ def main():
         print(f"\n  note: {n} cell(s) are topo_all == 3 (non-classified topography); "
               "counted as solid but neither terrain nor building")
 
+    # Buildings are always counted from topo_all, never from the file's own
+    # buildings_3d variable, even when PALM writes one. PALM's OUTPUT
+    # buildings_3d is TERRAIN-RELATIVE and its lowest slot is a DUPLICATE:
+    # it writes index k - k_ttop_ij for k = k_ttop_ij + 1 .. and then
+    # "Set lowest grid point in output ... output(nzb) = output(nzb+1)"
+    # (data_output_topo_and_surface_setup_mod.f90), so every ground-mounted
+    # building column reads one cell taller than it is. topo_all is the
+    # unambiguous field -- PALM's own comment: "in contrast to output of
+    # buildings, output of entire topography is relative to absolute
+    # coordinates" -- and it is what the voxel -3 count is comparable with.
+    got_b3 = got_building
     if "buildings_3d" in ds.variables:
         b3 = np.ma.filled(ds["buildings_3d"][:], 0).astype(int)
-        got_b3 = (b3 == 1).sum(axis=0).astype(int)
-        b3_note = "buildings_3d (LOD2 driver)"
+        b3_note = ("topo_all == 1 -- the driver is LOD2 (buildings_3d present, "
+                   f"max column {int((b3 == 1).sum(axis=0).max())} incl. PALM's "
+                   "duplicated lowest output slot, not counted here)")
     else:
-        got_b3, b3_note = got_building, ("topo_all == 1 -- the driver is LOD1, so "
-                                         "PALM writes no buildings_3d")
+        b3_note = ("topo_all == 1 -- the driver is LOD1, so PALM writes no "
+                   "buildings_3d")
 
     if "lad" in ds.variables:
         lad = np.ma.filled(ds["lad"][:], 0.0)
