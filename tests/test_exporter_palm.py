@@ -43,7 +43,7 @@ from voxcity.exporter.palm import (
     _get_source_name_mapping,
     _ground_level,
     _has_elevated_segments,
-    _reconcile_buildings_with_voxels,
+    _buildings_from_voxels,
     _to_level,
     _validate_static_fields,
     _write_static_driver,
@@ -420,23 +420,33 @@ class TestBuildZt:
         assert np.array_equal(dem, original)
 
 
-def _assert_zt_round_trips(zt, meshsize):
+def _assert_quantized_round_trips(values, meshsize):
     """Assert the ONE quantization invariant that holds for every meshsize:
-    zt's float32 bits are exactly what ``level * meshsize`` rounds to, so
-    the integer level round-trips. Returns the recovered levels.
+    a float32 field's bits are exactly what ``level * meshsize`` rounds to,
+    so the integer level round-trips. Returns the recovered levels.
 
-    Do NOT assert a metric tolerance (``abs(zt % meshsize) < eps``)
+    Do NOT assert a metric tolerance (``abs(v % meshsize) < eps``)
     instead: a non-dyadic meshsize is not binary-representable, so the
     residue off an exact metric multiple grows with the level -- ~4e-4 m
     at meshsize 2.2 with ~1000 cells of relief. Exactness lives in the
     float32 REPRESENTATION, which is also what PALM's re-discretization
     actually consumes.
+
+    Shared by the terrain field (_assert_zt_round_trips) and the building
+    field (buildings_2d), which are quantized to the same voxel grid by the
+    same argument -- one invariant, one helper, so the two can never be
+    asserted to different standards.
     """
-    zt = np.asarray(zt)
-    assert zt.dtype == np.float32
-    k = np.round(zt.astype(np.float64) / meshsize)
-    np.testing.assert_array_equal(np.float32(k * meshsize), zt)
+    values = np.asarray(values)
+    assert values.dtype == np.float32
+    k = np.round(values.astype(np.float64) / meshsize)
+    np.testing.assert_array_equal(np.float32(k * meshsize), values)
     return k
+
+
+def _assert_zt_round_trips(zt, meshsize):
+    """The terrain-field spelling of _assert_quantized_round_trips."""
+    return _assert_quantized_round_trips(zt, meshsize)
 
 
 class TestBuildZtQuantized:
@@ -850,6 +860,18 @@ class TestElevatedSegments:
 
 
 class TestBuildBuildings3d:
+    """Level 0 of buildings_3d is NEVER a building here.
+
+    PALM maps this array by index: level k2 lands on grid index
+    ``topo_top_index + k2``, and topo_top_index is the terrain-top cell
+    (topography_mod.f90, "Finally, map building on top"). Level 0 is
+    therefore the ground voxel, and level k2 is the k2-th cell above the
+    terrain -- so a ground-mounted n-cell building is levels 1..n, not
+    0..n. See _segment_levels for the full argument and the +1-cell field
+    measurement it comes from; every expectation below that starts with a
+    0 is pinning it.
+    """
+
     def test_overhang_column(self):
         heights = np.array([[10.0, 0.0]])
         mh = _empty_min_heights(1, 2)
@@ -874,8 +896,9 @@ class TestBuildBuildings3d:
         b3d = _build_buildings_3d(
             heights, mh, meshsize=2.0, segment_top_m=segment_top_m, building_mask=mask
         )
-        # zu levels [0, 1, 3, 5] all lie at or below the 6 m top
-        assert list(b3d[:, 0, 0]) == [1, 1, 1, 1]
+        # 6 m at dz=2 is three cells above the terrain: levels 1, 2, 3.
+        # Level 0 is the terrain-top cell (see the class docstring).
+        assert list(b3d[:, 0, 0]) == [0, 1, 1, 1]
 
     def test_multiple_disjoint_segments_leave_a_real_gap(self):
         # A bridge/overhang case: two segments in one cell with empty space
@@ -887,9 +910,10 @@ class TestBuildBuildings3d:
         b3d = _build_buildings_3d(
             heights, mh, meshsize=2.0, segment_top_m=segment_top_m, building_mask=mask
         )
-        # zu levels [0, 1, 3, 5, 7, 9, 11]: [0, 4] holds 0/1/3, [8, 12]
-        # holds 9/11, and the 5/7 m levels in between stay open
-        assert list(b3d[:, 0, 0]) == [1, 1, 1, 0, 0, 1, 1]
+        # [0, 4] is the two cells above the terrain (levels 1, 2), [8, 12]
+        # the fifth and sixth (levels 5, 6), and the two cells between them
+        # (levels 3, 4) stay open. Level 0 is the terrain-top cell.
+        assert list(b3d[:, 0, 0]) == [0, 1, 1, 0, 0, 1, 1]
 
     def test_segment_extending_above_heights_grows_nz_instead_of_truncating(self):
         # A segment's upper bound (20 m) exceeds heights.max() (5 m). nz is
@@ -905,15 +929,17 @@ class TestBuildBuildings3d:
         # 10 centres from the segment top (20 m at dz=2), not heights.max(),
         # plus the surface level
         assert b3d.shape == (11, 1, 1)
-        assert list(b3d[:, 0, 0]) == [1] * 11
+        assert list(b3d[:, 0, 0]) == [0] + [1] * 10
 
-    def test_negative_segment_min_starts_at_the_surface(self):
+    def test_negative_segment_min_starts_at_the_lowest_building_level(self):
         # A segment straddling ground (e.g. CityGML LOD2 geometry dipping
-        # below the terrain datum) marks the surface level and every zu
-        # level up to its top, and nothing above. The boolean level
-        # selection makes the old negative-index wraparound structurally
-        # impossible, but the surface-inclusion and above-top-exclusion
-        # behavior still needs pinning.
+        # below the terrain datum) starts at the lowest level a building
+        # can occupy (1, the first cell above the terrain -- its buried
+        # part is unrepresentable in a terrain-relative array) and fills
+        # every cell up to its top, nothing above. The clamped level RANGE
+        # makes the old negative-index wraparound structurally impossible,
+        # but the lower-clamp and above-top-exclusion behavior still needs
+        # pinning.
         heights = np.array([[10.0]])
         mh = _empty_min_heights(1, 1)
         mh[0, 0] = [[-6.0, 8.0]]
@@ -921,9 +947,10 @@ class TestBuildBuildings3d:
         b3d = _build_buildings_3d(
             heights, mh, meshsize=2.0, segment_top_m=segment_top_m, building_mask=mask
         )
-        # zu levels [0, 1, 3, 5, 7, 9]: [-6, 8] holds all but the 9 m level
+        # [-6, 8] holds the four cells from the terrain top up to 8 m
+        # (levels 1..4); the fifth cell and the terrain-top cell stay clear
         assert b3d.shape == (6, 1, 1)
-        assert list(b3d[:, 0, 0]) == [1, 1, 1, 1, 1, 0]
+        assert list(b3d[:, 0, 0]) == [0, 1, 1, 1, 1, 0]
 
     def test_fully_below_ground_segment_does_not_spuriously_fill(self):
         # Segment entirely below ground contributes nothing: no zu level
@@ -955,26 +982,29 @@ class TestBuildBuildings3d:
             heights, mh, meshsize=2.0, segment_top_m=segment_top_m, building_mask=mask
         )
         assert b3d.shape == (6, 1, 1)
-        assert list(b3d[:, 0, 0]) == [1, 1, 1, 1, 1, 1]
+        assert list(b3d[:, 0, 0]) == [0, 1, 1, 1, 1, 1]
 
     def test_sub_voxel_building_gets_at_least_one_level(self):
-        # 0.4 m at meshsize=2.0 reaches no zu centre, but zl[0] = 0.0 means
-        # the extrusion naturally marks the surface level, so the column is
-        # never dropped.
+        # 0.4 m at meshsize=2.0 fills no cell (the voxelizer would write no
+        # voxel for it either), so the forced fill is the only thing keeping
+        # the column in the LOD2 mask. It goes to level 1 -- the lowest cell
+        # a building can occupy -- not level 0, which is the terrain-top
+        # cell and would leave the "building" occupying no air cell at all.
         heights = np.array([[0.4]])
         mask, segment_top_m = _build_building_mask(heights, None)
         b3d = _build_buildings_3d(
             heights, None, meshsize=2.0, segment_top_m=segment_top_m, building_mask=mask
         )
-        assert b3d.shape[0] >= 1
-        assert b3d[0, 0, 0] == 1
+        assert b3d.shape[0] >= 2
+        assert b3d[0, 0, 0] == 0
+        assert b3d[1, 0, 0] == 1
 
     def test_degenerate_aloft_segment_still_gets_one_level(self):
-        # A segment sitting entirely between two zu levels ([2.5, 2.6] at
-        # dz=2 falls between the 1 m and 3 m levels) selects nothing and has
-        # no height to extrude from, yet the mask counts the cell as a
-        # building (segment_top_m = 2.6 > 0) -- the forced surface-level
-        # fill is the only thing keeping it in the LOD2 mask.
+        # A segment sitting entirely inside one cell ([2.5, 2.6] at dz=2
+        # never crosses a cell border) fills nothing and has no height to
+        # extrude from, yet the mask counts the cell as a building
+        # (segment_top_m = 2.6 > 0) -- the forced level-1 fill is the only
+        # thing keeping it in the LOD2 mask.
         heights = np.array([[0.0]])
         mh = _empty_min_heights(1, 1)
         mh[0, 0] = [[2.5, 2.6]]
@@ -983,8 +1013,9 @@ class TestBuildBuildings3d:
         b3d = _build_buildings_3d(
             heights, mh, meshsize=2.0, segment_top_m=segment_top_m, building_mask=mask
         )
-        assert b3d[0, 0, 0] == 1
-        assert (b3d[1:, 0, 0] == 0).all()
+        assert b3d[0, 0, 0] == 0
+        assert b3d[1, 0, 0] == 1
+        assert (b3d[2:, 0, 0] == 0).all()
 
     def test_none_min_heights_extrudes_from_heights_directly(self):
         # Distinct from the "no segments" tests above, which pass an object
@@ -995,7 +1026,7 @@ class TestBuildBuildings3d:
         b3d = _build_buildings_3d(
             heights, None, meshsize=2.0, segment_top_m=segment_top_m, building_mask=mask
         )
-        assert list(b3d[:, 0, 0]) == [1, 1, 1, 1]
+        assert list(b3d[:, 0, 0]) == [0, 1, 1, 1]
 
     def test_nan_height_cell_produces_empty_column(self):
         heights = np.array([[3.0, np.nan]])
@@ -1030,8 +1061,9 @@ class TestBuildBuildings3d:
         b3d = _build_buildings_3d(
             heights, mh, meshsize=2.0, segment_top_m=segment_top_m, building_mask=mask
         )
-        # NaN lower bound -> ground (0): fills surface + all centres <= 10
-        assert list(b3d[:, 0, 0]) == [1, 1, 1, 1, 1, 1]
+        # NaN lower bound -> ground (0): fills every cell up to 10 m
+        # (levels 1..5), leaving the terrain-top cell clear
+        assert list(b3d[:, 0, 0]) == [0, 1, 1, 1, 1, 1]
         # inf upper bound -> ground (0): the segment collapses to [0, 0],
         # whose top is not above ground, so it is not geometry -- and the
         # mask agrees (segment_top_m is 0 after cleaning), so the column
@@ -3402,12 +3434,15 @@ class TestVoxelBuildingReconciliation:
             assert nc.variables["building_id"][3, 1] == 42
             assert nc.variables["building_type"][3, 1] == 3  # exporter default
             b3d = nc.variables["buildings_3d"][:]
-            zu = nc.variables["z"][:]
-            # LOD2 occupancy must come from the actual voxel column (levels
-            # inside [0, 8] m), not a blind full-column extrusion.
-            expected = ((zu >= 0.0) & (zu <= 8.0)).astype(np.int8)
-            assert list(b3d[:, 3, 1]) == list(expected)
-            assert b3d[:, 3, 1].sum() > 0
+            # LOD2 occupancy must come from the actual voxel column, not a
+            # blind full-column extrusion: the four -3 voxels (k=4..7 over
+            # ground_level 4) are the four cells above the terrain, i.e.
+            # levels 1..4. Level 0 is the terrain-top cell (see
+            # _segment_levels), so the count matches the voxel run exactly.
+            assert list(b3d[:, 3, 1]) == [0, 1, 1, 1, 1, 0]
+            assert int(b3d[:, 3, 1].sum()) == int(
+                (classes[3, 1] == -3).sum()
+            )
 
     def test_tree_only_voxel_column_not_reconciled(self, tmp_path):
         # (3, 2): ground voxel at k=3, TREE voxels (-2) at k=4,5 -- no -3
@@ -3507,7 +3542,7 @@ def test_reconcile_datum_matches_ground_level_helper():
     assert gl[1, 0] == -1
     assert gl[1, 1] == 2
 
-    result, n_reconciled = _reconcile_buildings_with_voxels(
+    _out_heights, result, stats = _buildings_from_voxels(
         classes, heights, min_heights, meshsize
     )
 
@@ -3530,7 +3565,12 @@ def test_reconcile_datum_matches_ground_level_helper():
     assert result[2, 1] == []
 
     # Only the three columns with a real datum AND a building run count.
-    assert n_reconciled == 3
+    assert stats["voxel_derived"] == 3
+    # ... and the heights grid is rewritten to match the segments it just
+    # derived, so buildings_2d never has to be repaired from them later.
+    assert _out_heights[0, 0] == expected_segment(4, 6, int(gl[0, 0]))[1]
+    assert _out_heights[1, 1] == expected_segment(5, 6, int(gl[1, 1]))[1]
+    assert _out_heights[2, 0] == 0.0
 
 
 def test_reconcile_no_datum_column_skipped_and_warns(caplog, propagate_voxcity_logs):
@@ -3548,15 +3588,202 @@ def test_reconcile_no_datum_column_skipped_and_warns(caplog, propagate_voxcity_l
             min_heights[i, j] = []
 
     with caplog.at_level(logging.WARNING, logger="voxcity"):
-        result, n_reconciled = _reconcile_buildings_with_voxels(
+        _out_heights, result, stats = _buildings_from_voxels(
             classes, heights, min_heights, meshsize
         )
 
     assert result[0, 1] == []
-    assert n_reconciled == 0
+    assert stats["voxel_derived"] == 0
+    assert stats["no_datum"] == 1
+    # The column has no raster building either, so it is not quantized as a
+    # raster-only column afterwards -- nothing is invented on a datum-less
+    # column in either direction.
+    assert stats["raster_only"] == 0
+    assert _out_heights[0, 1] == 0.0
     assert (
         "PALM voxel reconciliation: column (0, 1) has a building voxel "
         "(-3) but no ground/land-cover voxel beneath it in "
         "city.voxels.classes; skipping (cannot derive a height datum "
         "for this column)."
     ) in caplog.text
+
+
+def _ground_voxels(ny, nx, nz, ground_level=1):
+    """Voxel classes with a solid ground column of ``ground_level`` cells
+    under every (i, j) and air above -- the datum every voxelized city has."""
+    classes = np.zeros((ny, nx, nz), dtype=np.int32)
+    classes[:, :, :ground_level] = -1
+    return classes
+
+
+class TestBuildingsDerivedFromTheVoxelGrid:
+    """The VOXEL GRID is the building authority, not city.buildings.heights.
+
+    Terrain already works this way (_build_zt): every zt is an exact
+    multiple of the meshsize, so PALM's own re-rounding is the identity and
+    its world sits cell-for-cell on the voxel model. Buildings did not: a
+    normally-rastered column exported its CONTINUOUS heights/min_heights
+    (2.77 m, 3.74 m, 96.7 m ...) and PALM re-rounded them with its own
+    rule -- 564 of 728 building columns in a real run came out 1-18 cells
+    short, and the LOD2 heights raster disagreed with the shell
+    voxelization outright (voxcity 120 m vs buildings_2d 96.7 m).
+
+    The old reconciliation only synthesized segments for columns the 2-D
+    raster missed ENTIRELY; these tests cover the regime the real city is
+    in -- a column present in BOTH, with values that disagree.
+    """
+
+    def test_continuous_height_is_replaced_by_the_voxel_column(self, tmp_path):
+        # The invisible regime: 9 building voxels at meshsize 5 (= 45 m)
+        # under a continuous LOD height of 42.3 m. The voxel column is what
+        # the user sees and what every other simulator here runs on, so the
+        # driver must say 45.0 -- not 42.3, and not PALM's re-rounding of
+        # 42.3 (which lands on 40.0, a cell short).
+        ms = 5.0
+        city = make_city(meshsize=ms)
+        ny, nx = city.buildings.heights.shape
+        classes = _ground_voxels(ny, nx, 14)
+        classes[1, 1, 1:10] = -3          # 9 cells above ground_level 1
+        city.voxels = VoxelGrid(classes=classes, meta=city.voxels.meta)
+        city.buildings.heights[1, 1] = 42.3
+        city.buildings.min_heights[1, 1] = [[0.0, 42.3]]
+
+        out = export_palm(city, output_directory=str(tmp_path), buildings_3d=True)
+        with Dataset(out) as nc:
+            nc.set_auto_mask(False)
+            assert nc.variables["buildings_2d"][1, 1] == np.float32(45.0)
+            # buildings_3d reproduces the voxel run cell-for-cell: level 0
+            # is the terrain-top cell (see the dedicated test below), so the
+            # 9 voxels are levels 1..9 and the count matches exactly.
+            col = list(nc.variables["buildings_3d"][:, 1, 1])
+            assert col == [0] + [1] * 9
+            assert int(np.sum(nc.variables["buildings_3d"][:, 1, 1])) == int(
+                (classes[1, 1] == -3).sum()
+            )
+
+    def test_disjoint_voxel_runs_become_elevated_segments(self, tmp_path):
+        # An LOD2 tower with a gap: two disjoint -3 runs over a 2-cell
+        # ground datum. Both runs must survive as their own segment, at
+        # their own levels, and the gap must stay open.
+        ms = 2.0
+        city = make_city(meshsize=ms)
+        ny, nx = city.buildings.heights.shape
+        classes = _ground_voxels(ny, nx, 12, ground_level=2)
+        classes[1, 1, 2:4] = -3      # run k=2..3 -> [0, 4] m above terrain
+        classes[1, 1, 6:9] = -3      # run k=6..8 -> [8, 14] m above terrain
+        city.voxels = VoxelGrid(classes=classes, meta=city.voxels.meta)
+        city.buildings.heights[1, 1] = 10.0            # continuous, disagrees
+        city.buildings.min_heights[1, 1] = [[0.0, 10.0]]
+
+        # No buildings_3d= argument: the voxel-derived elevated segment must
+        # be what flips the "auto" decision to LOD2.
+        out = export_palm(city, output_directory=str(tmp_path))
+        with Dataset(out) as nc:
+            nc.set_auto_mask(False)
+            assert nc.variables["buildings_2d"][1, 1] == np.float32(14.0)
+            assert list(nc.variables["buildings_3d"][:, 1, 1]) == [
+                0, 1, 1, 0, 0, 1, 1, 1
+            ]
+
+    def test_raster_only_column_is_quantized_with_the_voxelizer_rule(
+        self, tmp_path, caplog, propagate_voxcity_logs
+    ):
+        # A column with raster buildings but NO -3 voxels has no voxel
+        # authority to defer to. Policy: quantize it with _to_level, the
+        # voxelizer's OWN rounding rule, so the exported cell count is what
+        # the voxelizer would have produced had it seen the building -- and
+        # count/log it, never drop it silently. A building that rounds to
+        # zero cells (sub-half-cell) is what the voxelizer itself would have
+        # produced nothing for, so it leaves the driver too -- loudly.
+        ms = 5.0
+        city = make_city(meshsize=ms)          # bare-ground voxels, no -3
+        city.buildings.heights[1, 1] = 42.3    # 8.46 cells -> 8 -> 40.0 m
+        city.buildings.min_heights[1, 1] = [[0.0, 42.3]]
+        city.buildings.heights[2, 2] = 1.2     # 0.24 cells -> 0 -> dropped
+        city.buildings.min_heights[2, 2] = [[0.0, 1.2]]
+
+        with caplog.at_level(logging.WARNING, logger="voxcity"):
+            out = export_palm(city, output_directory=str(tmp_path))
+        with Dataset(out) as nc:
+            nc.set_auto_mask(False)
+            assert nc.variables["buildings_2d"][1, 1] == np.float32(40.0)
+            assert nc.variables["buildings_2d"][2, 2] == np.float32(FILL_FLOAT)
+            assert nc.variables["building_id"][2, 2] == FILL_INT
+        assert "no building voxel" in caplog.text
+        assert re.search(r"\b2\b[^\n]*quantiz", caplog.text)
+        assert re.search(r"\b1\b[^\n]*(dropped|zero cells)", caplog.text)
+
+    def test_buildings_2d_values_are_exact_meshsize_multiples(self, tmp_path):
+        # meshsize 2.2 is not binary-representable, so a metric tolerance
+        # (abs(v % ms) < eps) would not hold; the invariant that does is the
+        # float32 round-trip (see _assert_quantized_round_trips), the same
+        # one zt is held to.
+        ms = 2.2
+        city = make_city(meshsize=ms)
+        ny, nx = city.buildings.heights.shape
+        classes = _ground_voxels(ny, nx, 24)
+        classes[1, 1, 1:18] = -3        # 17 cells -> 37.4 m
+        city.voxels = VoxelGrid(classes=classes, meta=city.voxels.meta)
+        city.buildings.heights[1, 1] = 37.9     # continuous, disagrees
+        city.buildings.min_heights[1, 1] = [[0.0, 37.9]]
+
+        out = export_palm(city, output_directory=str(tmp_path))
+        with Dataset(out) as nc:
+            nc.set_auto_mask(False)
+            b2d = nc.variables["buildings_2d"][:]
+        present = b2d != np.float32(FILL_FLOAT)
+        levels = _assert_quantized_round_trips(b2d[present], ms)
+        assert levels.max() == 17.0
+
+    def test_the_callers_city_grids_are_not_rewritten(self):
+        # The exporter rewrites heights/min_heights wholesale now, so it
+        # must do it on copies: a caller who exports a city and then keeps
+        # using it (the app exports several domains from one city) must not
+        # find its buildings quantized underneath it.
+        ny, nx, meshsize = 2, 2, 2.0
+        classes = np.zeros((ny, nx, 8), dtype=np.int32)
+        classes[:, :, 0] = -1
+        classes[0, 0, 1:4] = -3
+        heights = np.array([[3.7, 0.0], [9.1, 0.0]])
+        min_heights = _empty_min_heights(ny, nx)
+        min_heights[0, 0] = [[0.0, 3.7]]
+        min_heights[1, 0] = [[0.0, 9.1]]
+        original_lists = [list(min_heights[0, 0]), list(min_heights[1, 0])]
+
+        out_h, out_mh, _stats = _buildings_from_voxels(
+            classes, heights, min_heights, meshsize
+        )
+
+        assert out_h[0, 0] == 6.0 and out_h[1, 0] == 10.0   # quantized
+        np.testing.assert_array_equal(heights, [[3.7, 0.0], [9.1, 0.0]])
+        assert min_heights[0, 0] == original_lists[0]
+        assert min_heights[1, 0] == original_lists[1]
+        assert out_mh[0, 0] != min_heights[0, 0]
+
+    def test_ground_mounted_building_leaves_the_terrain_top_level_free(self):
+        # THE +1-CELL DEFECT. PALM maps buildings_3d level k2 onto grid
+        # index topo_top_index + k2 (topography_mod.f90, "Finally, map
+        # building on top"), and topo_top_index is the TERRAIN-TOP cell --
+        # already solid terrain, and the voxel grid's ground voxel. So
+        # level 0 is not a building slot: filling it (PALM's own palm_csd
+        # does, via `z <= buildings_2d` on a z whose first entry is 0.0)
+        # makes the LOD2 building one cell deeper than the voxel column and
+        # restamps the terrain top as building, which is exactly the +1
+        # measured on the real driver (159 of 728 columns). The n cells
+        # above the terrain are levels 1..n.
+        heights = np.array([[6.0]])
+        mh = _empty_min_heights(1, 1)
+        mh[0, 0] = [[0.0, 6.0]]
+        mask, segment_top_m = _build_building_mask(heights, mh)
+        b3d = _build_buildings_3d(
+            heights, mh, meshsize=2.0, segment_top_m=segment_top_m,
+            building_mask=mask,
+        )
+        assert list(b3d[:, 0, 0]) == [0, 1, 1, 1]
+        # ... and the same for the no-segment extrusion fallback, which
+        # must not disagree with the segment path about level 0.
+        b3d_extruded = _build_buildings_3d(
+            heights, None, meshsize=2.0,
+            segment_top_m=np.zeros((1, 1)), building_mask=mask,
+        )
+        assert list(b3d_extruded[:, 0, 0]) == [0, 1, 1, 1]

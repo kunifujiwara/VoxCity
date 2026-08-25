@@ -253,16 +253,17 @@ def _ground_level(voxel_classes):
     (_VOXEL_GROUND_CODE) or land cover (>= 1); -1 where no such voxel.
 
     This is THE datum rule -- _build_zt (terrain quantization) and
-    _reconcile_buildings_with_voxels (LOD2 segment synthesis) both route
-    through it so the exported terrain frame and the building/tree levels
-    can never disagree (spec 2026-08-24-palm-exporter-alignment §Design 1).
+    _buildings_from_voxels (building quantization) both route through it so
+    the exported terrain frame and the building/tree levels can never
+    disagree (spec 2026-08-24-palm-exporter-alignment §Design 1).
 
     It unifies the DATUM RULE, not the NO-DATUM POLICY: what to do with a
     column that returns -1 is deliberately each caller's own decision
     (_build_zt substitutes the domain minimum so the terrain field stays
-    complete; _reconcile_buildings_with_voxels skips the column and warns
-    rather than inventing a building on a datum it does not have). Do not
-    unify those two fallbacks -- they answer different questions.
+    complete; _buildings_from_voxels falls back to quantizing the column's
+    raster values rather than inventing a building on a datum it does not
+    have). Do not unify those two fallbacks -- they answer different
+    questions.
     """
     classes = np.asarray(voxel_classes)
     nz = classes.shape[2]
@@ -447,119 +448,212 @@ def _build_building_mask(heights, min_heights):
     return mask, segment_top_m
 
 
-def _reconcile_buildings_with_voxels(voxel_classes, heights, min_heights, meshsize):
-    """Add LOD2 segments for building columns the 2-D grids miss but the
-    voxel grid does not.
+def _contiguous_runs(levels):
+    """Inclusive ``(first, last)`` runs of consecutive integers.
 
-    Root cause (see the PALM-driver design doc / the 149-column field
-    report this fix addresses): VoxCity's LOD2 pipeline voxelizes detailed
-    building SHELLS -- partial-coverage edge cells, complex geometry, small
-    structures -- while the 2-D heights/min_heights grids rasterize
-    footprints. A column can end up with a real ``building_id`` (> 0) and
-    real -3 voxels in ``city.voxels.classes`` while ``heights`` stays 0.0
-    and ``min_heights`` stays an empty list -- invisible to
-    _build_building_mask. Every other simulator in this ecosystem (wind
-    LBM, solar, view) runs on the voxel grid, so PALM must not silently run
-    on a different city.
-
-    This is additive reconciliation, not a second presence rule: it
-    *synthesizes* min_heights segments for the voxel-only columns (from
-    contiguous runs of -3 in that column) and hands the augmented
-    min_heights back to the caller, which must feed it into the ONE
-    existing call to _build_building_mask before building_mask reaches
-    _build_buildings/_build_buildings_3d (see that function's docstring:
-    "so the two outputs agree on which cells are buildings"). A voxel-only
-    column becomes, from that point on, an ordinary orphan-segment cell
-    (heights == 0, min_heights non-empty) -- the exact case
-    _build_buildings' existing repair path already handles (it raises
-    buildings_2d to the segment top and logs a WARNING), and
-    _build_buildings_3d already turns arbitrary min_heights segments into
-    exact zu-level occupancy, so the reconciled 3-D mask comes from the
-    real voxel column shape, not a blind ground-up extrusion.
-
-    Height/segment datum matches generator/voxelizer.py and
-    importer/integrate.py exactly (same rounding convention _to_level
-    documents elsewhere in this module): for a column, let
-    ``ground_level`` = 1 + the highest k whose voxel is ground/land-cover
-    solid (``_VOXEL_GROUND_CODE`` or a positive land-cover code -- trees
-    ``_VOXEL_TREE_CODE`` and buildings ``_VOXEL_BUILDING_CODE`` are never
-    terrain). A contiguous run of building voxels from k=a to k=b
-    (inclusive) becomes the segment
-    ``[(a - ground_level) * meshsize, (b + 1 - ground_level) * meshsize]``;
-    the top of that segment simplifies to
-    ``(b - (ground_level - 1)) * meshsize`` -- i.e. exactly
-    ``(top_k_building - terrain_top_k) * meshsize``, height above local
-    terrain in meters, the same datum _build_buildings already uses.
-
-    Building presence is decided purely by ``_VOXEL_BUILDING_CODE`` (-3):
-    tree voxels (-2) are never reconciled into buildings.
-
-    Returns ``(min_heights, n_reconciled_columns)``. ``min_heights`` is
-    returned unchanged (same object) when there is nothing to reconcile,
-    including when ``voxel_classes`` is ``None`` (pure-2D models / no voxel
-    grid available) -- callers must treat that as "behave exactly as
-    before this fix". A column with -3 voxels but no ground/land-cover
-    voxel beneath them at all (should not happen given the voxelizer's own
-    invariants -- every column always has a ground datum) is skipped with
-    a warning rather than guessed at, and does not count toward
-    n_reconciled_columns.
+    ``[4, 5, 6, 9, 10] -> [(4, 6), (9, 10)]``. One implementation, used by
+    _buildings_from_voxels for every column, so the run->segment mapping
+    that defines a building's shape exists exactly once.
     """
-    if voxel_classes is None:
-        return min_heights, 0
+    runs = []
+    run_start = prev = int(levels[0])
+    for k in levels[1:]:
+        k = int(k)
+        if k != prev + 1:
+            runs.append((run_start, prev))
+            run_start = k
+        prev = k
+    runs.append((run_start, prev))
+    return runs
 
-    existing_mask, _ = _build_building_mask(heights, min_heights)
-    has_building_voxel = np.any(voxel_classes == _VOXEL_BUILDING_CODE, axis=2)
-    to_reconcile = has_building_voxel & ~existing_mask
-    if not to_reconcile.any():
-        return min_heights, 0
+
+def _segments_from_runs(runs, ground_level, meshsize):
+    """Voxel runs -> LOD2 ``[min, max]`` segments in metres above terrain.
+
+    The exact inverse of the voxelizer's own building fill
+    (generator/voxelizer.py::_voxelize_kernel fills
+    ``[ground_level + int(seg[0]/vs + 0.5), ground_level + int(seg[1]/vs +
+    0.5))``): a run k=a..b (inclusive) becomes
+    ``[(a - ground_level) * meshsize, (b + 1 - ground_level) * meshsize]``,
+    which _to_level maps back to levels a..b and nothing else. The ``+ 1``
+    is the run's exclusive top -- ``b`` instead of ``b + 1`` would export
+    every building one cell short.
+    """
+    return [
+        [(a - ground_level) * meshsize, (b + 1 - ground_level) * meshsize]
+        for a, b in runs
+    ]
+
+
+def _quantize_segment(seg, meshsize):
+    """A raster segment snapped to voxel levels with the voxelizer's rule.
+
+    ``[lo, hi] -> [_to_level(lo) * ms, _to_level(hi) * ms]``, i.e. the
+    segment the voxelizer would have produced the same cells for. Returns
+    ``None`` when the two bounds land on the same level (the voxelizer
+    would fill no cell: ``end > start`` is false).
+    """
+    lo_k = _to_level(_clean_segment_bound(seg[0]), meshsize)
+    hi_k = _to_level(_clean_segment_bound(seg[1]), meshsize)
+    if hi_k <= lo_k:
+        return None
+    return [lo_k * meshsize, hi_k * meshsize]
+
+
+def _buildings_from_voxels(voxel_classes, heights, min_heights, meshsize):
+    """Rebuild the 2-D building grids FROM the voxel grid.
+
+    The voxel grid is the building authority, exactly as it is the terrain
+    authority in _build_zt: what the user sees, what the wind/solar/view
+    simulators run on, and -- once every exported height is an exact
+    multiple of ``meshsize`` -- what PALM's own re-rounding reproduces
+    instead of re-deriving (on exact multiples of dz, ceil == floor ==
+    nint). Returns ``(heights, min_heights, stats)``; the inputs are never
+    mutated.
+
+    WHY THIS REPLACES VALUES RATHER THAN ONLY FILLING GAPS
+    ------------------------------------------------------
+    Its predecessor (_reconcile_buildings_with_voxels) only SYNTHESIZED
+    segments for columns the 2-D raster missed entirely, on the assumption
+    that a normally-rastered column was already voxel-derived. It is not:
+    ``city.buildings.heights``/``min_heights`` hold continuous LOD heights
+    (2.77 m, 3.74 m, 96.7 m ...) that PALM then re-rounds with its own
+    rule. Measured on a real driver: 91% of buildings_2d cells were not
+    meshsize multiples and 564 of 728 building columns came out 1-18 cells
+    short in PALM, with LOD2 towers 20+ m short because the heights raster
+    disagreed with the shell voxelization outright (voxcity 120 m vs
+    buildings_2d 96.7 m). So every column with -3 voxels is REPLACED, not
+    merely supplemented.
+
+    THE THREE COLUMN CLASSES
+    ------------------------
+    1. ``-3`` voxels with a ground datum (the normal case, and the case
+       the old code left alone): the column's contiguous ``-3`` runs
+       become its segments via _segments_from_runs, and ``heights`` becomes
+       the top of the highest run. Both are exact multiples of
+       ``meshsize``. Disjoint runs stay disjoint, so an LOD2 tower with a
+       gap keeps its gap.
+    2. ``-3`` voxels but NO ground datum (``_ground_level`` == -1; the
+       voxelizer's own invariants say this cannot happen): warned, and the
+       column falls through to (3) -- there is no datum to measure a
+       building against, so its raster values are all that is left.
+    3. Raster buildings with NO ``-3`` voxel (POLICY, see below).
+
+    THE RASTER-ONLY POLICY
+    ----------------------
+    Such a column has no voxel authority to defer to, so the choice is
+    between deleting a building the model says exists and rounding it. It
+    is quantized with _to_level -- the voxelizer's OWN rounding rule -- so
+    the exported cell count is exactly what the voxel grid WOULD have held
+    had the voxelization seen it, and the column is counted and logged at
+    WARNING. Keeping the continuous value instead would recreate the very
+    double-rounding defect this function exists to remove; dropping the
+    column silently would delete real buildings (that is the failure mode
+    the 149-column field report was about).
+
+    A column whose height rounds to zero cells (sub-half-cell) does leave
+    the driver -- but that is the same answer the voxelizer gives it
+    (``end > start`` is false, no voxel is written), so it is agreement
+    with the authority rather than a second rule, and it is logged with
+    its own count. Note the consequence is bounded by one cell either way:
+    a sub-cell building is below PALM's vertical resolution regardless.
+
+    Trees (-2) are never buildings, in either direction.
+    """
+    stats = {
+        "voxel_derived": 0,
+        "raster_only": 0,
+        "raster_only_dropped": 0,
+        "no_datum": 0,
+    }
+    if voxel_classes is None:
+        # No voxel grid: alignment is impossible anyway and _build_zt has
+        # already warned about the same missing input for terrain. Behave
+        # exactly as before this fix (continuous values straight through).
+        return heights, min_heights, stats
+
+    h_in = _clean_heights(heights)
+    if min_heights is None:
+        mh_in = None
+    else:
+        mh_in = np.asarray(min_heights, dtype=object)
 
     gl_grid = _ground_level(voxel_classes)
-    min_heights = np.asarray(min_heights, dtype=object).copy()
-    n_reconciled = 0
-    for i, j in zip(*np.nonzero(to_reconcile)):
+    has_building_voxel = np.any(voxel_classes == _VOXEL_BUILDING_CODE, axis=2)
+    raster_mask, _ = _build_building_mask(heights, min_heights)
+    touch = has_building_voxel | raster_mask
+    if not touch.any():
+        return heights, min_heights, stats
+
+    out_h = h_in.copy()
+    if mh_in is None:
+        out_mh = np.empty(h_in.shape, dtype=object)
+        for idx in np.ndindex(h_in.shape):
+            out_mh[idx] = []
+    else:
+        # Shallow copy: every cell this function changes is ASSIGNED a new
+        # list, never appended to, so the caller's own per-cell lists in
+        # city.buildings.min_heights are never rewritten in place.
+        out_mh = mh_in.copy()
+
+    for i, j in zip(*np.nonzero(touch)):
+        i, j = int(i), int(j)
         ground_level = int(gl_grid[i, j])
-        if ground_level < 0:
+        if has_building_voxel[i, j] and ground_level >= 0:
+            runs = _contiguous_runs(
+                np.nonzero(voxel_classes[i, j, :] == _VOXEL_BUILDING_CODE)[0]
+            )
+            segments = _segments_from_runs(runs, ground_level, meshsize)
+            out_mh[i, j] = segments
+            out_h[i, j] = max(0.0, max(seg[1] for seg in segments))
+            stats["voxel_derived"] += 1
+            continue
+
+        if has_building_voxel[i, j]:
+            stats["no_datum"] += 1
             _logger.warning(
                 f"PALM voxel reconciliation: column ({i}, {j}) has a "
                 "building voxel (-3) but no ground/land-cover voxel "
                 "beneath it in city.voxels.classes; skipping (cannot "
                 "derive a height datum for this column)."
             )
-            continue
+            if not raster_mask[i, j]:
+                continue
 
-        building_ks = np.nonzero(
-            voxel_classes[i, j, :] == _VOXEL_BUILDING_CODE
-        )[0]
-        # Contiguous runs of building_ks, e.g. [4, 5, 6, 9, 10] -> [(4, 6),
-        # (9, 10)]: a voxel-only column can hold multiple disjoint runs
-        # (e.g. a shell with a gap), each becoming its own LOD2 segment.
-        run_start = prev = int(building_ks[0])
-        runs = []
-        for k in building_ks[1:]:
-            k = int(k)
-            if k != prev + 1:
-                runs.append((run_start, prev))
-                run_start = k
-            prev = k
-        runs.append((run_start, prev))
+        # Raster-only column (or a no-datum column with raster values left
+        # to fall back on): quantize with the voxelizer's own rule.
+        cell = out_mh[i, j]
+        cell = cell if isinstance(cell, (list, tuple)) else []
+        quantized = [
+            seg for seg in (
+                _quantize_segment(seg, meshsize) for seg in cell
+            ) if seg is not None
+        ]
+        out_mh[i, j] = quantized
+        out_h[i, j] = _to_level(h_in[i, j], meshsize) * meshsize
+        stats["raster_only"] += 1
+        top = max([out_h[i, j]] + [seg[1] for seg in quantized])
+        if top <= 0.0:
+            stats["raster_only_dropped"] += 1
 
-        cell = min_heights[i, j]
-        if not isinstance(cell, list):
-            cell = []
-        for a, b in runs:
-            lo = (a - ground_level) * meshsize
-            hi = (b + 1 - ground_level) * meshsize
-            cell.append([lo, hi])
-        min_heights[i, j] = cell
-        n_reconciled += 1
-
-    if n_reconciled:
+    if stats["voxel_derived"]:
         _logger.info(
-            f"PALM driver: {n_reconciled} building column(s) reconciled "
-            "from the voxel grid (present as -3 in city.voxels.classes but "
-            "missing from city.buildings.heights/min_heights)."
+            f"PALM driver: {stats['voxel_derived']} building column(s) "
+            "reconciled with the voxel grid (buildings_2d/buildings_3d "
+            "derived from the -3 runs in city.voxels.classes, so every "
+            "exported height is an exact multiple of the meshsize)."
         )
-    return min_heights, n_reconciled
+    if stats["raster_only"]:
+        _logger.warning(
+            f"PALM driver: {stats['raster_only']} building column(s) are "
+            "present in city.buildings but have no building voxel (-3) in "
+            "city.voxels.classes; quantized to the voxel grid with the "
+            "voxelizer's own rounding rule instead of the voxel column "
+            f"(no voxel column exists). {stats['raster_only_dropped']} of "
+            "them round to zero cells (below half a meshsize) and are "
+            "dropped, exactly as the voxelizer itself drops them."
+        )
+    return out_h, out_mh, stats
 
 
 def _build_buildings(heights, ids, building_type, segment_top_m, building_mask):
@@ -626,14 +720,51 @@ def _has_elevated_segments(min_heights, meshsize):
     return False
 
 
+def _segment_levels(lo, hi, meshsize, nz):
+    """The buildings_3d level range ``(k_lo, k_hi)`` a segment occupies.
+
+    A segment ``[lo, hi]`` in metres above the local terrain top fills the
+    CELLS the voxelizer would fill for it: levels
+    ``_to_level(lo) + 1 .. _to_level(hi)`` (see _to_level -- the same
+    ``int(v / dz + 0.5)`` rounding), clamped to ``1 .. nz - 1``. Returns an
+    empty range (``k_hi < k_lo``) when the segment fills no cell.
+
+    WHY LEVEL 0 IS NEVER A BUILDING (the +1-cell defect)
+    ---------------------------------------------------
+    PALM maps this array onto the grid by index, not by height:
+    ``k2 = 0; DO k = topo_top_index, nzt + 1: IF var_3d(k2) == 1 -> building
+    at k; k2 = k2 + 1`` (topography_mod.f90, "Finally, map building on
+    top"), where ``topo_top_index`` is the largest k with ``zu(k) <=``
+    terrain height -- the TERRAIN-TOP cell, already solid terrain and the
+    voxel grid's ground voxel. So level 0 is not a building slot; level k2
+    is the k2-th cell above the terrain, and a voxel run k=a..b over a
+    column with ground level ``g`` occupies levels ``a - g + 1 .. b - g +
+    1`` -- exactly what _segments_from_runs' segment maps to here.
+
+    Filling level 0 (which the naive "level height inside [lo, hi]" rule
+    does, since ``zu(0) == 0.0`` lies inside every ground-mounted segment,
+    and which PALM's own palm_csd does via ``z <= buildings_2d``) makes the
+    LOD2 building one cell deeper than the voxel column and restamps the
+    terrain top as building: measured as +1 cell on 159 of 728 columns of
+    a real driver. It also makes LOD2 disagree with LOD1 for the same
+    city -- PALM's LOD1 branch flags terrain for ``zu(k) < oro_max`` FIRST
+    and only then buildings, so the terrain top stays terrain there.
+    Leaving level 0 clear is what makes the two paths agree, and both
+    agree with the voxel grid.
+    """
+    k_lo = max(1, _to_level(lo, meshsize) + 1)
+    k_hi = min(nz - 1, _to_level(hi, meshsize))
+    return k_lo, k_hi
+
+
 def _build_buildings_3d(heights, min_heights, meshsize, segment_top_m, building_mask):
     """LOD2 byte mask (z, y, x) from per-cell [min, max] segments.
 
-    Levels follow PALM's zu grid (see _zu_levels): level 0 is the surface,
-    level k >= 1 sits at (k - 0.5) * dz. A level is building when its
-    height lies inside a segment's [min, max] -- the same "level inside
-    geometry" rule _build_lad uses for crowns. Cells without segments fall
-    back to ground extrusion from ``heights``. Aligned to
+    Levels follow PALM's zu grid (see _zu_levels): level 0 is the surface
+    (the terrain-top cell, never a building -- see _segment_levels), level
+    k >= 1 is the k-th cell above the local terrain. A level is building
+    when that CELL lies inside a segment's [min, max]. Cells without
+    segments fall back to ground extrusion from ``heights``. Aligned to
     ``building_mask`` (see _build_building_mask): every masked cell gets
     at least one filled level.
     """
@@ -663,52 +794,55 @@ def _build_buildings_3d(heights, min_heights, meshsize, segment_top_m, building_
             filled = False
             if segs:
                 for seg in segs:
-                    # Boolean level selection, not index slicing: a
-                    # fully-below-ground segment selects no level and a
-                    # straddling one starts at the surface, with no
-                    # negative-index arithmetic to clamp (the wraparound
-                    # bug class the old slice-based fill needed guards
-                    # for). A segment sitting entirely between two levels
-                    # (e.g. [2.5, 2.6] at dz=2) selects nothing and falls
-                    # through to the guarantees below.
+                    # Level RANGE selection (_segment_levels), never index
+                    # arithmetic on raw heights: a fully-below-ground
+                    # segment yields an empty range and a straddling one
+                    # starts at level 1, with no negative index to clamp
+                    # (the wraparound bug class the old slice-based fill
+                    # needed guards for). A segment sitting entirely
+                    # inside one cell (e.g. [2.5, 2.6] at dz=2) selects
+                    # nothing and falls through to the guarantees below.
                     lo = _clean_segment_bound(seg[0])
                     hi = _clean_segment_bound(seg[1])
                     if hi <= 0.0:
                         # Mirrors _segment_top_m's contribution rule: a
                         # segment topping out at or below ground is not
-                        # geometry, and letting it select the surface
-                        # level (zl[0] = 0.0 lies inside e.g. [-5, 0])
-                        # would fill a 3D column on a cell the shared
-                        # mask says is not a building -- breaking the
-                        # presence invariant the validator enforces.
+                        # geometry, and letting it select a level would
+                        # fill a 3D column on a cell the shared mask says
+                        # is not a building -- breaking the presence
+                        # invariant the validator enforces.
                         continue
-                    sel = (zl >= lo) & (zl <= hi)
-                    if sel.any():
-                        b3d[sel, i, j] = 1
+                    k_lo, k_hi = _segment_levels(lo, hi, meshsize, nz)
+                    if k_hi >= k_lo:
+                        b3d[k_lo:k_hi + 1, i, j] = 1
                         filled = True
             if not filled and h[i, j] > 0.0:
                 # Segments present but none of them filled (e.g. all
                 # entirely below ground) must still fall back to extrusion
                 # from heights, the same as a cell with no segments at all --
                 # otherwise a recorded LOD1 height is silently dropped in
-                # favor of the forced single-level fill below. zl[0] is 0.0,
-                # so any positive height marks at least the surface level.
-                b3d[zl <= h[i, j], i, j] = 1
-                filled = True
+                # favor of the forced single-level fill below. Ground
+                # extrusion is the segment [0, h], so it goes through the
+                # same _segment_levels rule: levels 1 .. _to_level(h).
+                k_lo, k_hi = _segment_levels(0.0, h[i, j], meshsize, nz)
+                if k_hi >= k_lo:
+                    b3d[k_lo:k_hi + 1, i, j] = 1
+                    filled = True
             if not filled and building_mask[i, j]:
                 # Every masked cell must end up with >=1 level: PALM treats
                 # buildings_3d as authoritative when present, so a cell the
-                # mask counts as a building whose geometry selects no zu
-                # level (only reachable via a degenerate aloft segment
-                # sitting entirely between two levels, since any positive
-                # height already marks the surface level above) must not
-                # vanish from the LOD2 mask while still holding a
-                # building_id in buildings_2d -- that would silently delete
-                # a building the user asked to export. Placing it at the
-                # surface misstates position by less than one dz (the
-                # vertical resolution limit anyway): a bounded, explainable
-                # error beats unbounded silent data loss.
-                b3d[0, i, j] = 1
+                # mask counts as a building whose geometry selects no level
+                # (a degenerate aloft segment sitting inside one cell, or a
+                # sub-half-cell height) must not vanish from the LOD2 mask
+                # while still holding a building_id in buildings_2d -- that
+                # would silently delete a building the user asked to
+                # export. Level 1 (nz >= 2 always, since n_centres >= 1) is
+                # the lowest cell a building can occupy at all: it
+                # misstates the volume by less than one dz, the vertical
+                # resolution limit anyway. Level 0 would be worse than
+                # wrong -- it is the terrain-top cell (see _segment_levels),
+                # so the "building" would occupy no air cell at all.
+                b3d[1, i, j] = 1
     return b3d
 
 
@@ -1385,15 +1519,15 @@ def export_palm(city: VoxCity,
     # height is an exact multiple of meshsize and PALM's own re-rounding is
     # the identity -- see _build_zt.
     zt, origin_z = _build_zt(voxel_classes, city.dem.elevation, meshsize)
-    # Reconcile against the voxel grid BEFORE the one _build_building_mask
-    # call below: VoxCity's LOD2 shell voxelization can mark a column a
-    # building (-3 voxels, real building_id) that the 2-D heights/
-    # min_heights rasterization missed entirely (see
-    # _reconcile_buildings_with_voxels' docstring for the root cause).
-    # Synthesizing min_heights segments here -- rather than a second,
+    # Buildings come from the VOXEL GRID too, for the same reason zt does:
+    # city.buildings.heights/min_heights hold CONTINUOUS LOD heights that
+    # PALM would re-round with its own rule, while the voxel grid is what
+    # the user sees and what every other simulator here runs on (see
+    # _buildings_from_voxels for the measured defect and the raster-only
+    # policy). Rewriting the 2-D grids here -- rather than adding a second,
     # independent presence rule downstream -- keeps the single presence
     # predicate intact (see the comment below).
-    min_heights, _n_voxel_reconciled = _reconcile_buildings_with_voxels(
+    heights, min_heights, _building_stats = _buildings_from_voxels(
         voxel_classes, heights, min_heights, meshsize,
     )
     # One presence predicate feeds both LOD1 and LOD2 so the two cannot
