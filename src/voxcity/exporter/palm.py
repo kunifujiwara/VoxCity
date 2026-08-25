@@ -534,9 +534,13 @@ def _buildings_from_voxels(voxel_classes, heights, min_heights, meshsize):
        ``meshsize``. Disjoint runs stay disjoint, so an LOD2 tower with a
        gap keeps its gap.
     2. ``-3`` voxels but NO ground datum (``_ground_level`` == -1; the
-       voxelizer's own invariants say this cannot happen): warned, and the
-       column falls through to (3) -- there is no datum to measure a
-       building against, so its raster values are all that is left.
+       voxelizer's own invariants say this cannot happen): warned per
+       column, and the column takes (3)'s quantization -- there is no datum
+       to measure its voxels against, so its raster values are all that is
+       left -- or leaves the driver when it has none. It is counted under
+       ``no_datum``/``no_datum_quantized``, never under ``raster_only``:
+       this column HAS a building voxel, and wording it as one that does
+       not would misdirect whoever reads the log.
     3. Raster buildings with NO ``-3`` voxel (POLICY, see below).
 
     THE RASTER-ONLY POLICY
@@ -565,6 +569,7 @@ def _buildings_from_voxels(voxel_classes, heights, min_heights, meshsize):
         "raster_only": 0,
         "raster_only_dropped": 0,
         "no_datum": 0,
+        "no_datum_quantized": 0,
     }
     if voxel_classes is None:
         # No voxel grid: alignment is impossible anyway and _build_zt has
@@ -599,26 +604,43 @@ def _buildings_from_voxels(voxel_classes, heights, min_heights, meshsize):
     for i, j in zip(*np.nonzero(touch)):
         i, j = int(i), int(j)
         ground_level = int(gl_grid[i, j])
-        if has_building_voxel[i, j] and ground_level >= 0:
-            runs = _contiguous_runs(
-                np.nonzero(voxel_classes[i, j, :] == _VOXEL_BUILDING_CODE)[0]
-            )
-            segments = _segments_from_runs(runs, ground_level, meshsize)
-            out_mh[i, j] = segments
-            out_h[i, j] = max(0.0, max(seg[1] for seg in segments))
-            stats["voxel_derived"] += 1
-            continue
-
+        no_datum = False
         if has_building_voxel[i, j]:
+            if ground_level >= 0:
+                runs = _contiguous_runs(
+                    np.nonzero(voxel_classes[i, j, :] == _VOXEL_BUILDING_CODE)[0]
+                )
+                segments = _segments_from_runs(runs, ground_level, meshsize)
+                out_mh[i, j] = segments
+                out_h[i, j] = max(0.0, max(seg[1] for seg in segments))
+                stats["voxel_derived"] += 1
+                continue
+
+            # Class 2: building voxels with no datum to measure them
+            # against. The column falls through to the raster-only
+            # quantization below when it has raster values, and out of the
+            # driver entirely when it has none -- but it is counted and
+            # worded as its OWN case either way, because it is not a
+            # "no building voxel" column: it has voxels this function
+            # cannot place.
+            no_datum = True
             stats["no_datum"] += 1
+            if not raster_mask[i, j]:
+                _logger.warning(
+                    f"PALM voxel reconciliation: column ({i}, {j}) has a "
+                    "building voxel (-3) but no ground/land-cover voxel "
+                    "beneath it in city.voxels.classes; skipping (cannot "
+                    "derive a height datum for this column)."
+                )
+                continue
             _logger.warning(
                 f"PALM voxel reconciliation: column ({i}, {j}) has a "
                 "building voxel (-3) but no ground/land-cover voxel "
-                "beneath it in city.voxels.classes; skipping (cannot "
-                "derive a height datum for this column)."
+                "beneath it in city.voxels.classes; cannot derive a height "
+                "datum for this column, so its 2-D raster values were "
+                "quantized with the voxelizer's rounding rule instead of "
+                "its voxel column."
             )
-            if not raster_mask[i, j]:
-                continue
 
         # Raster-only column (or a no-datum column with raster values left
         # to fall back on): quantize with the voxelizer's own rule.
@@ -631,6 +653,9 @@ def _buildings_from_voxels(voxel_classes, heights, min_heights, meshsize):
         ]
         out_mh[i, j] = quantized
         out_h[i, j] = _to_level(h_in[i, j], meshsize) * meshsize
+        if no_datum:
+            stats["no_datum_quantized"] += 1
+            continue
         stats["raster_only"] += 1
         top = max([out_h[i, j]] + [seg[1] for seg in quantized])
         if top <= 0.0:
@@ -805,12 +830,19 @@ def _build_buildings_3d(heights, min_heights, meshsize, segment_top_m, building_
                     lo = _clean_segment_bound(seg[0])
                     hi = _clean_segment_bound(seg[1])
                     if hi <= 0.0:
-                        # Mirrors _segment_top_m's contribution rule: a
-                        # segment topping out at or below ground is not
-                        # geometry, and letting it select a level would
-                        # fill a 3D column on a cell the shared mask says
-                        # is not a building -- breaking the presence
-                        # invariant the validator enforces.
+                        # Redundant-but-kept, the same way _segment_top_m's
+                        # max(0.0, ...) floor is: under the level-RANGE
+                        # rule a segment topping out at or below ground
+                        # already selects nothing (_segment_levels clamps
+                        # k_lo to 1 while k_hi = _to_level(hi) <= 0), so
+                        # this guard can no longer prevent the spurious
+                        # fill it was written against -- back when the
+                        # rule was "level height inside [lo, hi]" and
+                        # zl[0] = 0.0 lay inside e.g. [-5, 0]. Kept as a
+                        # second, independent statement of the same
+                        # contribution rule _segment_top_m applies, so the
+                        # mask and this builder cannot drift apart if
+                        # either rule is refactored.
                         continue
                     k_lo, k_hi = _segment_levels(lo, hi, meshsize, nz)
                     if k_hi >= k_lo:

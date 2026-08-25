@@ -35,7 +35,7 @@ columns of real runs (printed again on every invocation, see ``probe()``):
 
 * ``buildings_3d``, when PALM writes one, is NOT comparable cell-for-cell
   with the voxel column: it is terrain-relative and PALM copies its second
-  slot into its first on output (see the ``got_b3`` comment in ``main``).
+  slot into its first on output (see the ``got_building_cells`` comment in ``main``).
   Buildings are counted from ``topo_all == 1`` in every case.
 
 WHY A MISMATCH CAN STILL BE BENIGN
@@ -292,7 +292,7 @@ def main():
     # unambiguous field -- PALM's own comment: "in contrast to output of
     # buildings, output of entire topography is relative to absolute
     # coordinates" -- and it is what the voxel -3 count is comparable with.
-    got_b3 = got_building
+    got_building_cells = got_building
     if "buildings_3d" in ds.variables:
         b3 = np.ma.filled(ds["buildings_3d"][:], 0).astype(int)
         b3_note = ("topo_all == 1 -- the driver is LOD2 (buildings_3d present, "
@@ -309,7 +309,7 @@ def main():
         got_tree = np.zeros((ny, nx), dtype=int)
 
     checks = [("solid", want_solid, got_solid),
-              ("building", want_building, got_b3),
+              ("building", want_building, got_building_cells),
               ("canopy", want_tree, got_tree)]
     print(f"\n=== PER-COLUMN COUNTS ({ny * nx} columns) ===")
     print(f"  building check reads {b3_note}")

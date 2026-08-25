@@ -3490,11 +3490,13 @@ class TestVoxelBuildingReconciliation:
 
 
 def test_reconcile_datum_matches_ground_level_helper():
-    """The reconcile path's per-column datum must be exactly _ground_level's.
+    """The building path's per-column datum must be exactly _ground_level's.
 
     Both callers share the DATUM RULE; only their NO-DATUM POLICY differs
-    (_build_zt substitutes the domain minimum, _reconcile_buildings_with_
-    voxels skips the column). This pins the datum agreement itself -- a
+    (_build_zt substitutes the domain minimum; _buildings_from_voxels
+    refuses to derive a building from voxels it cannot measure, and falls
+    back to that column's raster values -- to nothing at all when there are
+    none, as here). This pins the datum agreement itself -- a
     column-by-column check derived independently from _ground_level's own
     output, not from re-deriving the rule inline -- so the two can never
     silently drift apart again.
@@ -3712,6 +3714,75 @@ class TestBuildingsDerivedFromTheVoxelGrid:
         assert "no building voxel" in caplog.text
         assert re.search(r"\b2\b[^\n]*quantiz", caplog.text)
         assert re.search(r"\b1\b[^\n]*(dropped|zero cells)", caplog.text)
+
+    def test_elevated_sub_cell_raster_segment_leaves_the_driver(
+        self, tmp_path, caplog, propagate_voxcity_logs
+    ):
+        # The one place _quantize_segment's drop rule is the ONLY
+        # implementation of the raster-only policy. A ground-mounted
+        # sub-cell building is also caught downstream (its quantized height
+        # is 0, so the column's top is 0), but an ELEVATED one is not:
+        # [11.0, 12.0] at meshsize 5 puts both bounds on level 2, which the
+        # voxelizer fills no cell for (its `end > start` is false). Without
+        # the `hi_k <= lo_k` guard the segment survives as the degenerate
+        # [10.0, 10.0], whose top reads as 10 m of building -- a phantom
+        # one-cell tower on a column the voxel grid says is empty.
+        ms = 5.0
+        city = make_city(meshsize=ms)        # bare-ground voxels, no -3
+        city.buildings.heights[3, 0] = 0.0
+        city.buildings.min_heights[3, 0] = [[11.0, 12.0]]
+
+        _h, _mh, stats = _buildings_from_voxels(
+            city.voxels.classes, city.buildings.heights,
+            city.buildings.min_heights, ms,
+        )
+        assert stats["raster_only_dropped"] == 1
+
+        with caplog.at_level(logging.WARNING, logger="voxcity"):
+            out = export_palm(city, output_directory=str(tmp_path))
+        with Dataset(out) as nc:
+            nc.set_auto_mask(False)
+            assert nc.variables["buildings_2d"][3, 0] == np.float32(FILL_FLOAT)
+            assert nc.variables["building_id"][3, 0] == FILL_INT
+            # ... and the cell is an ordinary surface again, not a
+            # building footprint with no building in it.
+            assert nc.variables["vegetation_type"][3, 0] != FILL_BYTE
+        assert re.search(r"\b1\b[^\n]*(dropped|zero cells)", caplog.text)
+
+    def test_no_datum_column_with_raster_values_is_quantized_and_warned(
+        self, caplog, propagate_voxcity_logs
+    ):
+        # Class 2 -> 3 fallthrough: a column with -3 voxels but NO
+        # ground/land-cover voxel has no datum to measure its voxels
+        # against, yet it may still carry raster values. Those are all that
+        # is left, so they are quantized like any other datum-less raster
+        # building -- and counted under their own key, because calling this
+        # column "no building voxel (-3)" would be false: it HAS one.
+        ny, nx, nz, ms = 2, 2, 6, 2.0
+        classes = np.zeros((ny, nx, nz), dtype=np.int32)
+        classes[:, :, 0] = -1
+        classes[0, 1, 0] = 0          # (0, 1): no ground datum at all ...
+        classes[0, 1, 2:5] = -3       # ... but real building voxels
+        heights = np.zeros((ny, nx))
+        heights[0, 1] = 7.3           # 3.65 cells -> 4 -> 8.0 m
+        min_heights = _empty_min_heights(ny, nx)
+        min_heights[0, 1] = [[0.0, 7.3]]
+
+        assert _ground_level(classes)[0, 1] == -1
+        with caplog.at_level(logging.WARNING, logger="voxcity"):
+            out_h, out_mh, stats = _buildings_from_voxels(
+                classes, heights, min_heights, ms
+            )
+
+        assert out_h[0, 1] == 8.0
+        assert out_mh[0, 1] == [[0.0, 8.0]]
+        assert stats["no_datum"] == 1
+        assert stats["no_datum_quantized"] == 1
+        # NOT counted as raster-only: that class is about columns with no
+        # building voxel, and this one has three.
+        assert stats["raster_only"] == 0
+        assert "quantized" in caplog.text
+        assert "no building voxel" not in caplog.text
 
     def test_buildings_2d_values_are_exact_meshsize_multiples(self, tmp_path):
         # meshsize 2.2 is not binary-representable, so a metric tolerance
