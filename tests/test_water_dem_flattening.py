@@ -84,3 +84,11 @@ def test_flatten_water_dem_ignores_nan_when_finding_component_minimum():
     assert flattened[0, 1] == 3.0
     assert flattened[0, 2] == 9.0
     assert info["water_dem_min_values"] == [3.0]
+
+
+def test_public_export_is_the_same_object():
+    """voxcitygml consumes this cross-package; the public name and the
+    private implementation must be one object, not a copy that can drift."""
+    from voxcity.generator.pipeline import (
+        _flatten_water_dem_by_component, flatten_water_dem_by_component)
+    assert flatten_water_dem_by_component is _flatten_water_dem_by_component

@@ -88,6 +88,12 @@ def _flatten_water_dem_by_component(
     }
 
 
+# Public alias: voxcitygml's LOD2 pipeline applies the SAME rule (one rule,
+# one implementation -- see _flatten_citygml_water_dem in api.py for the
+# in-package precedent). The private name stays for existing callers.
+flatten_water_dem_by_component = _flatten_water_dem_by_component
+
+
 class VoxCityPipeline:
     def __init__(self, meshsize: float, rectangle_vertices, crs: str = "EPSG:4326") -> None:
         self.meshsize = float(meshsize)
