@@ -160,6 +160,42 @@ def test_citygml_path_flattens_water_dem(monkeypatch):
     assert city.extras["water_dem_flattening"]["applied"] is True
     assert city.extras["water_dem_flattening"]["water_body_count"] == 1
 
+    # The user-facing symptom: without flattening the river quantizes to two
+    # ground levels and PALM renders (and thermally models) the step face as a
+    # wall. Every water column must end up at the same ground level.
+    voxels = np.asarray(city.voxels.classes)
+    water_ground_levels = {int(np.max(np.nonzero(voxels[i, j, :])[0]))
+                           for i in (1, 2) for j in range(4)}
+    assert len(water_ground_levels) == 1, (
+        f"water columns must share one ground level, got {water_ground_levels}")
+
+
+def test_citygml_path_flattens_against_the_post_perimeter_water_mask(monkeypatch):
+    """Perimeter removal overwrites edge land cover with Developed space, which
+    shrinks water bodies that reach the AOI edge. Flattening must run AFTER
+    that, or a perimeter cell's elevation leaks in as the body's minimum.
+
+    This pins the call's *position* in ``get_voxcity_CityGML``: moving it up to
+    the DEM-resolution line (a plausible "tidy it closer to where the DEM is
+    made" refactor) is a silent numerical regression that no other test sees.
+    """
+    land_cover = np.full((10, 10), OSM_DEVELOPED)
+    land_cover[5, 0:6] = OSM_WATER          # river reaching the west edge
+    dem = np.full((10, 10), 50.0)
+    dem[5, 0] = 1.0                          # the minimum sits IN the perimeter ring
+    dem[5, 1:6] = 20.0
+    _stub_citygml_run(monkeypatch, dem, land_cover)
+
+    city = api.get_voxcity_CityGML(
+        RECT, "OpenStreetMap", "Static", 5.0, citygml_path="unused.gml",
+        gridvis=False, save_voxcity_data=False, remove_perimeter_object=0.1)
+
+    elevation = np.asarray(city.dem.elevation)
+    assert np.all(elevation[5, 1:6] == 20.0), (
+        "flattening must use the post-perimeter mask; the perimeter cell's "
+        "1.0 m must not become the body minimum")
+    assert city.extras["water_dem_flattening"]["water_cell_count"] == 5
+
 
 def test_citygml_path_honours_flatten_water_dem_opt_out(monkeypatch):
     dem, land_cover = _one_body_grids()
