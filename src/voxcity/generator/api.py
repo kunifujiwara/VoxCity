@@ -736,6 +736,39 @@ def _resolve_citygml_dem_grid(dem_source, terrain_gdf, land_cover_grid,
                         output_dir, **kwargs)
 
 
+def _flatten_citygml_water_dem(dem_grid, land_cover_grid, land_cover_source,
+                               kwargs):
+    """Apply the shared water-DEM flattening rule to a CityGML-resolved DEM.
+
+    ``VoxCityPipeline.run`` flattens every connected water body's DEM cells to
+    that body's minimum before voxelizing.  The CityGML/PLATEAU path resolves
+    its DEM from a terrain TIN that mixes bank and water-surface elevations, so
+    the rasterized DEM varies across a river; without the same rule the river
+    quantizes to two ground levels and leaves a voxel-high cliff inside the
+    water.  One rule, one implementation: this reuses the pipeline's function
+    and mirrors its kwargs semantics (``flatten_water_dem`` default ``True``,
+    ``water_dem_connectivity`` default ``4``) and its extras keys.
+
+    Returns ``(dem_grid, extras_fragment)``.
+    """
+    from .pipeline import _flatten_water_dem_by_component
+
+    flatten_water_dem = kwargs.get("flatten_water_dem", True)
+    water_dem_connectivity = kwargs.get("water_dem_connectivity", 4)
+    dem_grid, water_dem_info = _flatten_water_dem_by_component(
+        dem_grid,
+        land_cover_grid,
+        land_cover_source,
+        enabled=bool(flatten_water_dem),
+        connectivity=int(water_dem_connectivity),
+    )
+    return dem_grid, {
+        "flatten_water_dem": bool(flatten_water_dem),
+        "water_dem_connectivity": int(water_dem_connectivity),
+        "water_dem_flattening": water_dem_info,
+    }
+
+
 def get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_source, meshsize, url_citygml=None, citygml_path=None, dem_source=None, **kwargs):
     from ..downloader.gee import (
         get_roi,
@@ -981,6 +1014,11 @@ def get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_sou
                 label='Tree canopy height (m)'
             )
 
+    # Same rule, same place in the order as the raster pipeline: after
+    # perimeter removal has settled the land cover, before voxelization.
+    dem_grid, water_dem_extras = _flatten_citygml_water_dem(
+        dem_grid, land_cover_grid, land_cover_source, kwargs)
+
     from .voxelizer import Voxelizer
     voxelizer = Voxelizer(
         voxel_size=meshsize,
@@ -1012,6 +1050,7 @@ def get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_sou
             "building_gdf": building_gdf,
             "land_cover_source": land_cover_source,
             "trunk_height_ratio": kwargs.get("trunk_height_ratio"),
+            **water_dem_extras,
         },
     )
 
