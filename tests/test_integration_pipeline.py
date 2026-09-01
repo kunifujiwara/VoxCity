@@ -75,16 +75,23 @@ def run_voxelcity_pipeline(
 
     # 4.1 Get voxel city data
     from voxcity.generator import get_voxcity
+    from voxcity.errors import DownloaderError
     t0 = t_start()
-    city = get_voxcity(
-        rectangle_vertices,
-        meshsize,
-        building_source=building_source,
-        land_cover_source=land_cover_source,
-        canopy_height_source=canopy_height_source,
-        dem_source=dem_source,
-        **kwargs
-    )
+    try:
+        city = get_voxcity(
+            rectangle_vertices,
+            meshsize,
+            building_source=building_source,
+            land_cover_source=land_cover_source,
+            canopy_height_source=canopy_height_source,
+            dem_source=dem_source,
+            **kwargs
+        )
+    except DownloaderError as e:
+        # These tests depend on live external services (Overpass API, tile
+        # servers). An outage there is not a regression in voxcity, so skip
+        # instead of failing CI.
+        pytest.skip(f"External data service unavailable: {e}")
     t_end("4.1 get_voxcity", t0)
 
     # 4.2 Visualize voxel city

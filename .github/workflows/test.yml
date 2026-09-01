@@ -78,7 +78,14 @@ jobs:
           NUMBA_DISABLE_JIT: "1"
           TAICHI_ARCH: "cpu"
         run: |
-          pytest --cov=voxcity --cov-report=xml -v
+          # Network-dependent integration tests hit the public Overpass API;
+          # running them on every matrix version quadruples the load and
+          # triggers rate limiting/5xx. Run them on 3.12 only.
+          if [ "${{ matrix.python-version }}" = "3.12" ]; then
+            pytest --cov=voxcity --cov-report=xml -v
+          else
+            pytest -m "not integration" --cov=voxcity --cov-report=xml -v
+          fi
       
 
       - name: Upload coverage reports to Codecov
