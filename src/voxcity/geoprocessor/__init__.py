@@ -38,6 +38,7 @@ _ATTR_TO_MODULE = {
     "surface_zone_mask": ".surface_meta",
     "classify_surface_faces": ".surface_meta",
     "make_surface_face_key": ".surface_meta",
+    "normalize_surface_face_key": ".surface_meta",
     "classify_surface_kind": ".surface_meta",
     "wall_orientation": ".surface_meta",
     "SELECTABLE_KINDS": ".surface_meta",

@@ -1,5 +1,41 @@
 # Changelog
 
+## 1.7.0 (unreleased)
+
+### Breaking
+
+- **`make_surface_face_key` no longer takes `face_index`.** The fourth,
+  required positional parameter is gone, so any external caller passing it
+  raises `TypeError`; the emitted key also loses its trailing `:i<index>`
+  segment. The index was the face's position in whatever enumeration minted
+  the key, which made the key depend on enumeration *order* --
+  `create_voxel_mesh` emits faces direction-major while a voxel walk goes
+  voxel-major, so the two minted different keys for the same face on any
+  building larger than one voxel, and a selector resolved against one
+  producer matched nothing when drawn by the other. Building id, centroid
+  and normal already identify a face uniquely.
+
+  Migration: drop the argument. Keys already stored by an application do
+  not need rewriting -- `surface_zone_mask` normalizes both sides of every
+  face-key comparison, so an old-format key still resolves to its face.
+  Applications doing their own raw key comparisons should route them
+  through `normalize_surface_face_key`.
+
+  Versioned as a minor bump rather than a major one only because the 2.0.0
+  slot below belongs to an abandoned bump that this line was reverted from
+  (see `947bac2`); by semver this break warrants a major, and the
+  maintainer may want to renumber before publishing.
+
+### Added
+
+- `voxcity.geoprocessor.normalize_surface_face_key(key)` — reduces a face
+  key to its order-independent form by stripping a legacy trailing
+  `:i<index>`. Applied to both sides of every face-key comparison in
+  `surface_zone_mask`, so keys minted before the change above keep
+  resolving. `surface_face_meta_version` deliberately stays at 1: a cached
+  mesh restored from a saved session can carry old-format keys, and
+  normalization reconciles that on read without invalidating the cache.
+
 ## 1.6.3 (2026-08-22)
 
 ### Changed

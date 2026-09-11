@@ -4,6 +4,7 @@ No Pydantic or app imports — keeps this module portable for subprocess use.
 """
 
 from __future__ import annotations
+import re
 from typing import Any, Optional, Sequence
 
 import numpy as np
@@ -19,12 +20,65 @@ def make_surface_face_key(
     building_id: int,
     centroid: Sequence[float],
     normal: Sequence[float],
-    face_index: int,
 ) -> str:
-    """Create a unique identifier for a surface face."""
+    """Create a unique identifier for a surface face.
+
+    Building id, millimetre-rounded centroid and normal identify a face on
+    their own: two distinct faces of one building cannot share a centroid.
+
+    This key used to carry a trailing ``:i<face_index>`` -- the face's
+    position in whatever enumeration minted it. That made the key depend on
+    enumeration *order*, and two producers that walk the same faces in
+    different orders then minted different keys for the same face. That is
+    exactly what happened: ``create_voxel_mesh`` emits faces direction-major
+    while a voxel walk goes voxel-major, so face-set zone selectors resolved
+    against one producer and were drawn by the other, and matched nothing.
+    Dropping the index makes the key a function of the face itself.
+
+    Keys minted before that change are still in circulation -- saved session
+    zips and server-side share snapshots carry them inside stored zone
+    selectors -- so every comparison goes through
+    ``normalize_surface_face_key``. Do not reintroduce an order-dependent
+    component here.
+    """
     c = [int(round(float(v) * 1000)) for v in centroid]
     n = [int(round(float(v) * 1000)) for v in normal]
-    return f"b{int(building_id)}:c{c[0]}_{c[1]}_{c[2]}:n{n[0]}_{n[1]}_{n[2]}:i{int(face_index)}"
+    return f"b{int(building_id)}:c{c[0]}_{c[1]}_{c[2]}:n{n[0]}_{n[1]}_{n[2]}"
+
+
+# `\Z`, not `$`: `$` also matches before a trailing newline, which would make
+# this strip a suffix the JavaScript twin leaves alone. `[0-9]`, not `\d`:
+# Python's `\d` is Unicode-wide and would match e.g. Devanagari digits, which
+# the JavaScript `[0-9]` does not. Neither divergence is reachable from a
+# minted key, whose last colon-segment always begins with the normal marker;
+# they are closed so the two implementations are the same function on every
+# input, not merely on the inputs we happen to produce.
+_FACE_INDEX_SUFFIX_RE = re.compile(r":i[0-9]+\Z")
+
+
+def normalize_surface_face_key(face_key: Any) -> str:
+    """Reduce a face key to its order-independent form.
+
+    Strips the legacy trailing ``:i<face_index>`` suffix if present. Applied
+    unconditionally to *both* sides of every face-key comparison -- stored
+    selector keys and freshly minted ones alike -- so there is no branch that
+    has to decide which format a given key is in. A key already in the new
+    format passes through untouched, and so does a key of any other shape.
+
+    Mirrors ``normalizeFaceKey`` in the app frontend, with one deliberate
+    asymmetry: this coerces a non-string through ``str()``, where the
+    JavaScript twin throws. Callers upstream validate that every stored key
+    is a string, so the coercion is unreachable rather than load-bearing --
+    and throwing is the more defensible behaviour of the two, since a
+    coerced ``None`` becomes the key-shaped string ``"None"`` that silently
+    matches nothing.
+    """
+    return _FACE_INDEX_SUFFIX_RE.sub("", str(face_key))
+
+
+def _normalized_key_list(face_keys: Any) -> list:
+    """Normalize a selector's face-key list for comparison."""
+    return [normalize_surface_face_key(key) for key in face_keys]
 
 
 # ---------------------------------------------------------------------------
@@ -114,7 +168,7 @@ def classify_surface_faces(mesh: Any) -> list[dict]:
         bid = int(bid_per_face[i])
         kind = classify_surface_kind(normal)
         orient = wall_orientation(normal) if kind == "wall" else None
-        face_key = make_surface_face_key(bid, centroid, normal, i)
+        face_key = make_surface_face_key(bid, centroid, normal)
         is_window = bool(cls_per_face is not None and int(cls_per_face[i]) == -16)
 
         result.append({
@@ -216,7 +270,10 @@ def surface_zone_mask(
     building_ids = np.array([int(_get(m, "building_id")) for m in face_meta])
     kinds = np.array([str(_get(m, "surface_kind")) for m in face_meta])
     orientations = np.array([_get(m, "orientation") for m in face_meta], dtype=object)
-    face_keys = np.array([str(_get(m, "face_key")) for m in face_meta], dtype=object)
+    # Normalized on both sides: a selector stored before the face-key format
+    # change still carries the legacy ":i<index>" suffix, and must keep
+    # resolving against the same face. See normalize_surface_face_key.
+    face_keys = np.array([normalize_surface_face_key(_get(m, "face_key")) for m in face_meta], dtype=object)
     windows = np.array([bool(_get(m, "is_window", False)) for m in face_meta])
     selectable = np.isin(kinds, list(SELECTABLE_KINDS))
 
@@ -255,14 +312,14 @@ def surface_zone_mask(
             if fkeys is None:
                 fkeys = _get(selector, "faceKeys")
             if fkeys:
-                positive |= base & np.isin(face_keys, fkeys)
+                positive |= base & np.isin(face_keys, _normalized_key_list(fkeys))
         elif mode == "exclude_faces":
             # Support both face_keys and faceKeys
             fkeys = _get(selector, "face_keys")
             if fkeys is None:
                 fkeys = _get(selector, "faceKeys")
             if fkeys:
-                excluded |= base & np.isin(face_keys, fkeys)
+                excluded |= base & np.isin(face_keys, _normalized_key_list(fkeys))
 
     return positive & ~excluded
 
