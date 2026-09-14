@@ -1004,7 +1004,11 @@ class SurfaceViewFactorCalculator:
                                 building_ids[i, j] == self_building_id:
                             pass
                         else:
-                            result = 1.0
+                            # Beer-Lambert: the hit is worth the transmittance that
+                            # survived the canopy crossed on the way, not a flat 1.0.
+                            # Never fires on a tree voxel -- this is an elif off the
+                            # is_tree check above, which owns that case.
+                            result = T
                             done = 1
                     
                     if done == 0:
