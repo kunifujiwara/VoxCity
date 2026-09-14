@@ -37,14 +37,16 @@ def _surface_grid():
     return g
 
 
-def _surface_value(grid, local_dir, target_values=(TARGET,)):
+def _surface_value(grid, local_dir, target_values=(TARGET,), meshsize=1.0):
     """View factor of one face for one local ray direction (a, 0, b) -> world (b, a, 0)."""
-    domain = _get_or_create_domain(SNX, SNY, SNZ, 1.0)
+    domain = _get_or_create_domain(SNX, SNY, SNZ, meshsize)
     calc = SurfaceViewFactorCalculator(domain, precompute_directions=False)
     calc._hemisphere_dirs = ti.Vector.field(3, dtype=ti.f32, shape=(1,))
     calc._hemisphere_dirs.from_numpy(np.asarray([local_dir], dtype=np.float32))
     calc._n_hemisphere_dirs = 1
-    centers = np.array([[1.0, 2.5, 2.5]], dtype=np.float32)
+    # Face centers are in world metres; scale by meshsize so the ray origin still
+    # lands in the same voxel indices the grid fixture was built for.
+    centers = np.array([[1.0 * meshsize, 2.5 * meshsize, 2.5 * meshsize]], dtype=np.float32)
     normals = np.array([[1.0, 0.0, 0.0]], dtype=np.float32)
     vals = calc.compute_surface_view_factor(
         centers, normals, grid,
@@ -92,8 +94,8 @@ def _ground_grid():
     return g
 
 
-def _ground_value(grid, hit_values, elevation_deg=0.0):
-    domain = _get_or_create_domain(GNX, GNY, GNZ, 1.0)
+def _ground_value(grid, hit_values, elevation_deg=0.0, meshsize=1.0):
+    domain = _get_or_create_domain(GNX, GNY, GNZ, meshsize)
     calc = ViewCalculator(domain, n_azimuth=1, n_elevation=1)
     mask = np.zeros((GNX, GNY), dtype=bool)
     mask[2, 1] = True
@@ -200,3 +202,44 @@ def test_green_mode_through_public_api_scores_flat_one_through_canopy():
         computation_mask=mask, show_plot=False,
     )
     assert vi_map[2, 1] == pytest.approx(1.0)
+
+
+OBLIQUE_LOCAL = (0.4472136, 0.0, 0.8944272)       # world (0.894, 0.447, 0), tan = 0.5
+CHORD = 1.0 / 0.8944272                            # 1.118 m through a 1 m column
+
+
+def test_surface_oblique_ray_charges_chord_length():
+    g = _surface_grid()
+    g[4, :, 1:] = TREE
+    assert _surface_value(g, OBLIQUE_LOCAL) == pytest.approx(math.exp(-K * LAD * CHORD), abs=2e-3)
+
+
+def test_ground_oblique_ray_charges_chord_length():
+    g = _ground_grid()
+    g[:, 4, 1:] = TREE
+    elev = math.degrees(math.atan(0.5))
+    assert _ground_value(g, (TARGET,), elevation_deg=elev) == pytest.approx(
+        math.exp(-K * LAD * CHORD), abs=2e-3)
+
+
+# ── meshsize scaling (see docstrings below) ───────────────────────────────
+def test_surface_meshsize_scales_the_charge():
+    """Every other surface test in this module runs at meshsize=1.0, where a
+    missing `* self.meshsize` factor in compute_surface_view_factor's tree_ext
+    would go unnoticed. At meshsize=2.0 one tree voxel must cost exp(-K*LAD*2.0),
+    twice the 1 m charge."""
+    g = _surface_grid()
+    g[4, :, 1:] = TREE
+    assert _surface_value(g, STRAIGHT, meshsize=2.0) == pytest.approx(
+        math.exp(-K * LAD * 2.0), abs=2e-3)
+
+
+def test_ground_meshsize_scales_the_charge():
+    """Every other ground test in this module runs at meshsize=1.0, where a
+    missing `* self.dz` factor in compute_view_index's tree_ext would go
+    unnoticed. At meshsize=2.0 one tree voxel must cost exp(-K*LAD*2.0), twice
+    the 1 m charge."""
+    g = _ground_grid()
+    g[:, 4, 1:] = TREE
+    assert _ground_value(g, (TARGET,), meshsize=2.0) == pytest.approx(
+        math.exp(-K * LAD * 2.0), abs=2e-3)

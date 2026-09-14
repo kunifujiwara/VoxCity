@@ -7,7 +7,6 @@ with GPU-accelerated ray tracing.
 
 import taichi as ti
 import numpy as np
-import math
 from typing import Tuple, Optional, Union, List
 
 from ..core import Vector3, Point3, PI, TWO_PI
@@ -211,8 +210,9 @@ class ViewCalculator:
                     is_tree, is_solid, is_target, is_allowed, is_blocker, is_walkable
                 )
         
-        # Compute transmissivity per voxel for trees
-        tree_att = float(math.exp(-tree_k * tree_lad * self.dz))
+        # tree_ext carries the grid step (self.dz) baked in, so multiplying it by a
+        # chord in DDA t-units (computed in the kernel) yields optical depth in metres.
+        tree_ext = float(tree_k * tree_lad * self.dz)
         # Trees-as-targets keeps the flat 1.0-per-hit scoring (green view index);
         # every other inclusion target is weighted by transmittance. Testing
         # hit_values alone is sufficient: mode='green' rewrites hit_values to
@@ -227,7 +227,7 @@ class ViewCalculator:
             vi_map, view_height_voxel,
             is_tree, is_solid, is_target, is_allowed, is_blocker, is_walkable,
             mask_f,
-            inclusion_mode, tree_att, trees_are_targets,
+            inclusion_mode, tree_ext, trees_are_targets,
             int(include_building_roofs)
         )
 
@@ -359,7 +359,7 @@ class ViewCalculator:
         is_walkable: ti.template(),
         mask_f: ti.template(),
         inclusion_mode: ti.i32,
-        tree_att: ti.f32,
+        tree_ext: ti.f32,
         trees_are_targets: ti.i32,
         include_roofs: ti.i32
     ):
@@ -408,7 +408,7 @@ class ViewCalculator:
                     hit, trans = self._trace_ray_vi(
                         x, y, observer_z, ray_dir,
                         is_tree, is_solid, is_target, is_allowed, is_blocker,
-                        inclusion_mode, tree_att
+                        inclusion_mode, tree_ext
                     )
                     if inclusion_mode == 1:
                         if hit == 1:
@@ -442,7 +442,7 @@ class ViewCalculator:
         is_allowed: ti.template(),
         is_blocker: ti.template(),
         inclusion_mode: ti.i32,
-        tree_att: ti.f32
+        tree_ext: ti.f32
     ):
         """
         Trace a ray for view index calculation.
@@ -489,22 +489,26 @@ class ViewCalculator:
         max_steps = self.nx + self.ny + self.nz
         done = 0
         first_step = 1  # Skip the starting voxel
-        
+        # t_last holds the entry boundary of the voxel currently under test, in DDA t-units.
+        t_last = 0.0
+
         for _ in range(max_steps):
             if done == 0:
                 # Bounds check
                 if i < 0 or i >= self.nx or j < 0 or j >= self.ny or k < 0 or k >= self.nz:
                     done = 1
                 else:
+                    t_next = ti.min(t_max_x, ti.min(t_max_y, t_max_z))
+
                     # Skip the starting voxel (observer's position)
                     at_start = 0
                     if i == start_i and j == start_j and k == start_k:
                         at_start = 1
-                    
+
                     if at_start == 0:
-                        # Check tree - accumulate transmissivity
+                        # Check tree - Beer-Lambert over the chord through this voxel
                         if is_tree[i, j, k] == 1:
-                            trans *= tree_att
+                            trans *= ti.exp(-tree_ext * ti.max(t_next - t_last, 0.0))
                             if trans < 0.01:
                                 if inclusion_mode == 0:
                                     hit = 1  # Blocked in exclusion mode
@@ -527,6 +531,7 @@ class ViewCalculator:
                     
                     if done == 0:
                         # Step to next voxel
+                        t_last = t_next
                         if t_max_x < t_max_y:
                             if t_max_x < t_max_z:
                                 t_max_x += t_delta_x
@@ -541,7 +546,7 @@ class ViewCalculator:
                             else:
                                 t_max_z += t_delta_z
                                 k += step_z
-        
+
         return hit, trans
     
     def compute_sky_view_factor(
@@ -743,8 +748,9 @@ class SurfaceViewFactorCalculator:
                 is_target = ti.field(dtype=ti.i32, shape=(self.nx, self.ny, self.nz))
                 is_opaque = ti.field(dtype=ti.i32, shape=(self.nx, self.ny, self.nz))
         
-        # Tree attenuation
-        tree_att = float(math.exp(-tree_k * tree_lad * self.meshsize))
+        # tree_ext carries the grid step (self.meshsize) baked in, so multiplying it by
+        # a chord in DDA t-units (computed in the kernel) yields optical depth in metres.
+        tree_ext = float(tree_k * tree_lad * self.meshsize)
         att_cutoff = 0.01
         trees_are_targets = (-2 in target_values) and inclusion_mode
         
@@ -766,7 +772,7 @@ class SurfaceViewFactorCalculator:
         self._compute_surface_vf_kernel(
             face_centers_ti, face_normals_ti, face_vf_values,
             is_tree, is_solid, is_target, is_opaque,
-            tree_att, att_cutoff, inclusion_mode, int(trees_are_targets),
+            tree_ext, att_cutoff, inclusion_mode, int(trees_are_targets),
             grid_bounds_real, boundary_epsilon,
             building_ids_ti, guard_on,
         )
@@ -829,7 +835,7 @@ class SurfaceViewFactorCalculator:
         is_solid: ti.template(),
         is_target: ti.template(),
         is_opaque: ti.template(),
-        tree_att: ti.f32,
+        tree_ext: ti.f32,
         att_cutoff: ti.f32,
         inclusion_mode: ti.i32,
         trees_are_targets: ti.i32,
@@ -892,7 +898,7 @@ class SurfaceViewFactorCalculator:
                         contrib = self._trace_surface_ray(
                             ox, oy, oz, world_dir,
                             is_tree, is_solid, is_target, is_opaque,
-                            tree_att, att_cutoff, inclusion_mode, trees_are_targets,
+                            tree_ext, att_cutoff, inclusion_mode, trees_are_targets,
                             building_ids, self_building_id, self_guard,
                         )
                         vis_sum += contrib
@@ -943,7 +949,7 @@ class SurfaceViewFactorCalculator:
         is_solid: ti.template(),
         is_target: ti.template(),
         is_opaque: ti.template(),
-        tree_att: ti.f32,
+        tree_ext: ti.f32,
         att_cutoff: ti.f32,
         inclusion_mode: ti.i32,
         trees_are_targets: ti.i32,
@@ -983,7 +989,9 @@ class SurfaceViewFactorCalculator:
         
         max_steps = self.nx + self.ny + self.nz
         done = 0
-        
+        # t_last holds the entry boundary of the voxel currently under test, in DDA t-units.
+        t_last = 0.0
+
         for _ in range(max_steps):
             if done == 0:
                 # Bounds check - ray escaped
@@ -994,13 +1002,15 @@ class SurfaceViewFactorCalculator:
                         result = T
                     done = 1
                 else:
+                    t_next = ti.min(t_max_x, ti.min(t_max_y, t_max_z))
+
                     # Check opaque (blocker)
                     if is_opaque[i, j, k] == 1:
                         result = 0.0
                         done = 1
                     elif is_tree[i, j, k] == 1:
-                        # Tree attenuation
-                        T *= tree_att
+                        # Tree attenuation - Beer-Lambert over the chord through this voxel
+                        T *= ti.exp(-tree_ext * ti.max(t_next - t_last, 0.0))
                         if T < att_cutoff:
                             result = 0.0
                             done = 1
@@ -1028,6 +1038,7 @@ class SurfaceViewFactorCalculator:
                     
                     if done == 0:
                         # Step to next voxel
+                        t_last = t_next
                         if t_max_x < t_max_y:
                             if t_max_x < t_max_z:
                                 t_max_x += t_delta_x
@@ -1042,7 +1053,7 @@ class SurfaceViewFactorCalculator:
                             else:
                                 t_max_z += t_delta_z
                                 k += step_z
-        
+
         return result
 
 
