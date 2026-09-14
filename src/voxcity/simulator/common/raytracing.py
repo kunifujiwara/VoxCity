@@ -169,7 +169,9 @@ def compute_vi_generic(observer_location, voxel_data, ray_directions, hit_values
                     contrib = 1.0 - max(0.0, min(1.0, value))
                     visibility_sum += contrib
                 else:
-                    visibility_sum += 1.0
+                    # Beer-Lambert: non-tree targets seen through canopy count for
+                    # the surviving transmittance (matches the GPU kernels).
+                    visibility_sum += max(0.0, min(1.0, value))
         else:
             if not hit:
                 visibility_sum += value
@@ -381,7 +383,9 @@ def _compute_vi_map_generic_fast(voxel_data, ray_directions, view_height_voxel, 
                             contrib = 1.0 - max(0.0, min(1.0, value))
                             visibility_sum += contrib
                         else:
-                            visibility_sum += 1.0
+                            # Beer-Lambert: non-tree targets seen through canopy count for
+                            # the surviving transmittance (matches the GPU kernels).
+                            visibility_sum += max(0.0, min(1.0, value))
                 else:
                     hit, value = _trace_ray_exclusion_masks(is_tree, is_allowed, obs, direction, meshsize, tree_k, tree_lad)
                     if not hit:

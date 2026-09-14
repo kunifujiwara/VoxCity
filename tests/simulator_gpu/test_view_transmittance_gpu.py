@@ -12,7 +12,11 @@ import pytest
 pytest.importorskip("taichi")
 import taichi as ti
 
+from voxcity.models import (
+    BuildingGrid, CanopyGrid, DemGrid, GridMetadata, LandCoverGrid, VoxCity, VoxelGrid,
+)
 from voxcity.simulator_gpu.visibility.integration import _get_or_create_domain
+from voxcity.simulator_gpu.visibility.integration import get_view_index as get_view_index_public
 from voxcity.simulator_gpu.visibility.view import (
     SurfaceViewFactorCalculator,
     ViewCalculator,
@@ -75,3 +79,124 @@ def test_surface_green_mode_tree_hit_unchanged():
     assert _surface_value(g, STRAIGHT, target_values=(TREE,)) == pytest.approx(
         1.0 - math.exp(-K * LAD * 1.0), abs=2e-3
     )
+
+
+# ── ground fixture: observer at (2, 1), target wall on y=11 ──────────────────
+GNX, GNY, GNZ = 10, 14, 10
+
+
+def _ground_grid():
+    g = np.zeros((GNX, GNY, GNZ), dtype=np.int32)
+    g[:, :, 0] = 1
+    g[:, 11, 1:] = TARGET
+    return g
+
+
+def _ground_value(grid, hit_values, elevation_deg=0.0):
+    domain = _get_or_create_domain(GNX, GNY, GNZ, 1.0)
+    calc = ViewCalculator(domain, n_azimuth=1, n_elevation=1)
+    mask = np.zeros((GNX, GNY), dtype=bool)
+    mask[2, 1] = True
+    vi = calc.compute_view_index(
+        voxel_data=grid, hit_values=hit_values, inclusion_mode=True,
+        view_point_height=1.5,
+        elevation_min_degrees=elevation_deg, elevation_max_degrees=elevation_deg,
+        tree_k=K, tree_lad=LAD, computation_mask=mask,
+    )
+    # Guards the module's single-ray analytic assumption: if this private name
+    # drifts (e.g. n_azimuth/n_elevation stop producing exactly one direction),
+    # every expected value above becomes wrong silently. Fail loudly instead.
+    assert calc._n_ray_dirs == 1
+    return float(vi[2, 1])
+
+
+def test_ground_clear_air_hit_scores_one():
+    assert _ground_value(_ground_grid(), (TARGET,)) == pytest.approx(1.0)
+
+
+def test_ground_one_canopy_voxel_scores_exp_minus_k_lad():
+    g = _ground_grid()
+    g[:, 4, 1:] = TREE
+    assert _ground_value(g, (TARGET,)) == pytest.approx(math.exp(-K * LAD * 1.0), abs=2e-3)
+
+
+def test_ground_two_canopy_voxels_scores_exp_minus_two_k_lad():
+    g = _ground_grid()
+    g[:, 4:6, 1:] = TREE
+    assert _ground_value(g, (TARGET,)) == pytest.approx(math.exp(-K * LAD * 2.0), abs=2e-3)
+
+
+def test_ground_green_mode_tree_hit_unchanged():
+    """hit_values containing -2 keeps the flat 1.0 per hit (GVI semantics untouched)."""
+    g = _ground_grid()
+    g[:, 4, 1:] = TREE
+    assert _ground_value(g, (TREE,)) == pytest.approx(1.0)
+
+
+# ── green mode through the PUBLIC entry point ─────────────────────────────
+# The tests above call ViewCalculator.compute_view_index directly, which is not
+# how the two live apps reach this code. This one goes through
+# voxcity.simulator_gpu.visibility.integration.get_view_index with mode='green'
+# so the derivation of trees_are_targets from mode/hit_values is exercised
+# end to end (workspace caching included), not just the kernel it feeds.
+def _make_voxcity_ground_canopy():
+    """Same ground/observer geometry as `_ground_grid`, wrapped in a VoxCity
+    object: ground plane at z=0, one canopy column at y=4 that the single ray
+    from observer (2, 1) crosses before it would reach anything else."""
+    nx, ny, nz = GNX, GNY, GNZ
+    meshsize = 1.0
+    classes = np.zeros((nx, ny, nz), dtype=np.int32)
+    classes[:, :, 0] = 1
+    classes[:, 4, 1:] = TREE
+
+    lon0, lat0 = 0.0, 0.0
+    dlat = (meshsize * nx) / 111320.0
+    dlon = (meshsize * ny) / 111320.0
+    rect = [(lon0, lat0), (lon0, lat0 + dlat), (lon0 + dlon, lat0 + dlat), (lon0 + dlon, lat0)]
+    meta = GridMetadata(crs="EPSG:4326", bounds=(lon0, lat0, lon0 + dlon, lat0 + dlat), meshsize=meshsize)
+
+    heights = np.zeros((nx, ny), dtype=float)
+    ids = np.zeros((nx, ny), dtype=np.int32)
+    min_heights = np.empty((nx, ny), dtype=object)
+    for i in range(nx):
+        for j in range(ny):
+            min_heights[i, j] = []
+    dem = np.zeros((nx, ny), dtype=float)
+    lc = np.ones((nx, ny), dtype=np.int32)
+    canopy = np.zeros((nx, ny), dtype=float)
+    canopy[:, 4] = float(nz - 1)
+
+    return VoxCity(
+        voxels=VoxelGrid(classes=classes, meta=meta),
+        buildings=BuildingGrid(heights=heights, min_heights=min_heights, ids=ids, meta=meta),
+        land_cover=LandCoverGrid(classes=lc, meta=meta),
+        dem=DemGrid(elevation=dem, meta=meta),
+        tree_canopy=CanopyGrid(top=canopy, bottom=None, meta=meta),
+        extras={"rectangle_vertices": rect},
+    )
+
+
+def test_green_mode_through_public_api_scores_flat_one_through_canopy():
+    """mode='green' must derive trees_are_targets=True end to end through the
+    public get_view_index() entry point, not just when the calculator is
+    called directly.
+
+    In green mode trees ARE targets, so the ray terminates at the first tree
+    voxel it steps into -- but `_trace_ray_vi` multiplies `trans` by the tree
+    attenuation BEFORE the target check runs on that same voxel, so a wrongly
+    derived (or missing) trees_are_targets flag is observable here: the score
+    would come out as exp(-k*lad) (~0.549) instead of the flat 1.0. That is
+    exactly what green view index must NOT do -- both apps that import this
+    package live depend on it staying flat through canopy.
+    """
+    voxcity = _make_voxcity_ground_canopy()
+    mask = np.zeros((GNX, GNY), dtype=bool)
+    mask[2, 1] = True
+    vi_map = get_view_index_public(
+        voxcity, mode='green',
+        n_azimuth=1, n_elevation=1,
+        elevation_min_degrees=0.0, elevation_max_degrees=0.0,
+        view_point_height=1.5, tree_k=K, tree_lad=LAD,
+        computation_mask=mask, show_plot=False,
+    )
+    assert vi_map[2, 1] == pytest.approx(1.0)

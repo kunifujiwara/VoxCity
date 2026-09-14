@@ -213,13 +213,21 @@ class ViewCalculator:
         
         # Compute transmissivity per voxel for trees
         tree_att = float(math.exp(-tree_k * tree_lad * self.dz))
-        
+        # Trees-as-targets keeps the flat 1.0-per-hit scoring (green view index);
+        # every other inclusion target is weighted by transmittance. Testing
+        # hit_values alone is sufficient: mode='green' rewrites hit_values to
+        # include -2 above, and a custom mode without hit_values already raised.
+        # Unlike the surface kernel, which branches per voxel hit, this flag is
+        # global to the ray loop: a hit_values mixing -2 with a non-tree class
+        # would score every hit flat. No caller does that today.
+        trees_are_targets = int(bool(inclusion_mode) and -2 in tuple(hit_values))
+
         # Run GPU computation
         self._compute_vi_map_kernel(
             vi_map, view_height_voxel,
             is_tree, is_solid, is_target, is_allowed, is_blocker, is_walkable,
             mask_f,
-            inclusion_mode, tree_att,
+            inclusion_mode, tree_att, trees_are_targets,
             int(include_building_roofs)
         )
 
@@ -352,6 +360,7 @@ class ViewCalculator:
         mask_f: ti.template(),
         inclusion_mode: ti.i32,
         tree_att: ti.f32,
+        trees_are_targets: ti.i32,
         include_roofs: ti.i32
     ):
         """Compute View Index map using GPU parallel processing."""
@@ -403,7 +412,13 @@ class ViewCalculator:
                     )
                     if inclusion_mode == 1:
                         if hit == 1:
-                            visibility_sum += 1.0
+                            if trees_are_targets == 1:
+                                # Green mode: the first tree voxel is the hit (unchanged).
+                                visibility_sum += 1.0
+                            else:
+                                # Beer-Lambert: a non-tree target seen through canopy is
+                                # worth the surviving transmittance, not a flat 1.0.
+                                visibility_sum += trans
                     else:
                         if hit == 0:
                             visibility_sum += trans
