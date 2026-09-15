@@ -233,7 +233,8 @@ def _ray_visibility_contrib(origin, direction, vox_is_tree, vox_is_target, vox_i
                 return 1.0 - (T if T < 1.0 else 1.0)
         if inclusion_mode:
             if (not vox_is_tree[i, j, k]) and vox_is_target[i, j, k]:
-                return 1.0
+                # Beer-Lambert: surviving transmittance, not a flat 1.0
+                return T
         else:
             if (not vox_is_tree[i, j, k]) and (not vox_is_allowed[i, j, k]):
                 return 0.0
