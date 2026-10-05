@@ -317,6 +317,19 @@ def _nodata_tile():
     return m
 
 
+def _top_nodata_rows_tile(value, nodata_rows):
+    """200 response with the top ``nodata_rows`` rows as nodata and the rest valid."""
+    rows = []
+    valid_row = ",".join([str(value)] * 256)
+    nodata_row = ",".join(["e"] * 256)
+    for row in range(256):
+        rows.append(nodata_row if row < nodata_rows else valid_row)
+    m = MagicMock()
+    m.status_code = 200
+    m.text = "\n".join(rows)
+    return m
+
+
 class TestFineMerge:
     def test_dem5b_not_fetched_when_dem5a_complete(self):
         calls = {"dem5a": 0, "dem5b": 0}
@@ -369,32 +382,32 @@ class TestFineMerge:
 
 class TestCoarseCoversAnyHole:
     def test_false_when_fine_has_no_holes(self):
-        fine = np.full((256, 256), 5.0, dtype=np.float32)
+        holes = np.zeros((256, 256), dtype=bool)
         coarse = np.full((256, 256), 8.0, dtype=np.float32)
         assert _coarse_covers_any_hole(
-            fine, (2, 2, 2, 2), coarse, (1, 1, 1, 1), 15, 14, nodata=-9999.0
+            holes, (2, 2, 2, 2), coarse, (1, 1, 1, 1), 15, 14, nodata=-9999.0
         ) is False
 
     def test_true_when_coarse_has_data_at_a_hole(self):
         nodata = -9999.0
-        fine = np.full((256, 256), 5.0, dtype=np.float32)
-        fine[0, 0] = nodata
+        holes = np.zeros((256, 256), dtype=bool)
+        holes[0, 0] = True
         coarse = np.full((256, 256), 8.0, dtype=np.float32)
         assert _coarse_covers_any_hole(
-            fine, (2, 2, 2, 2), coarse, (1, 1, 1, 1), 15, 14, nodata=nodata
+            holes, (2, 2, 2, 2), coarse, (1, 1, 1, 1), 15, 14, nodata=nodata
         ) is True
 
     def test_false_when_coarse_is_nodata_at_every_hole(self):
         # Sea is no-data in the 10 m product too, so switching would fill nothing.
         nodata = -9999.0
-        fine = np.full((256, 256), 5.0, dtype=np.float32)
-        fine[0, 0] = nodata      # -> coarse (0, 0)
-        fine[0, 2] = nodata      # -> coarse (0, 1)
+        holes = np.zeros((256, 256), dtype=bool)
+        holes[0, 0] = True       # -> coarse (0, 0)
+        holes[0, 2] = True       # -> coarse (0, 1)
         coarse = np.full((256, 256), 8.0, dtype=np.float32)
         coarse[0, 0] = nodata
         coarse[0, 1] = nodata
         assert _coarse_covers_any_hole(
-            fine, (0, 0, 0, 0), coarse, (0, 0, 0, 0), 15, 14, nodata=nodata
+            holes, (0, 0, 0, 0), coarse, (0, 0, 0, 0), 15, 14, nodata=nodata
         ) is False
 
 
@@ -497,6 +510,47 @@ class TestAutoResolutionSwitch:
             assert np.allclose(src.read(1), 6.0)
             assert src.transform.a == pytest.approx(_pixel_size(15))
 
+    def test_holes_outside_the_roi_do_not_trigger_the_switch(self, tmp_path):
+        # The z15 mosaic is tile-aligned and overhangs the requested rectangle.
+        # A gap that falls only in that overhang must not downgrade the ROI.
+        import rasterio
+        from voxcity.downloader.gsi import (
+            _bbox_from_rectangle_vertices, tile_range_for_bbox, _roi_pixel_window,
+        )
+
+        out = tmp_path / "dem.tif"
+        verts = self._verts()
+        bbox = _bbox_from_rectangle_vertices(verts)
+        fine_range = tile_range_for_bbox(bbox, 15)
+        r0, r1, c0, c1 = _roi_pixel_window(bbox, fine_range, 15)
+        rows = (fine_range[3] - fine_range[1] + 1) * 256
+        cols = (fine_range[2] - fine_range[0] + 1) * 256
+        assert (r0, c0) != (0, 0) or (r1, c1) != (rows, cols), (
+            "fixture invalid: ROI fills the mosaic, leaving no overhang to test"
+        )
+        assert r0 > 0, "fixture invalid: top overhang missing"
+
+        # Blank only the top overhang rows of the first tile row.
+        blank_y = fine_range[1]
+        top_overhang_rows = r0
+
+        def responder(tile_set, zoom, x, y):
+            if tile_set == "dem5a":
+                if y == blank_y:
+                    return _top_nodata_rows_tile(5.0, top_overhang_rows)
+                return _txt_resp(5.0)
+            if tile_set == "dem":
+                return _txt_resp(42.0)
+            return _resp(404)
+
+        with patch("voxcity.downloader.gsi.requests.get",
+                   side_effect=_dispatch(responder)):
+            save_gsi_dem_as_geotiff(verts, str(out), sleep=0)
+
+        with rasterio.open(str(out)) as src:
+            assert src.transform.a == pytest.approx(_pixel_size(15))
+            assert (src.read(1) == 5.0).any()
+
     def test_holes_the_10m_product_cannot_fill_keep_the_5m_grid(self, tmp_path):
         # A coastal ROI: its only gaps are sea, which is no-data in the 10 m
         # product too. Dropping to 10 m would fill nothing, so stay at 5 m.
@@ -536,6 +590,30 @@ class TestAutoResolutionSwitch:
         with rasterio.open(str(out)) as src:
             assert np.allclose(src.read(1), 42.0)
             assert src.transform.a == pytest.approx(_pixel_size(14))
+
+    def test_fallback_disabled_leaves_holes_at_5m(self, tmp_path):
+        import rasterio
+
+        out = tmp_path / "dem.tif"
+        seen = set()
+
+        def responder(tile_set, zoom, x, y):
+            seen.add(tile_set)
+            if tile_set == "dem5a":
+                return _half_nodata_tile(5.0)
+            return _resp(404)
+
+        with patch("voxcity.downloader.gsi.requests.get",
+                   side_effect=_dispatch(responder)):
+            save_gsi_dem_as_geotiff(self._verts(), str(out), sleep=0,
+                                    include_dem10b_fallback=False)
+
+        assert "dem" not in seen
+        with rasterio.open(str(out)) as src:
+            assert src.transform.a == pytest.approx(_pixel_size(15))
+            data = src.read(1)
+        assert (data == 5.0).any()
+        assert (data == GSI_NODATA).any()
 
 
 class TestSaveDemAsGeotiffUsesRasterio:

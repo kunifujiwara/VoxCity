@@ -92,6 +92,30 @@ def tile_range_for_bbox(bbox, zoom):
     return (min(x0, x1), min(y0, y1), max(x0, x1), max(y0, y1))
 
 
+def _roi_pixel_window(bbox, tile_range, zoom):
+    """Pixel window (r0, r1, c0, c1) of ``bbox`` within a tile_range mosaic.
+
+    Half-open on the upper bounds and always at least one pixel on each axis.
+    """
+    pixel = (2 * _MERC_MAX) / (2.0 ** zoom) / GSI_TILE_SIZE
+    min_lon, min_lat, max_lon, max_lat = bbox
+    x0 = min_lon / 180.0 * _MERC_MAX
+    x1 = max_lon / 180.0 * _MERC_MAX
+    y_top = math.log(math.tan(math.pi / 4 + math.radians(max_lat) / 2)) / math.pi * _MERC_MAX
+    y_bot = math.log(math.tan(math.pi / 4 + math.radians(min_lat) / 2)) / math.pi * _MERC_MAX
+    c0 = int((x0 + _MERC_MAX) / pixel) - tile_range[0] * GSI_TILE_SIZE
+    c1 = int((x1 + _MERC_MAX) / pixel) - tile_range[0] * GSI_TILE_SIZE
+    r0 = int((_MERC_MAX - y_top) / pixel) - tile_range[1] * GSI_TILE_SIZE
+    r1 = int((_MERC_MAX - y_bot) / pixel) - tile_range[1] * GSI_TILE_SIZE
+    rows = (tile_range[3] - tile_range[1] + 1) * GSI_TILE_SIZE
+    cols = (tile_range[2] - tile_range[0] + 1) * GSI_TILE_SIZE
+    r0 = max(0, min(r0, rows - 1))
+    c0 = max(0, min(c0, cols - 1))
+    r1 = max(r0 + 1, min(r1 + 1, rows))
+    c1 = max(c0 + 1, min(c1 + 1, cols))
+    return r0, r1, c0, c1
+
+
 def parse_dem_tile_text(text, nodata=GSI_NODATA, size=GSI_TILE_SIZE):
     """Parse a GSI DEM ``.txt`` tile (CSV of meters, ``e`` = no-data).
 
@@ -225,19 +249,22 @@ def _download_fine_merged(tile_range, *, nodata=GSI_NODATA, sleep=0.4,
     return tiles, any_ok
 
 
-def _coarse_covers_any_hole(mosaic, fine_range, coarse_mosaic, coarse_range,
+def _coarse_covers_any_hole(holes, fine_range, coarse_mosaic, coarse_range,
                             fine_zoom, coarse_zoom, nodata=GSI_NODATA):
-    """True if the coarser product has data at any no-data pixel of ``mosaic``.
+    """True if the coarser product has data at any True pixel of ``holes``.
 
     Both grids subdivide the same global EPSG:3857 extent from the same origin
     and their pixel sizes differ by an exact power of two, so a fine pixel's
     global index maps to its covering coarse pixel by integer division.
 
+    ``holes`` is a boolean mask over the fine mosaic, already restricted to the
+    region the caller cares about.
+
     Holes the coarse product also lacks — sea, or outside Japan — do not count:
     dropping the whole ROI to 10 m would not fill them, so a coastal area keeps
     its 5 m surface.
     """
-    rr, cc = np.nonzero(mosaic == nodata)
+    rr, cc = np.nonzero(holes)
     if rr.size == 0:
         return False
     step = 2 ** (fine_zoom - coarse_zoom)
@@ -293,10 +320,10 @@ def save_gsi_dem_as_geotiff(rectangle_vertices, filepath, dem_type=None,
     Args:
         rectangle_vertices: list of (lon, lat) tuples defining the ROI.
         filepath: output GeoTIFF path.
-        dem_type: None (default) to build a seamless mosaic by overlaying the
-                  finest products available per pixel (see below), or one of
-                  'dem5a' / 'dem5b' / 'dem10b' to force a single product with
-                  no merging.
+        dem_type: None (default) to overlay dem5a and dem5b per pixel, with a
+                  whole-area switch to dem10b when a gap remains (see Note), or
+                  one of 'dem5a' / 'dem5b' / 'dem10b' to force a single product
+                  with no merging.
         nodata: no-data fill value.
         sleep: seconds between requests (politeness; set 0 in tests).
         timeout_s: per-request timeout.
@@ -352,8 +379,13 @@ def save_gsi_dem_as_geotiff(rectangle_vertices, filepath, dem_type=None,
         fine_range, nodata=nodata, sleep=sleep, timeout_s=timeout_s
     )
     mosaic = compose_dem_array(tiles, fine_range, nodata=nodata)
-    holes = mosaic == nodata
-    covered_pct = 100.0 * float((~holes).mean())
+    # Decide on the ROI only: the mosaic is tile-aligned and extends up to a
+    # tile beyond the requested rectangle in every direction.
+    r0, r1, c0, c1 = _roi_pixel_window(bbox, fine_range, 15)
+    roi = mosaic[r0:r1, c0:c1]
+    holes = np.zeros(mosaic.shape, dtype=bool)
+    holes[r0:r1, c0:c1] = roi == nodata
+    covered_pct = 100.0 * float((roi != nodata).mean())
 
     if include_dem10b_fallback and holes.any():
         coarse_range = tile_range_for_bbox(bbox, 14)
@@ -364,7 +396,7 @@ def save_gsi_dem_as_geotiff(rectangle_vertices, filepath, dem_type=None,
         coarse_mosaic = compose_dem_array(
             coarse_tiles, coarse_range, nodata=nodata
         )
-        if _coarse_covers_any_hole(mosaic, fine_range, coarse_mosaic,
+        if _coarse_covers_any_hole(holes, fine_range, coarse_mosaic,
                                    coarse_range, 15, 14, nodata=nodata):
             _logger.info(
                 "GSI DEM: 5 m products cover %.1f%% of the area; writing the "

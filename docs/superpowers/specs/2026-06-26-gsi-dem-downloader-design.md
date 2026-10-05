@@ -56,8 +56,10 @@ RGB imagery, and serves as the structural template.
   **Amended 2026-10-05.** The auto path composes dem5a + dem5b at z15; if
   uncovered pixels remain that dem10b covers, the whole ROI is rewritten from
   dem10b at z14 rather than patched per pixel. Mixing products put steps of up
-  to 22 m into rasters whose real terrain gradient peaked at 8 m. See
-  `docs/superpowers/plans/2026-10-05-gsi-dem-10m-switch.md`.
+  to 22 m into rasters whose real terrain gradient peaked at 8 m. Measured over
+  one partially-covered area: the 10 m and 5 m products disagree with RMSE 5.0
+  m and a maximum of 22.6 m, against a natural adjacent-pixel terrain gradient
+  of median 0.92 m and maximum 8.0 m.
 3. **Output CRS:** Native **EPSG:3857** (Web Mercator). Tiles arrive on the
    mercator grid; writing them natively means *zero resampling* of elevation
    values. The grid consumer reprojects from `src.crs`, so the end result is

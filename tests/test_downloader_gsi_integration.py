@@ -49,4 +49,5 @@ def test_partial_5m_area_comes_back_uniformly_10m(tmp_path):
 
     # Measured 2026-10-05: 100% valid, elevation 31.33-166.65 m.
     assert (data != GSI_NODATA).mean() > 0.99
-    assert data.max() - data.min() > 50     # real relief, not a flattened plain
+    valid = data[data != GSI_NODATA]
+    assert valid.max() - valid.min() > 50   # real relief, not a flattened plain
