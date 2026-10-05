@@ -33,11 +33,11 @@ GSI publishes elevation tiles on the standard XYZ Web-Mercator tile grid at
 256×256 grid of elevation values as CSV text, with `e` marking no-data. Tile
 resolutions, in priority order:
 
-| type     | zoom | description                              |
-|----------|------|------------------------------------------|
-| `dem5a`  | 15   | 5 m mesh, airborne laser survey (finest) |
-| `dem5b`  | 15   | 5 m mesh, photogrammetry                 |
-| `dem10b` | 14   | 10 m mesh, nationwide coverage           |
+| data ID  | URL tile set | zoom | description                              |
+|----------|--------------|------|------------------------------------------|
+| `dem5a`  | `dem5a`      | 15   | 5 m mesh, airborne laser survey (finest) |
+| `dem5b`  | `dem5b`      | 15   | 5 m mesh, photogrammetry                 |
+| `dem10b` | `dem`        | 14   | 10 m mesh, nationwide coverage           |
 
 The existing module
 [`src/voxcity/downloader/oemj.py`](../../../src/voxcity/downloader/oemj.py)
@@ -51,8 +51,15 @@ RGB imagery, and serves as the structural template.
    tiles and writes the GeoTIFF; the existing
    `create_dem_grid_from_geotiff_polygon` call is reused unchanged.
 2. **Resolution selection:** Auto-detect the best available type by probing the
-   center tile in order `dem5a → dem5b → dem10b`, falling back to `dem10b`.
-   Caller may force a type via the `gsi_dem_type` kwarg.
+  center tile in order `dem5a → dem5b → dem10b`, falling back to `dem10b`.
+  Caller may force a type via the `gsi_dem_type` kwarg.
+  **Amended 2026-10-05.** The auto path composes dem5a + dem5b at z15; if
+  uncovered pixels remain that dem10b covers, the whole ROI is rewritten from
+  dem10b at z14 rather than patched per pixel. Mixing products put steps of up
+  to 22 m into rasters whose real terrain gradient peaked at 8 m. Measured over
+  one partially-covered area: the 10 m and 5 m products disagree with RMSE 5.0
+  m and a maximum of 22.6 m, against a natural adjacent-pixel terrain gradient
+  of median 0.92 m and maximum 8.0 m.
 3. **Output CRS:** Native **EPSG:3857** (Web Mercator). Tiles arrive on the
    mercator grid; writing them natively means *zero resampling* of elevation
    values. The grid consumer reprojects from `src.crs`, so the end result is

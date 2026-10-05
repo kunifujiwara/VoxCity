@@ -28,3 +28,26 @@ def test_tsukuba_download(tmp_path):
         data = src.read(1)
     # At least some real (non-nodata) elevation present.
     assert np.any(data > -1000)
+
+
+def test_partial_5m_area_comes_back_uniformly_10m(tmp_path):
+    """Boso peninsula ROI: 5 m products cover only ~23%, so the downloader must
+    return one uniform 10 m raster rather than a patched 5 m one."""
+    import rasterio
+    from voxcity.downloader.gsi import save_gsi_dem_as_geotiff, GSI_NODATA
+
+    verts = [(140.256410, 35.326512), (140.256410, 35.342736),
+             (140.269610, 35.342736), (140.269610, 35.326512)]
+    out = tmp_path / "boso_dem.tif"
+    save_gsi_dem_as_geotiff(verts, str(out))
+
+    with rasterio.open(str(out)) as src:
+        # z14 pixel size => the 10 m product was chosen for the whole ROI.
+        expected = (2 * 20037508.342789244) / (2.0 ** 14) / 256
+        assert src.transform.a == pytest.approx(expected)
+        data = src.read(1)
+
+    # Measured 2026-10-05: 100% valid, elevation 31.33-166.65 m.
+    assert (data != GSI_NODATA).mean() > 0.99
+    valid = data[data != GSI_NODATA]
+    assert valid.max() - valid.min() > 50   # real relief, not a flattened plain
