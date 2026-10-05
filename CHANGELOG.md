@@ -36,6 +36,21 @@
   mesh restored from a saved session can carry old-format keys, and
   normalization reconciles that on read without invalidating the cache.
 
+### Fixed
+
+- **GSI DEM: the 10 m fallback now actually runs, and partial 5 m coverage
+  yields a uniform 10 m raster.** The downloader requested the tile set
+  `dem10b`, but GSI serves DEM10B at `/xyz/dem/`, so every 10 m request 404'd
+  and an area without full 5 m coverage came back mostly no-data — which
+  `create_dem_grid_from_geotiff_polygon` turns into 0 m, rendering as a
+  sea-level plain with the 5 m region standing on it as a cliff-edged plateau.
+  Separately, patching 10 m pixels into the 5 m grid is no longer done at all:
+  where the 5 m products leave a gap the 10 m product can fill, the whole area
+  is written at 10 m instead. Mixing them put steps of up to 22 m into terrain
+  whose real pixel-to-pixel gradient peaked at 8 m. Gaps the 10 m product also
+  lacks (sea, outside Japan) do not trigger the switch, so coastal areas keep
+  their 5 m surface.
+
 ## 1.6.3 (2026-08-22)
 
 ### Changed

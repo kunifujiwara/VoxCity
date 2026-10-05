@@ -257,10 +257,11 @@ def auto_select_data_sources(rectangle_vertices):
         * Africa, South Asia, SE Asia, Latin America & Caribbean -> 'Open Building 2.5D Temporal'
         * Otherwise -> 'None'
     - Land cover: USA -> 'Urbanwatch'; Japan -> 'OpenEarthMapJapan'; otherwise 'OpenStreetMap'.
-      (If OSM is insufficient, consider 'ESA WorldCover' manually.)
-    - Canopy height: 'High Resolution 1m Global Canopy Height Maps'.
-    - DEM: High-resolution where available (USA, England, Australia, France, Netherlands, Japan), else 'FABDEM'.
-      Japan -> 'GSI DEM Japan' (bare-earth GSI DEM, auto-detected 5 m/10 m).
+            (If OSM is insufficient, consider 'ESA WorldCover' manually.)
+        - Canopy height: 'High Resolution 1m Global Canopy Height Maps'.
+        - DEM: High-resolution where available (USA, England, Australia, France, Netherlands, Japan), else 'FABDEM'.
+            Japan -> 'GSI DEM Japan' (bare-earth GSI DEM; 5 m where the area is fully
+            covered, otherwise the whole area at 10 m).
 
     Returns a dict with keys: building_source, building_complementary_source,
     land_cover_source, canopy_height_source, dem_source.
