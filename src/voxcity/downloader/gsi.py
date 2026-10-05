@@ -27,7 +27,11 @@ import requests
 import rasterio
 from rasterio.transform import from_origin
 
+from ..utils.logging import get_logger
+
 __all__ = ["save_gsi_dem_as_geotiff"]
+
+_logger = get_logger(__name__)
 
 # Half the EPSG:3857 (Web Mercator) world extent, in meters.
 _MERC_MAX = 20037508.342789244
@@ -221,36 +225,29 @@ def _download_fine_merged(tile_range, *, nodata=GSI_NODATA, sleep=0.4,
     return tiles, any_ok
 
 
-def _backfill_from_coarser(mosaic, fine_range, coarse_mosaic, coarse_range,
-                           fine_zoom, coarse_zoom, nodata=GSI_NODATA):
-    """Fill remaining no-data pixels of a fine mosaic from a coarser mosaic.
+def _coarse_covers_any_hole(mosaic, fine_range, coarse_mosaic, coarse_range,
+                            fine_zoom, coarse_zoom, nodata=GSI_NODATA):
+    """True if the coarser product has data at any no-data pixel of ``mosaic``.
 
     Both grids subdivide the same global EPSG:3857 extent from the same origin
     and their pixel sizes differ by an exact power of two, so a fine pixel's
-    global index maps to its covering coarse pixel by integer division - no
-    interpolation or resampling artifacts. ``mosaic`` is modified in place and
-    returned.
+    global index maps to its covering coarse pixel by integer division.
+
+    Holes the coarse product also lacks — sea, or outside Japan — do not count:
+    dropping the whole ROI to 10 m would not fill them, so a coastal area keeps
+    its 5 m surface.
     """
-    holes = mosaic == nodata
-    if not holes.any():
-        return mosaic
-
-    step = 2 ** (fine_zoom - coarse_zoom)  # fine pixels per coarse pixel (axis)
-    g_col0_f = fine_range[0] * GSI_TILE_SIZE
-    g_row0_f = fine_range[1] * GSI_TILE_SIZE
-    g_col0_c = coarse_range[0] * GSI_TILE_SIZE
-    g_row0_c = coarse_range[1] * GSI_TILE_SIZE
+    rr, cc = np.nonzero(mosaic == nodata)
+    if rr.size == 0:
+        return False
+    step = 2 ** (fine_zoom - coarse_zoom)
+    lc = (fine_range[0] * GSI_TILE_SIZE + cc) // step - coarse_range[0] * GSI_TILE_SIZE
+    lr = (fine_range[1] * GSI_TILE_SIZE + rr) // step - coarse_range[1] * GSI_TILE_SIZE
     rows_c, cols_c = coarse_mosaic.shape
-
-    rr, cc = np.nonzero(holes)
-    lc = (g_col0_f + cc) // step - g_col0_c
-    lr = (g_row0_f + rr) // step - g_row0_c
-    in_bounds = (lc >= 0) & (lc < cols_c) & (lr >= 0) & (lr < rows_c)
-    rr, cc, lr, lc = rr[in_bounds], cc[in_bounds], lr[in_bounds], lc[in_bounds]
-    vals = coarse_mosaic[lr, lc]
-    good = vals != nodata
-    mosaic[rr[good], cc[good]] = vals[good]
-    return mosaic
+    ok = (lc >= 0) & (lc < cols_c) & (lr >= 0) & (lr < rows_c)
+    if not ok.any():
+        return False
+    return bool((coarse_mosaic[lr[ok], lc[ok]] != nodata).any())
 
 
 def compose_dem_array(tiles, tile_range, nodata=GSI_NODATA):
@@ -303,24 +300,25 @@ def save_gsi_dem_as_geotiff(rectangle_vertices, filepath, dem_type=None,
         nodata: no-data fill value.
         sleep: seconds between requests (politeness; set 0 in tests).
         timeout_s: per-request timeout.
-        include_dem10b_fallback: when auto-merging, backfill pixels covered by
-                  neither 5 m product with dem10b (10 m). Set False to leave
-                  such pixels as no-data.
+        include_dem10b_fallback: when auto-merging, allow falling back to the
+                  10 m product. Set False to leave uncovered pixels as no-data.
 
     Returns:
         The written filepath.
 
     Note:
-        With ``dem_type=None`` the ROI is composed at z15 from dem5a, with
-        dem5b filling any dem5a no-data pixels, and (optionally) dem10b filling
-        whatever remains. This produces a seamless terrain even when the ROI
-        straddles a dem5a coverage boundary, instead of leaving no-data holes.
-        dem5b is fetched only for tiles where dem5a is incomplete, and dem10b
-        only when 5 m no-data pixels remain, so fully dem5a-covered ROIs incur
-        no extra requests. dem10b (z14) is half the resolution of the 5 m
-        products; because both grids share the global mercator origin and
-        differ by an exact power of two, its pixels are mapped without
-        resampling artifacts.
+        With ``dem_type=None`` the ROI is composed at z15 from dem5a, with dem5b
+        filling any dem5a no-data pixels. If pixels remain that neither 5 m
+        product covers and dem10b does cover, the entire ROI is rewritten from
+        dem10b at z14 — a uniform 10 m surface rather than a 5 m raster with
+        upsampled 10 m patches. GSI quotes standard deviations of <=0.3 m
+        (dem5a), <=0.7 m (dem5b) and <=5 m (dem10b) and documents that values are
+        discontinuous where the source model changes, so mixing resolutions in
+        one raster produces steps larger than the real terrain gradient. Holes
+        dem10b also lacks (sea, outside Japan) do not trigger the switch, so a
+        coastal ROI keeps its 5 m surface. dem5b is fetched only for tiles where
+        dem5a is incomplete and dem10b only when 5 m no-data pixels remain, so a
+        fully dem5a-covered ROI incurs no extra requests.
 
     Raises:
         ValueError: if rectangle_vertices is empty, dem_type is invalid, or
@@ -345,32 +343,37 @@ def save_gsi_dem_as_geotiff(rectangle_vertices, filepath, dem_type=None,
         save_dem_as_geotiff(mosaic, tile_range, zoom, filepath, nodata=nodata)
         return filepath
 
-    # Auto: pixel-level overlay of dem5a on dem5b at z15, with optional dem10b
-    # (z14) backfill for pixels neither 5 m product covers.
+    # Auto: compose the 5 m products at z15. If pixels remain that neither covers
+    # and the 10 m product does cover, write the whole ROI from the 10 m product
+    # rather than patching. GSI quotes <=0.3 m accuracy for dem5a against <=5 m
+    # for dem10b, so a patch boundary reads as a cliff taller than the terrain.
     fine_range = tile_range_for_bbox(bbox, 15)
     tiles, any_ok = _download_fine_merged(
         fine_range, nodata=nodata, sleep=sleep, timeout_s=timeout_s
     )
     mosaic = compose_dem_array(tiles, fine_range, nodata=nodata)
+    holes = mosaic == nodata
+    covered_pct = 100.0 * float((~holes).mean())
 
-    if include_dem10b_fallback and (mosaic == nodata).any():
+    if include_dem10b_fallback and holes.any():
         coarse_range = tile_range_for_bbox(bbox, 14)
         coarse_tiles = _download_tiles_safe(
             coarse_range, "dem10b", 14, nodata=nodata, sleep=sleep,
             timeout_s=timeout_s
         )
-        coarse_ok = any(
-            bool((block != nodata).any()) for block in coarse_tiles.values()
+        coarse_mosaic = compose_dem_array(
+            coarse_tiles, coarse_range, nodata=nodata
         )
-        if coarse_ok:
-            coarse_mosaic = compose_dem_array(
-                coarse_tiles, coarse_range, nodata=nodata
+        if _coarse_covers_any_hole(mosaic, fine_range, coarse_mosaic,
+                                   coarse_range, 15, 14, nodata=nodata):
+            _logger.info(
+                "GSI DEM: 5 m products cover %.1f%% of the area; writing the "
+                "whole ROI from dem10b (10 m) for a seamless surface.",
+                covered_pct,
             )
-            mosaic = _backfill_from_coarser(
-                mosaic, fine_range, coarse_mosaic, coarse_range, 15, 14,
-                nodata=nodata
-            )
-            any_ok = True
+            save_dem_as_geotiff(coarse_mosaic, coarse_range, 14, filepath,
+                                nodata=nodata)
+            return filepath
 
     if not any_ok:
         raise ValueError(
@@ -378,5 +381,7 @@ def save_gsi_dem_as_geotiff(rectangle_vertices, filepath, dem_type=None,
             "(is it outside Japan coverage?)."
         )
 
+    _logger.info("GSI DEM: writing 5 m (z15) from dem5a/dem5b; %.1f%% covered.",
+                 covered_pct)
     save_dem_as_geotiff(mosaic, fine_range, 15, filepath, nodata=nodata)
     return filepath

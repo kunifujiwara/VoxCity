@@ -279,7 +279,7 @@ class TestSaveGsiDemAsGeotiff:
             save_gsi_dem_as_geotiff(self._verts(), str(out), dem_type="bogus", sleep=0)
 
 
-from voxcity.downloader.gsi import _download_fine_merged, _backfill_from_coarser
+from voxcity.downloader.gsi import _download_fine_merged, _coarse_covers_any_hole
 
 
 def _parse_url(url):
@@ -306,6 +306,14 @@ def _half_nodata_tile(value):
     m = MagicMock()
     m.status_code = 200
     m.text = "\n".join(rows)
+    return m
+
+
+def _nodata_tile():
+    """200 response whose every pixel is the 'e' no-data token (e.g. open sea)."""
+    m = MagicMock()
+    m.status_code = 200
+    m.text = "\n".join([",".join(["e"] * 256)] * 256)
     return m
 
 
@@ -359,53 +367,40 @@ class TestFineMerge:
         assert np.allclose(tiles[(10, 20)], 3.0)
 
 
-class TestBackfillFromCoarser:
-    def test_integer_division_mapping_no_resample(self):
-        nodata = -9999.0
-        fine = np.full((256, 256), nodata, dtype=np.float32)
-        coarse = np.fromfunction(
-            lambda i, j: i * 1000.0 + j, (256, 256), dtype=np.float32
-        )
-        # Aligned origins: fine z15 tile (2,2), coarse z14 tile (1,1).
-        out = _backfill_from_coarser(
-            fine, (2, 2, 2, 2), coarse, (1, 1, 1, 1), 15, 14, nodata=nodata
-        )
-        for r, c in [(0, 0), (1, 1), (2, 3), (255, 254)]:
-            assert out[r, c] == pytest.approx((r // 2) * 1000.0 + (c // 2))
+class TestCoarseCoversAnyHole:
+    def test_false_when_fine_has_no_holes(self):
+        fine = np.full((256, 256), 5.0, dtype=np.float32)
+        coarse = np.full((256, 256), 8.0, dtype=np.float32)
+        assert _coarse_covers_any_hole(
+            fine, (2, 2, 2, 2), coarse, (1, 1, 1, 1), 15, 14, nodata=-9999.0
+        ) is False
 
-    def test_only_holes_filled_and_coarse_nodata_preserved(self):
+    def test_true_when_coarse_has_data_at_a_hole(self):
         nodata = -9999.0
         fine = np.full((256, 256), 5.0, dtype=np.float32)
-        fine[0, 0] = nodata   # maps to coarse (0, 0) -> filled
-        fine[0, 2] = nodata   # maps to coarse (0, 1) -> coarse is nodata, kept
+        fine[0, 0] = nodata
         coarse = np.full((256, 256), 8.0, dtype=np.float32)
+        assert _coarse_covers_any_hole(
+            fine, (2, 2, 2, 2), coarse, (1, 1, 1, 1), 15, 14, nodata=nodata
+        ) is True
+
+    def test_false_when_coarse_is_nodata_at_every_hole(self):
+        # Sea is no-data in the 10 m product too, so switching would fill nothing.
+        nodata = -9999.0
+        fine = np.full((256, 256), 5.0, dtype=np.float32)
+        fine[0, 0] = nodata      # -> coarse (0, 0)
+        fine[0, 2] = nodata      # -> coarse (0, 1)
+        coarse = np.full((256, 256), 8.0, dtype=np.float32)
+        coarse[0, 0] = nodata
         coarse[0, 1] = nodata
-        out = _backfill_from_coarser(
+        assert _coarse_covers_any_hole(
             fine, (0, 0, 0, 0), coarse, (0, 0, 0, 0), 15, 14, nodata=nodata
-        )
-        assert out[0, 0] == pytest.approx(8.0)   # filled from coarse
-        assert out[0, 2] == nodata               # coarse nodata -> stays hole
-        assert out[0, 1] == pytest.approx(5.0)   # pre-existing value untouched
+        ) is False
 
 
 class TestAutoMergeSave:
     def _verts(self):
         return [(140.09, 36.21), (140.12, 36.21), (140.12, 36.24), (140.09, 36.24)]
-
-    def test_dem10b_backfills_when_no_5m_coverage(self, tmp_path):
-        import rasterio
-        out = tmp_path / "dem.tif"
-
-        def responder(dem_type, zoom, x, y):
-            if dem_type == "dem":
-                return _txt_resp(42.0)
-            return _resp(404)                     # no dem5a / dem5b
-
-        with patch("voxcity.downloader.gsi.requests.get",
-                   side_effect=_dispatch(responder)):
-            save_gsi_dem_as_geotiff(self._verts(), str(out), sleep=0)
-        with rasterio.open(str(out)) as src:
-            assert np.allclose(src.read(1), 42.0)
 
     def test_dem5a_used_no_fallback_requests(self, tmp_path):
         import rasterio
@@ -450,6 +445,97 @@ class TestAutoMergeSave:
                    return_value=_resp(404)):
             with pytest.raises(ValueError):
                 save_gsi_dem_as_geotiff(self._verts(), str(out), sleep=0)
+
+
+def _pixel_size(zoom):
+    return (2 * _MERC_MAX) / (2.0 ** zoom) / 256
+
+
+class TestAutoResolutionSwitch:
+    def _verts(self):
+        return [(140.09, 36.21), (140.12, 36.21), (140.12, 36.24), (140.09, 36.24)]
+
+    def test_partial_5m_coverage_switches_whole_roi_to_10m(self, tmp_path):
+        # Regression: the old per-pixel backfill left 5 m and upsampled 10 m
+        # pixels in one raster, so the coverage boundary rendered as a cliff.
+        # No 5 m value may survive into the output.
+        import rasterio
+        out = tmp_path / "dem.tif"
+
+        def responder(tile_set, zoom, x, y):
+            if tile_set == "dem5a":
+                return _half_nodata_tile(5.0)
+            if tile_set == "dem":
+                return _txt_resp(42.0)
+            return _resp(404)
+
+        with patch("voxcity.downloader.gsi.requests.get",
+                   side_effect=_dispatch(responder)):
+            save_gsi_dem_as_geotiff(self._verts(), str(out), sleep=0)
+
+        with rasterio.open(str(out)) as src:
+            assert np.allclose(src.read(1), 42.0)
+            assert src.transform.a == pytest.approx(_pixel_size(14))
+
+    def test_full_5m_coverage_stays_at_5m(self, tmp_path):
+        import rasterio
+        out = tmp_path / "dem.tif"
+        seen = set()
+
+        def responder(tile_set, zoom, x, y):
+            seen.add(tile_set)
+            if tile_set == "dem5a":
+                return _txt_resp(6.0)
+            return _resp(404)
+
+        with patch("voxcity.downloader.gsi.requests.get",
+                   side_effect=_dispatch(responder)):
+            save_gsi_dem_as_geotiff(self._verts(), str(out), sleep=0)
+
+        assert seen == {"dem5a"}
+        with rasterio.open(str(out)) as src:
+            assert np.allclose(src.read(1), 6.0)
+            assert src.transform.a == pytest.approx(_pixel_size(15))
+
+    def test_holes_the_10m_product_cannot_fill_keep_the_5m_grid(self, tmp_path):
+        # A coastal ROI: its only gaps are sea, which is no-data in the 10 m
+        # product too. Dropping to 10 m would fill nothing, so stay at 5 m.
+        import rasterio
+        out = tmp_path / "dem.tif"
+
+        def responder(tile_set, zoom, x, y):
+            if tile_set == "dem5a":
+                return _half_nodata_tile(5.0)
+            if tile_set == "dem":
+                return _nodata_tile()
+            return _resp(404)
+
+        with patch("voxcity.downloader.gsi.requests.get",
+                   side_effect=_dispatch(responder)):
+            save_gsi_dem_as_geotiff(self._verts(), str(out), sleep=0)
+
+        with rasterio.open(str(out)) as src:
+            assert src.transform.a == pytest.approx(_pixel_size(15))
+            data = src.read(1)
+        assert (data == 5.0).any()
+        assert (data == GSI_NODATA).any()
+
+    def test_no_5m_coverage_at_all_writes_10m(self, tmp_path):
+        import rasterio
+        out = tmp_path / "dem.tif"
+
+        def responder(tile_set, zoom, x, y):
+            if tile_set == "dem":
+                return _txt_resp(42.0)
+            return _resp(404)
+
+        with patch("voxcity.downloader.gsi.requests.get",
+                   side_effect=_dispatch(responder)):
+            save_gsi_dem_as_geotiff(self._verts(), str(out), sleep=0)
+
+        with rasterio.open(str(out)) as src:
+            assert np.allclose(src.read(1), 42.0)
+            assert src.transform.a == pytest.approx(_pixel_size(14))
 
 
 class TestSaveDemAsGeotiffUsesRasterio:
