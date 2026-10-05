@@ -97,7 +97,7 @@ class TestParseDemTileText:
 
 
 from unittest.mock import patch, MagicMock
-from voxcity.downloader.gsi import check_dem_availability
+from voxcity.downloader.gsi import check_dem_availability, _fetch_tile
 
 
 def _resp(status):
@@ -132,6 +132,45 @@ class TestCheckDemAvailability:
                    side_effect=_rq.exceptions.ConnectTimeout()):
             dem_type, zoom = check_dem_availability(36.225, 140.105, sleep=0)
         assert (dem_type, zoom) == ("dem10b", 14)
+
+
+class TestTileSetUrlPaths:
+    """GSI data IDs are not the XYZ tile-set names: DEM10B is served at /xyz/dem/."""
+
+    def _collect(self, fn):
+        seen = []
+
+        def _side(url, **kwargs):
+            seen.append(url)
+            return _resp(404)
+
+        with patch("voxcity.downloader.gsi.requests.get", side_effect=_side):
+            fn()
+        return seen
+
+    def test_dem10b_requests_the_dem_tile_set(self):
+        seen = self._collect(
+            lambda: _fetch_tile("dem10b", 14, 14575, 6470, sleep=0)
+        )
+        assert len(seen) == 1
+        assert seen[0].endswith("/xyz/dem/14/14575/6470.txt")
+        assert "/xyz/dem10b/" not in seen[0]
+
+    def test_5m_types_keep_their_own_tile_sets(self):
+        def _both():
+            _fetch_tile("dem5a", 15, 29151, 12941, sleep=0)
+            _fetch_tile("dem5b", 15, 29151, 12941, sleep=0)
+
+        seen = self._collect(_both)
+        assert seen[0].endswith("/xyz/dem5a/15/29151/12941.txt")
+        assert seen[1].endswith("/xyz/dem5b/15/29151/12941.txt")
+
+    def test_availability_probe_uses_the_dem_tile_set(self):
+        seen = self._collect(
+            lambda: check_dem_availability(35.334624, 140.263010, sleep=0)
+        )
+        assert any("/xyz/dem/14/" in u for u in seen)
+        assert not any("/xyz/dem10b/" in u for u in seen)
 
 
 from voxcity.downloader.gsi import download_dem_tiles, compose_dem_array
@@ -244,7 +283,11 @@ from voxcity.downloader.gsi import _download_fine_merged, _backfill_from_coarser
 
 
 def _parse_url(url):
-    """Extract (dem_type, zoom, x, y) from a GSI XYZ tile URL."""
+    """Extract (tile_set, zoom, x, y) from a GSI XYZ tile URL.
+
+    The first element is the URL path segment, not the GSI data ID — DEM10B
+    appears here as ``dem``.
+    """
     tail = url.split("/xyz/")[1]            # e.g. dem5a/15/29139/12925.txt
     dem_type, zoom, x, ynxt = tail.split("/")
     return dem_type, int(zoom), int(x), int(ynxt.split(".")[0])
@@ -354,7 +397,7 @@ class TestAutoMergeSave:
         out = tmp_path / "dem.tif"
 
         def responder(dem_type, zoom, x, y):
-            if dem_type == "dem10b":
+            if dem_type == "dem":
                 return _txt_resp(42.0)
             return _resp(404)                     # no dem5a / dem5b
 
@@ -378,7 +421,7 @@ class TestAutoMergeSave:
         with patch("voxcity.downloader.gsi.requests.get",
                    side_effect=_dispatch(responder)):
             save_gsi_dem_as_geotiff(self._verts(), str(out), sleep=0)
-        assert "dem5b" not in seen and "dem10b" not in seen
+        assert "dem5b" not in seen and "dem" not in seen
         with rasterio.open(str(out)) as src:
             assert np.allclose(src.read(1), 6.0)
 
@@ -388,7 +431,7 @@ class TestAutoMergeSave:
 
         def responder(dem_type, zoom, x, y):
             seen.add(dem_type)
-            if dem_type == "dem10b":
+            if dem_type == "dem":
                 return _txt_resp(1.0)
             return _resp(404)                     # no 5 m coverage
 
@@ -399,7 +442,7 @@ class TestAutoMergeSave:
                     self._verts(), str(out), sleep=0,
                     include_dem10b_fallback=False,
                 )
-        assert "dem10b" not in seen
+        assert "dem" not in seen
 
     def test_all_missing_raises(self, tmp_path):
         out = tmp_path / "dem.tif"

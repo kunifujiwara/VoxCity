@@ -7,7 +7,8 @@ GSI publishes elevation tiles on the standard XYZ Web-Mercator tile grid at
 ``https://cyberjapandata.gsi.go.jp/xyz/{type}/{z}/{x}/{y}.txt``. Each tile is a
 256x256 grid of elevation values (meters) as CSV text, with ``e`` marking
 no-data. Resolutions, finest first: dem5a (5 m laser, z15), dem5b (5 m photo,
-z15), dem10b (10 m nationwide, z14).
+z15), dem10b (10 m nationwide, z14). GSI's data IDs are not the XYZ tile-set
+names: DEM10B is served at ``/xyz/dem/``.
 
 The mosaic is written natively in EPSG:3857 (no resampling); the downstream
 ``create_dem_grid_from_geotiff_polygon`` reprojects from the file's own CRS.
@@ -34,13 +35,16 @@ _MERC_MAX = 20037508.342789244
 GSI_TILE_SIZE = 256
 GSI_NODATA = -9999.0
 
-# DEM product types in priority order (finest resolution first).
+# DEM product types in priority order (finest resolution first). ``type`` is the
+# GSI data ID used by this module's API; ``path`` is the tile-set name in the XYZ
+# URL. They differ for DEM10B, which GSI serves at /xyz/dem/.
 GSI_DEM_TYPES = [
-    {"type": "dem5a", "zoom": 15},   # 5 m mesh, airborne laser survey
-    {"type": "dem5b", "zoom": 15},   # 5 m mesh, photogrammetry
-    {"type": "dem10b", "zoom": 14},  # 10 m mesh, nationwide
+    {"type": "dem5a", "path": "dem5a", "zoom": 15},  # 5 m mesh, airborne laser survey
+    {"type": "dem5b", "path": "dem5b", "zoom": 15},  # 5 m mesh, photogrammetry
+    {"type": "dem10b", "path": "dem", "zoom": 14},   # 10 m mesh, nationwide
 ]
 _ZOOM_BY_TYPE = {item["type"]: item["zoom"] for item in GSI_DEM_TYPES}
+_PATH_BY_TYPE = {item["type"]: item["path"] for item in GSI_DEM_TYPES}
 
 
 def latlon_to_tile(lat, lon, zoom):
@@ -113,7 +117,7 @@ def check_dem_availability(lat, lon, *, timeout_s=5, sleep=0.2):
     available GSI DEM product. Falls back to ('dem10b', 14)."""
     for item in GSI_DEM_TYPES:
         x, y = latlon_to_tile(lat, lon, item["zoom"])
-        url = _GSI_XYZ_URL.format(dem_type=item["type"], zoom=item["zoom"], x=x, y=y)
+        url = _GSI_XYZ_URL.format(dem_type=item["path"], zoom=item["zoom"], x=x, y=y)
         try:
             if sleep:
                 time.sleep(sleep)
@@ -133,7 +137,8 @@ def _fetch_tile(dem_type, zoom, x, y, *, nodata=GSI_NODATA, sleep=0.4,
     ``(256, 256)`` float32 array (all-``nodata`` on miss) and ``ok`` is True
     only on a successful HTTP 200 response.
     """
-    url = _GSI_XYZ_URL.format(dem_type=dem_type, zoom=zoom, x=x, y=y)
+    url = _GSI_XYZ_URL.format(dem_type=_PATH_BY_TYPE.get(dem_type, dem_type),
+                              zoom=zoom, x=x, y=y)
     try:
         if sleep:
             time.sleep(sleep)
