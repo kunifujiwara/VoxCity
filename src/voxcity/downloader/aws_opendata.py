@@ -26,6 +26,9 @@ import math
 import os
 from typing import List, Optional, Sequence, Tuple
 
+import numpy as np
+import rasterio
+
 from ..utils.logging import get_logger
 from .cog import (
     _bbox_from_rectangle_vertices,
@@ -39,6 +42,7 @@ from .gsi import latlon_to_tile
 
 __all__ = [
     "fetch_cog_crop", "chmv2_tile_urls", "fetch_chmv2_canopy_height", "CHMV2_BASE_URL",
+    "worldcover_tile_urls", "fetch_esa_worldcover",
     "copernicus_tile_urls", "fetch_copernicus_dem", "usgs_3dep_10m_tile_urls", "fetch_usgs_3dep_10m",
 ]
 
@@ -236,3 +240,78 @@ def fetch_usgs_3dep_10m(
     out_path = os.path.join(output_dir, "dem.tif")
     # ~100 m of padding at 1/3 arc-second.
     return fetch_cog_crop(urls, rectangle_vertices, out_path, pad_pixels=10, fill_nodata=True)
+
+
+# --- ESA WorldCover 10 m 2021 v200 ---
+
+WORLDCOVER_BASE_URL = "https://esa-worldcover.s3.eu-central-1.amazonaws.com/v200/2021/map"
+# Class codes in the order of get_land_cover_classes('ESA WorldCover').
+_WORLDCOVER_CODES = (10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 100)
+
+
+def _worldcover_tile_name(lat0: int, lon0: int) -> str:
+    """File name of the 3-degree tile with south-west corner (lat0, lon0)."""
+    return f"ESA_WorldCover_10m_2021_v200_{_lat_tag(lat0)}{_lon_tag(lon0)}_Map.tif"
+
+
+def worldcover_tile_urls(
+    rectangle_vertices: Sequence[Tuple[float, float]],
+    base_url: str = WORLDCOVER_BASE_URL,
+    timeout: int = 10,
+) -> List[str]:
+    """URLs of the WorldCover tiles that cover the area and exist."""
+    base = base_url.rstrip("/")
+    names = [_worldcover_tile_name(lat, lon) for lat, lon in tile_origins_for(rectangle_vertices, 3, "ESA WorldCover")]
+    return probe_existing([f"{base}/{n}" for n in names], timeout)
+
+
+def _worldcover_rgb_lut() -> np.ndarray:
+    """(256, 3) uint8 lookup from class code to the RGB VoxCity's ESA class table expects.
+
+    Uses the colours of get_land_cover_classes('ESA WorldCover') so the
+    existing colour matching maps every pixel exactly. Code 0 (outside the
+    tile set, i.e. ocean) and any unknown code map to Open water.
+    """
+    from ..utils.lc import get_land_cover_classes
+
+    colors = list(get_land_cover_classes("ESA WorldCover").keys())
+    lut = np.empty((256, 3), dtype=np.uint8)
+    lut[:] = colors[_WORLDCOVER_CODES.index(80)]
+    for code, rgb in zip(_WORLDCOVER_CODES, colors):
+        lut[code] = rgb
+    return lut
+
+
+def fetch_esa_worldcover(
+    rectangle_vertices: Sequence[Tuple[float, float]],
+    output_dir: str,
+    *,
+    base_url: str = WORLDCOVER_BASE_URL,
+) -> Optional[str]:
+    """
+    Write ``output_dir/land_cover.tif`` (3-band RGB) from ESA WorldCover on AWS (no login).
+
+    The RGB matches the 'ESA WorldCover' class table, so the rest of the
+    land-cover pipeline is unchanged. Returns None when no tile exists or
+    none could be read.
+    """
+    urls = worldcover_tile_urls(rectangle_vertices, base_url=base_url)
+    if not urls:
+        _logger.info("ESA WorldCover: no tiles cover this area (or the bucket is unreachable)")
+        return None
+    os.makedirs(output_dir, exist_ok=True)
+    codes_path = os.path.join(output_dir, "_esa_worldcover_codes.tif")
+    if fetch_cog_crop(urls, rectangle_vertices, codes_path) is None:
+        return None
+    with rasterio.open(codes_path) as src:
+        codes = src.read(1)
+        crs, transform = src.crs, src.transform
+    os.remove(codes_path)
+    rgb = _worldcover_rgb_lut()[codes]
+    out_path = os.path.join(output_dir, "land_cover.tif")
+    with rasterio.open(
+        out_path, "w", driver="GTiff", height=codes.shape[0], width=codes.shape[1], count=3,
+        dtype="uint8", crs=crs, transform=transform, compress="deflate",
+    ) as dst:
+        dst.write(np.moveaxis(rgb, -1, 0))
+    return out_path

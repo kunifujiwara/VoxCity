@@ -91,3 +91,56 @@ class TestDemFetchWiring:
              patch("voxcity.downloader.aws_opendata.fetch_cog_crop") as crop:
             assert getattr(aod, fetch_name)(BERLIN, str(tmp_path)) is None
         crop.assert_not_called()
+
+
+from voxcity.geoprocessor.raster import create_land_cover_grid_from_geotiff_polygon
+from voxcity.utils.lc import get_land_cover_classes
+
+_ESA_CLASSES = get_land_cover_classes("ESA WorldCover")
+_ESA_NAMES = list(_ESA_CLASSES.values())
+_CODES = [10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 100]
+_CODE_TO_NAME = dict(zip(_CODES, _ESA_NAMES))
+_CODE_TO_NAME[0] = "Open water"
+
+
+class TestWorldCoverNames:
+    def test_berlin(self):
+        assert aod._worldcover_tile_name(51, 12) == "ESA_WorldCover_10m_2021_v200_N51E012_Map.tif"
+
+    def test_southern_western(self):
+        assert aod._worldcover_tile_name(-36, -60) == "ESA_WorldCover_10m_2021_v200_S36W060_Map.tif"
+
+    def test_urls_use_three_degree_tiles(self):
+        with patch("voxcity.downloader.aws_opendata.probe_existing", side_effect=_echo):
+            urls = aod.worldcover_tile_urls(BERLIN)
+        assert urls == [
+            "https://esa-worldcover.s3.eu-central-1.amazonaws.com/v200/2021/map/"
+            "ESA_WorldCover_10m_2021_v200_N51E012_Map.tif"
+        ]
+
+
+class TestWorldCoverRoundTrip:
+    """Codes -> RGB land_cover.tif -> VoxCity's own colour lookup -> class names."""
+
+    @pytest.mark.parametrize("code", _CODES + [0])
+    def test_every_code_maps_to_its_class(self, tmp_path, code):
+        codes_tif = tmp_path / "codes.tif"
+        with rasterio.open(
+            codes_tif, "w", driver="GTiff", width=200, height=200, count=1, dtype="uint8",
+            crs="EPSG:4326", transform=from_origin(13.36, 52.52, 0.0001, 0.0001), nodata=0,
+        ) as ds:
+            ds.write(np.full((200, 200), code, dtype="uint8"), 1)
+
+        with patch("voxcity.downloader.aws_opendata.worldcover_tile_urls", return_value=[str(codes_tif)]):
+            out = aod.fetch_esa_worldcover(BERLIN, str(tmp_path / "o"))
+
+        assert out == str(tmp_path / "o" / "land_cover.tif")
+        assert not os.path.exists(tmp_path / "o" / "_esa_worldcover_codes.tif")
+        with rasterio.open(out) as ds:
+            assert ds.count == 3 and ds.dtypes[0] == "uint8"
+        grid = create_land_cover_grid_from_geotiff_polygon(out, 5.0, _ESA_CLASSES, BERLIN)
+        assert np.all(grid == _CODE_TO_NAME[code])
+
+    def test_no_tiles_returns_none(self, tmp_path):
+        with patch("voxcity.downloader.aws_opendata.worldcover_tile_urls", return_value=[]):
+            assert aod.fetch_esa_worldcover(BERLIN, str(tmp_path)) is None
