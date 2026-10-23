@@ -83,3 +83,34 @@ def _quadkeys_for_bbox(
         for y in range(min(y0, y1), max(y0, y1) + 1)
     }
     return sorted(keys)
+
+
+def _remote_exists(url: str, timeout: int) -> bool:
+    """True if an anonymous HEAD returns 200. Network errors count as missing."""
+    try:
+        return requests.head(url, timeout=timeout).status_code == 200
+    except requests.RequestException:
+        return False
+
+
+def chmv2_tile_urls(
+    rectangle_vertices: Sequence[Tuple[float, float]],
+    base_url: str = CHMV2_BASE_URL,
+    timeout: int = 30,
+) -> List[str]:
+    """
+    URLs of the CHMv2 tiles that cover ``rectangle_vertices`` and exist.
+
+    The dataset covers land only, so a missing tile key simply means no
+    coverage; it is dropped rather than treated as an error.
+    """
+    min_lon, min_lat, max_lon, max_lat = _bbox_from_rectangle_vertices(rectangle_vertices)
+    base = base_url.rstrip("/")
+    urls = []
+    for qk in _quadkeys_for_bbox(min_lon, min_lat, max_lon, max_lat):
+        url = f"{base}/chm/{qk}.tif"
+        if _remote_exists(url, timeout):
+            urls.append(url)
+        else:
+            _logger.debug("CHMv2 tile %s not available", qk)
+    return urls
