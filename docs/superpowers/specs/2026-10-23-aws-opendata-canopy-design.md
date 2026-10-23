@@ -23,7 +23,7 @@ as adapters of roughly thirty lines each.
 | Tiles | `chm/<quadkey>.tif`, 10-digit Bing quadkeys = zoom-10 Web Mercator tiles |
 | Per-tile metadata | `metadata/<quadkey>.geojson` (acquisition-date polygons; not used here) |
 | Index | `tiles.geojson` (58 MB; not used — quadkeys are computed instead) |
-| Raster | Cloud-Optimized GeoTIFF, EPSG:3857, 32768×32768 px, ~1.194 m/px, uint8, deflate, 512×512 blocks, overviews 2–64, no nodata tag (255 is the "no canopy" sentinel, as in the existing ETH path), ~185 MB per tile |
+| Raster | Cloud-Optimized GeoTIFF, EPSG:3857, 32768×32768 px, ~1.194 m/px, uint8, deflate, 512×512 blocks, overviews 2–64, no nodata tag (255 is the "no canopy" sentinel, as in the existing ETH path; 255 sentinel not observed in sampled v2 tiles (Berlin); cleanup kept as harmless guard), ~185 MB per tile |
 | Coverage | Land only; a missing tile key means no coverage, not an error |
 | Anonymous access | Confirmed: bucket listing, `HEAD`, and `rasterio` `/vsicurl/` windowed reads all work with no credentials, no `~/.aws`, no env keys |
 
@@ -39,8 +39,7 @@ Measured: opening a tile ≈ 1.7 s, reading a 500 m × 500 m window ≈ 1.1 s.
    existence with `requests.head`.
 4. **Dependencies already present:** `rasterio>=1.3.11`, `requests`, `pyproj`,
    `numpy`. Nothing new in `pyproject.toml`.
-5. **Import hygiene:** heavy imports (`rasterio`, `requests`) happen inside
-   functions so `tests/test_import_hygiene.py` stays green.
+5. **Import hygiene:** `rasterio` and `requests` are imported at module top like `gsi.py`/`gba.py` (neither is on the forbidden list in `tests/test_import_hygiene.py`); the module itself is imported lazily from `grids.py`.
 
 ## Components
 
@@ -68,14 +67,21 @@ def fetch_cog_crop(
 - Takes the CRS of the first openable source as the working CRS; transforms the
   WGS84 bbox of `rectangle_vertices` into it (padded by one source pixel).
 - Mosaics the windowed reads with `rasterio.merge.merge(datasets, bounds=…)`
-  (merge reads only the needed window per dataset, which GDAL serves as range
-  requests). If `res` is given, passes `res=(res, res)` and the `Resampling`
-  enum named by `resampling` (`nearest` | `average` | `max`); otherwise native
-  resolution.
+  at native resolution (area outside every source is zero-filled; merge reads
+  only the needed window per dataset, which GDAL serves as range requests).
+  If `res` is given, the mosaic is then warped to that pixel size with
+  `rasterio.warp.reproject` using the named `Resampling` (`nearest` |
+  `average` | `max`) — `merge` itself rejects `max`.
+- Sources whose CRS differs from the first openable source are skipped with a
+  WARNING.
+- A remote (`http(s)`) source that fails to open is skipped with a WARNING; a
+  local path that fails to open is skipped at INFO. Neither aborts the mosaic.
+- Any exception during the merge read returns `None` with a WARNING (GDAL
+  `CPLE_*` read errors, e.g. an HTTP 503 mid-read, are not `RasterioError`
+  subclasses, so the catch is deliberately broad).
 - Writes `out_path` as a deflate-compressed GeoTIFF in the working CRS and
-  returns `out_path`. Returns `None` if no source could be opened.
-- A source that fails to open is logged at INFO and skipped; it does not abort
-  the mosaic.
+  returns `out_path`. Returns `None` if no source could be opened or the read
+  failed.
 
 ### 2. CHMv2 adapter
 
@@ -93,10 +99,14 @@ def fetch_chmv2_canopy_height(
 
 - `_quadkeys_for_bbox` is pure math (Web Mercator tile x/y at `zoom` for the
   four bbox corners, then the Bing quadkey string for every tile in the x/y
-  range). Known value for tests: Berlin (13.3, 52.1) → `1202120103`.
+  range). Latitude is clamped to ±85.05112878 and tile x/y to
+  [0, 2**zoom - 1], so polar or global boxes cannot produce out-of-range
+  indices. Known value for tests: Berlin (13.3, 52.1) → `1202120103`.
 - `chmv2_tile_urls` builds `f"{base_url}/chm/{qk}.tif"` for each quadkey and
-  keeps those for which `requests.head(url, timeout=timeout).status_code == 200`.
-  A `requests.RequestException` on a probe is treated as "missing".
+  keeps those for which `requests.head(url, timeout=timeout).status_code == 200`
+  (helper `_remote_exists`). A 404 is silent; any other non-200 status and any
+  `requests.RequestException` on a probe is treated as "missing" but logged at
+  WARNING, since it silently shrinks coverage.
 - `fetch_chmv2_canopy_height` calls the two above and `fetch_cog_crop` with
   `out_path = os.path.join(output_dir, "canopy_height.tif")`. Returns `None`
   when no tiles exist or none could be read.
@@ -158,8 +168,11 @@ through `get_voxcity(**kwargs)`; this is not the default.
 
 | Situation | Behaviour |
 |---|---|
-| Tile HEAD returns non-200 or raises | Tile skipped silently (expected over ocean / outside coverage) |
-| Tile opens but read fails | Logged at INFO, tile skipped |
+| Tile HEAD returns 404 | Tile skipped silently (expected over ocean / outside coverage) |
+| Tile HEAD returns other non-200 status, or raises | Tile skipped, `WARNING` logged |
+| Remote tile fails to open | `WARNING`, tile skipped (local paths: INFO) |
+| Source CRS differs from the first source | `WARNING`, source skipped |
+| Exception during the merge read (e.g. GDAL `CPLE_*` HTTP error) | `WARNING`, `fetch_cog_crop` returns `None` (→ Static fallback) |
 | Zero usable tiles (no coverage, offline) | `WARNING` + fall back to `'Static'`, matching the existing EE-unavailable behaviour |
 | Transient HTTP errors during reads | GDAL retry via `GDAL_HTTP_MAX_RETRY=3` |
 | Bucket becomes private in future | Surfaces as the zero-tile fallback; the live integration test is how we notice |
@@ -174,7 +187,7 @@ Unit tests, no network, in `tests/test_downloader_aws_opendata.py`:
   200 URL survives.
 - `fetch_cog_crop` on COGs written to `tmp_path` with `rasterio` (EPSG:3857,
   uint8): single tile crop has expected bounds and values; two adjacent tiles
-  mosaic seamlessly; bbox partly outside the tile yields a crop clipped to the
+  mosaic seamlessly; bbox partly outside the tile yields a crop zero-filled outside the
   tile; `res=5, resampling='max'` yields the coarser grid with max values;
   a non-existent path plus a valid one still succeeds; all-invalid returns
   `None`.

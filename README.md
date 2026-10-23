@@ -166,7 +166,7 @@ earthengine authenticate
   Supports various building and terrain data sources including:
   - Building Footprints: OpenStreetMap, Overture, EUBUCCO, Microsoft Building Footprints, Open Building 2.5D
   - Land Cover: UrbanWatch, OpenEarthMap Japan, ESA WorldCover, ESRI Land Cover, Dynamic World, OpenStreetMap
-  - Canopy Height: High Resolution 1m Global Canopy Height Maps, ETH Global Sentinel-2 10m
+  - Canopy Height: High Resolution 1m Global Canopy Height Maps (v1 via Earth Engine; v2 via AWS Open Data, no account needed), ETH Global Sentinel-2 10m
   - DEM: DeltaDTM, FABDEM, NASA, COPERNICUS, and more
 
   *Detailed information about each data source can be found in the [References of Data Sources](#references-of-data-sources) section.*
@@ -690,6 +690,7 @@ VoxCity integrates many open datasets. Expand for full provenance (coverage, res
 | Dataset | Coverage | Resolution | Source/Data Acquisition |
 |---------|-----------|------------|------------------------|
 | [High Resolution 1m Global Canopy Height Maps](https://sustainability.atmeta.com/blog/2024/04/22/using-artificial-intelligence-to-map-the-earths-forests/) | Worldwide | 1 m | Prediction from satellite imagery / 2009 and 2020 (80% are 2018-2020) |
+| [High Resolution 1m Global Canopy Height Maps v2](https://registry.opendata.aws/dataforgood-fb-forestsv2/) | Worldwide (land) | ~1.2 m | Meta/WRI CHMv2, read from AWS Open Data over anonymous HTTPS — works in Google Colab without Earth Engine |
 | [ETH Global Sentinel-2 10m Canopy Height (2020)](https://langnico.github.io/globalcanopyheight/) | Worldwide | 10 m | Prediction from satellite imagery / 2020 |
 
 ### Land Cover

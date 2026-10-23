@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **Canopy height from AWS Open Data, no account required.** New source
+  `'High Resolution 1m Global Canopy Height Maps v2'` reads Meta/WRI CHMv2
+  Cloud-Optimized GeoTIFFs from the public `dataforgood-fb-data` bucket over
+  anonymous HTTPS, fetching only the window covering the area (no 185 MB tile
+  downloads, no Earth Engine, no AWS credentials; works in Google Colab).
+  When Earth Engine is unavailable, `get_voxcity` now auto-selects this
+  source instead of `'Static'`/`'OpenStreetMap'`; it still falls back to
+  `'Static'` if the area has no tiles or the bucket cannot be reached.
+  Previously, when Earth Engine was unavailable, canopy came from
+  OpenStreetMap trees (or 'Static' in Japan), so the no-Earth-Engine
+  behavior changes.
+  `voxcity.downloader.aws_opendata.fetch_cog_crop` is the reusable core for
+  adding further AWS-hosted rasters. Optional kwargs `canopy_resample_res`
+  and `canopy_resampling` ('nearest' | 'average' | 'max') control
+  aggregation for coarse meshes.
+
 ## 1.7.0 (2026-10-05)
 
 ### Breaking
