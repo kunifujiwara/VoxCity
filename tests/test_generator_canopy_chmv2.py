@@ -40,13 +40,16 @@ def _fake_fetch_returning(value):
     return _fetch
 
 
+EE = "voxcity.downloader.gee.initialize_earth_engine"
+FETCH = "voxcity.downloader.aws_opendata.fetch_chmv2_canopy_height"
+
+
 def test_chmv2_builds_grid_without_earth_engine(tmp_path):
-    with patch("voxcity.downloader.aws_opendata.fetch_chmv2_canopy_height",
-               side_effect=_fake_fetch_returning(12)) as fetch, \
-         patch("voxcity.downloader.gee.initialize_earth_engine",
-               side_effect=AssertionError("Earth Engine must not be touched")):
+    with patch(FETCH, side_effect=_fake_fetch_returning(12)) as fetch, \
+         patch(EE) as init_ee:
         top, bottom = get_canopy_height_grid(VERTS, MESH, CHMV2, str(tmp_path), gridvis=False)
 
+    init_ee.assert_not_called()
     assert top.shape == compute_grid_shape(VERTS, MESH)
     assert np.all(top == 12)
     np.testing.assert_allclose(bottom, top * (11.76 / 19.98))
@@ -56,32 +59,36 @@ def test_chmv2_builds_grid_without_earth_engine(tmp_path):
 
 
 def test_chmv2_forwards_resampling_kwargs(tmp_path):
-    with patch("voxcity.downloader.aws_opendata.fetch_chmv2_canopy_height",
-               side_effect=_fake_fetch_returning(12)) as fetch:
+    with patch(FETCH, side_effect=_fake_fetch_returning(12)) as fetch, \
+         patch(EE) as init_ee:
         get_canopy_height_grid(
             VERTS, MESH, CHMV2, str(tmp_path), gridvis=False,
             canopy_resample_res=MESH, canopy_resampling="max",
         )
+    init_ee.assert_not_called()
     _, kwargs = fetch.call_args
     assert kwargs == {"res": MESH, "resampling": "max"}
 
 
 def test_chmv2_255_sentinel_becomes_zero(tmp_path):
-    with patch("voxcity.downloader.aws_opendata.fetch_chmv2_canopy_height",
-               side_effect=_fake_fetch_returning(255)):
+    with patch(FETCH, side_effect=_fake_fetch_returning(255)) as fetch, \
+         patch(EE) as init_ee:
         top, _ = get_canopy_height_grid(VERTS, MESH, CHMV2, str(tmp_path), gridvis=False)
+    init_ee.assert_not_called()
+    fetch.assert_called_once()
     assert np.all(top == 0)
 
 
 def test_chmv2_no_tiles_falls_back_to_static(tmp_path):
     shape = compute_grid_shape(VERTS, MESH)
     land_cover = np.zeros(shape, dtype=int)   # no tree class anywhere
-    with patch("voxcity.downloader.aws_opendata.fetch_chmv2_canopy_height", return_value=None), \
-         patch("voxcity.downloader.gee.initialize_earth_engine",
-               side_effect=AssertionError("Earth Engine must not be touched")):
+    with patch(FETCH, return_value=None) as fetch, \
+         patch(EE) as init_ee:
         top, bottom = get_canopy_height_grid(
             VERTS, MESH, CHMV2, str(tmp_path), gridvis=False,
             land_cover_like=land_cover, land_cover_source="OpenStreetMap",
         )
+    init_ee.assert_not_called()
+    fetch.assert_called_once()
     assert top.shape == shape
     assert np.all(top == 0) and np.all(bottom == 0)
