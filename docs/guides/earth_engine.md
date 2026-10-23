@@ -2,7 +2,10 @@
 
 Many of VoxCity's data sources (land cover, canopy height, and several DEMs) are
 served through [Google Earth Engine](https://earthengine.google.com/). This
-guide walks through the one-time setup so those sources work.
+guide walks through the one-time setup so those sources work. Several sources
+need no account at all: the CHMv2 canopy product (`High Resolution 1m Global
+Canopy Height Maps v2`), `ESA WorldCover`, `COPERNICUS`, `FABDEM`,
+`USGS 3DEP 10m`, `GSI DEM Japan`, and OpenStreetMap / `OpenEarthMapJapan`.
 
 ## 1. Create an Earth Engine–enabled Cloud Project
 

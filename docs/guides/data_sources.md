@@ -63,5 +63,10 @@ Pick sources based on your area's coverage and the resolution you need:
 - **Terrain** — `DeltaDTM` and `FABDEM` are global; 1 m national LiDAR DEMs are
   available for the US, England, France, and Australia.
 
+Sources that need no account or Earth Engine setup: the CHMv2 canopy product
+(`High Resolution 1m Global Canopy Height Maps v2`), `ESA WorldCover`,
+`COPERNICUS`, `FABDEM`, `USGS 3DEP 10m`, `GSI DEM Japan`, and OpenStreetMap /
+`OpenEarthMapJapan`.
+
 Consult the {doc}`Data sources reference <../reference/data_sources>` for exact
 coverage, resolution, and provenance before committing to a source.

@@ -1,5 +1,55 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **Canopy height from AWS Open Data, no account required.** New source
+  `'High Resolution 1m Global Canopy Height Maps v2'` reads Meta/WRI CHMv2
+  Cloud-Optimized GeoTIFFs from the public `dataforgood-fb-data` bucket over
+  anonymous HTTPS, fetching only the window covering the area (no 185 MB tile
+  downloads, no Earth Engine, no AWS credentials; works in Google Colab).
+  When Earth Engine is unavailable, `get_voxcity` now auto-selects this
+  source instead of `'Static'`/`'OpenStreetMap'`; it still falls back to
+  `'Static'` if the area has no tiles or the bucket cannot be reached.
+  Previously, when Earth Engine was unavailable, canopy came from
+  OpenStreetMap trees (or 'Static' in Japan), so the no-Earth-Engine
+  behavior changes.
+  `voxcity.downloader.aws_opendata.fetch_cog_crop` is the reusable core for
+  adding further AWS-hosted rasters. Optional kwargs `canopy_resample_res`
+  and `canopy_resampling` ('nearest' | 'average' | 'max') control
+  aggregation for coarse meshes. `canopy_resample_res` is in ground metres
+  (converted to Web Mercator units at the area's centre latitude).
+  The no-Earth-Engine fallback when CHMv2 has no tiles is the land-cover-based
+  `'Static'` source, not OpenStreetMap trees; pass
+  `canopy_height_source='OpenStreetMap'` explicitly to get OSM point trees
+  without Earth Engine. If only some tiles are reachable, the unreachable
+  ones are logged and treated as no canopy.
+- **Terrain and land cover without Earth Engine or any account.**
+  `'COPERNICUS'` (Copernicus GLO-30 on AWS), `'ESA WorldCover'` (2021 v200 on
+  AWS) and `'FABDEM'` (University of Bristol archives) are now read directly,
+  with only the window around the area transferred. New source
+  `'USGS 3DEP 10m'` reads the US 1/3 arc-second bare-earth DEM from AWS.
+  When Earth Engine is unavailable, the auto-selected DEM is now
+  `'USGS 3DEP 10m'` in the US and `'FABDEM'` elsewhere (Japan keeps
+  `'GSI DEM Japan'`) instead of `'Flat'`. If a DEM cannot be read the other
+  login-free DEMs are tried first (`'USGS 3DEP 10m'` -> `'FABDEM'` ->
+  `'COPERNICUS'`; `'FABDEM'` -> `'COPERNICUS'`; `'COPERNICUS'` -> `'FABDEM'`),
+  then the grid falls back to flat; if WorldCover cannot be read land cover falls back to
+  OpenStreetMap.
+
+### Changed
+
+- `'ESA WorldCover'`, `'COPERNICUS'` and `'FABDEM'` no longer use Earth
+  Engine even when it is available. The data is the same; it is read at
+  native resolution instead of through an Earth Engine export, so values can
+  differ slightly at cell edges. FABDEM remains CC BY-NC-SA 4.0
+  (non-commercial). No global DEM removes buildings in high-rise cores; in
+  such areas prefer national lidar or `'Flat'`. Networks with an allow-list
+  now need to permit copernicus-dem-30m.s3.amazonaws.com,
+  esa-worldcover.s3.eu-central-1.amazonaws.com, prd-tnm.s3.amazonaws.com,
+  dataforgood-fb-data.s3.amazonaws.com and data.bris.ac.uk.
+
 ## 1.7.0 (2026-10-05)
 
 ### Breaking

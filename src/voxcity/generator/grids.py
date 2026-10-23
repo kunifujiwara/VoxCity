@@ -45,7 +45,6 @@ def get_land_cover_grid(rectangle_vertices, meshsize, source, output_dir, print_
         get_roi,
         get_ee_image_collection,
         save_geotiff,
-        save_geotiff_esa_land_cover,
         save_geotiff_esri_landcover,
         save_geotiff_dynamic_world_v1,
     )
@@ -67,7 +66,7 @@ def get_land_cover_grid(rectangle_vertices, meshsize, source, output_dir, print_
         "force_refresh": kwargs.get("force_refresh", False),
     }
 
-    if source not in ["OpenStreetMap", "OpenEarthMapJapan"]:
+    if source not in ["OpenStreetMap", "OpenEarthMapJapan", "ESA WorldCover"]:
         try:
             initialize_earth_engine()
         except Exception as e:
@@ -96,13 +95,14 @@ def get_land_cover_grid(rectangle_vertices, meshsize, source, output_dir, print_
             effective_source = 'OpenStreetMap'
             land_cover_gdf = load_land_cover_gdf_from_osm(rectangle_vertices, **_cache_kwargs)
     elif source == 'ESA WorldCover':
-        roi = get_roi(rectangle_vertices)
-        save_geotiff_esa_land_cover(roi, geotiff_path)
-        if (not os.path.exists(geotiff_path)) or (os.path.getsize(geotiff_path) == 0):
-            raise ProcessingError(
-                f"{source} export produced no file at {geotiff_path}. The AOI may "
-                f"lack coverage for this dataset, or the Earth Engine export failed."
+        # Read from AWS Open Data without Earth Engine or any account.
+        from ..downloader.aws_opendata import fetch_esa_worldcover
+        if fetch_esa_worldcover(rectangle_vertices, output_dir) is None:
+            _logger.warning(
+                "ESA WorldCover could not be read for this area — falling back to OpenStreetMap."
             )
+            effective_source = 'OpenStreetMap'
+            land_cover_gdf = load_land_cover_gdf_from_osm(rectangle_vertices, **_cache_kwargs)
     elif source == 'ESRI 10m Annual Land Cover':
         esri_landcover_year = kwargs.get("esri_landcover_year")
         roi = get_roi(rectangle_vertices)
@@ -323,6 +323,29 @@ def get_building_height_grid(rectangle_vertices, meshsize, source, output_dir, b
     return building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings
 
 
+def _finish_canopy_grid(canopy_height_grid, meshsize, **kwargs):
+    """Shared tail for raster canopy sources: sentinel cleanup, trunk ratio, viz.
+
+    The Meta and ETH datasets store canopy height as uint8 and use 255 as
+    their nodata / "no canopy" sentinel.  Replace with 0 so downstream code
+    treats those cells as bare ground instead of 255-metre-tall trees.
+    """
+    canopy_height_grid = np.where(canopy_height_grid >= 255, 0, canopy_height_grid)
+
+    trunk_height_ratio = kwargs.get("trunk_height_ratio")
+    if trunk_height_ratio is None:
+        trunk_height_ratio = 11.76 / 19.98
+    canopy_bottom_grid = canopy_height_grid * float(trunk_height_ratio)
+
+    grid_vis = kwargs.get("gridvis", True)
+    if grid_vis:
+        canopy_height_grid_nan = canopy_height_grid.copy()
+        canopy_height_grid_nan[canopy_height_grid_nan == 0] = np.nan
+        from ..visualizer.grids import visualize_numerical_grid
+        visualize_numerical_grid(canopy_height_grid_nan, meshsize, "Tree canopy height", cmap='Greens', label='Tree canopy height (m)')
+    return canopy_height_grid, canopy_bottom_grid
+
+
 def get_canopy_height_grid(rectangle_vertices, meshsize, source, output_dir, **kwargs):
     from ..downloader.gee import (
         initialize_earth_engine,
@@ -411,6 +434,25 @@ def get_canopy_height_grid(rectangle_vertices, meshsize, source, output_dir, **k
 
         return canopy_top, canopy_bottom
 
+    # AWS Open Data path (no Earth Engine, no account): Meta/WRI CHMv2 tiles
+    # are read over anonymous HTTPS. Must run before initialize_earth_engine()
+    # so an EE failure never masks this source.
+    if source == 'High Resolution 1m Global Canopy Height Maps v2':
+        from ..downloader.aws_opendata import fetch_chmv2_canopy_height
+        geotiff_path = fetch_chmv2_canopy_height(
+            rectangle_vertices, output_dir,
+            res=kwargs.get('canopy_resample_res'),
+            resampling=kwargs.get('canopy_resampling', 'nearest'),
+        )
+        if geotiff_path is None:
+            _logger.warning(
+                "CHMv2 (AWS) has no tiles for this area or could not be reached "
+                "— falling back to Static canopy heights."
+            )
+            return get_canopy_height_grid(rectangle_vertices, meshsize, 'Static', output_dir, **kwargs)
+        canopy_height_grid = create_height_grid_from_geotiff_polygon(geotiff_path, meshsize, rectangle_vertices)
+        return _finish_canopy_grid(canopy_height_grid, meshsize, **kwargs)
+
     try:
         initialize_earth_engine()
     except Exception as e:
@@ -434,23 +476,29 @@ def get_canopy_height_grid(rectangle_vertices, meshsize, source, output_dir, **k
     save_geotiff(image, geotiff_path, scale=meshsize, region=roi, crs='EPSG:4326')
     canopy_height_grid = create_height_grid_from_geotiff_polygon(geotiff_path, meshsize, rectangle_vertices)
 
-    # The ETH dataset stores canopy height as uint8 and uses 255 as its
-    # nodata / "no canopy" sentinel.  Replace with 0 so downstream code
-    # treats those cells as bare ground instead of 255-metre-tall trees.
-    canopy_height_grid = np.where(canopy_height_grid >= 255, 0, canopy_height_grid)
+    return _finish_canopy_grid(canopy_height_grid, meshsize, **kwargs)
 
-    trunk_height_ratio = kwargs.get("trunk_height_ratio")
-    if trunk_height_ratio is None:
-        trunk_height_ratio = 11.76 / 19.98
-    canopy_bottom_grid = canopy_height_grid * float(trunk_height_ratio)
 
-    grid_vis = kwargs.get("gridvis", True)
-    if grid_vis:
-        canopy_height_grid_nan = canopy_height_grid.copy()
-        canopy_height_grid_nan[canopy_height_grid_nan == 0] = np.nan
-        from ..visualizer.grids import visualize_numerical_grid
-        visualize_numerical_grid(canopy_height_grid_nan, meshsize, "Tree canopy height", cmap='Greens', label='Tree canopy height (m)')
-    return canopy_height_grid, canopy_bottom_grid
+# DEM sources read without Earth Engine or any account.
+_NOLOGIN_DEM_SOURCES = ("COPERNICUS", "FABDEM", "USGS 3DEP 10m")
+
+# Other login-free DEMs to try, in order, when the requested one cannot be read.
+_NOLOGIN_DEM_FALLBACKS = {
+    "USGS 3DEP 10m": ("FABDEM", "COPERNICUS"),
+    "FABDEM": ("COPERNICUS",),
+    "COPERNICUS": ("FABDEM",),
+}
+
+
+def _fetch_nologin_dem(source, rectangle_vertices, output_dir):
+    """Write output_dir/dem.tif for a login-free DEM source; the path or None."""
+    if source == "FABDEM":
+        from ..downloader.fabdem import fetch_fabdem
+        return fetch_fabdem(rectangle_vertices, output_dir)
+    from ..downloader import aws_opendata
+    if source == "COPERNICUS":
+        return aws_opendata.fetch_copernicus_dem(rectangle_vertices, output_dir)
+    return aws_opendata.fetch_usgs_3dep_10m(rectangle_vertices, output_dir)
 
 
 def get_dem_grid(rectangle_vertices, meshsize, source, output_dir, **kwargs):
@@ -477,6 +525,21 @@ def get_dem_grid(rectangle_vertices, meshsize, source, output_dir, **kwargs):
         save_gsi_dem_as_geotiff(
             rectangle_vertices, geotiff_path, dem_type=kwargs.get("gsi_dem_type")
         )
+    elif source in _NOLOGIN_DEM_SOURCES:
+        geotiff_path = _fetch_nologin_dem(source, rectangle_vertices, output_dir)
+        for alt in (_NOLOGIN_DEM_FALLBACKS.get(source, ()) if geotiff_path is None else ()):
+            geotiff_path = _fetch_nologin_dem(alt, rectangle_vertices, output_dir)
+            if geotiff_path is not None:
+                _logger.warning(
+                    "%s could not be read for this area — using %s instead.", source, alt
+                )
+                break
+        if geotiff_path is None:
+            _logger.warning(
+                "%s could not be read for this area — falling back to flat DEM.", source
+            )
+            from ..geoprocessor.raster.core import compute_grid_shape
+            return np.zeros(compute_grid_shape(rectangle_vertices, meshsize), dtype=float)
     else:
         try:
             initialize_earth_engine()

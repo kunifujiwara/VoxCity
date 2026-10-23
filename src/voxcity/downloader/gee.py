@@ -17,6 +17,8 @@ Dependencies:
     - geemap: Python package for interactive mapping with Earth Engine
 
 Note: Most functions require Earth Engine authentication to be set up beforehand.
+`get_voxcity` no longer uses Earth Engine for 'ESA WorldCover', 'COPERNICUS' and
+'FABDEM' (they are read from AWS / University of Bristol instead).
 """
 
 # Earth Engine and geospatial imports
@@ -207,6 +209,7 @@ def get_dem_image(roi_buffered, source):
     
     This function provides access to various global and regional Digital Elevation Model (DEM)
     datasets through Earth Engine. Each source has different coverage areas and resolutions.
+    Note: `get_voxcity` no longer uses this for 'COPERNICUS' and 'FABDEM' (read from AWS / Bristol).
     
     Args:
         roi_buffered: Earth Engine geometry with buffer - should be larger than the actual
@@ -215,7 +218,7 @@ def get_dem_image(roi_buffered, source):
                - 'NASA': SRTM 30m global DEM
                - 'COPERNICUS': Copernicus 30m global DEM
                - 'DeltaDTM': Deltares global DTM
-               - 'FABDEM': Forest And Buildings removed MERIT DEM
+               - 'FABDEM': Forest And Buildings removed Copernicus DEM
                - 'England 1m DTM': UK Environment Agency 1m terrain model
                - 'DEM France 5m': IGN RGE ALTI 5m France coverage
                - 'DEM France 1m': IGN RGE ALTI 1m France coverage

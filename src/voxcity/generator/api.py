@@ -53,22 +53,25 @@ _SOURCE_URLS = {
     # Land cover
     'OpenEarthMapJapan': 'https://www.open-earth-map.org/demo/Japan/leaflet.html',
     'Urbanwatch': 'https://gee-community-catalog.org/projects/urban-watch/',
-    'ESA WorldCover': 'https://developers.google.com/earth-engine/datasets/catalog/ESA_WorldCover_v200',
+    'ESA WorldCover': 'https://registry.opendata.aws/esa-worldcover-vito/',
     'ESRI 10m Annual Land Cover': 'https://gee-community-catalog.org/projects/S2TSLULC/',
     'Dynamic World V1': 'https://developers.google.com/earth-engine/datasets/catalog/GOOGLE_DYNAMICWORLD_V1',
     # Canopy height
     'High Resolution 1m Global Canopy Height Maps': 'https://gee-community-catalog.org/projects/meta_trees/',
+    'High Resolution 1m Global Canopy Height Maps v2': 'https://registry.opendata.aws/dataforgood-fb-forestsv2/',
     'ETH Global Sentinel-2 10m Canopy Height (2020)': 'https://gee-community-catalog.org/projects/canopy/',
     'Static': None,
     # Note: 'OpenStreetMap' for canopy uses the same URL as above (already defined)
     # DEM
     'USGS 3DEP 1m': 'https://developers.google.com/earth-engine/datasets/catalog/USGS_3DEP_1m',
+    'USGS 3DEP 10m': 'https://www.usgs.gov/3d-elevation-program/about-3dep-products-services',
     'England 1m DTM': 'https://developers.google.com/earth-engine/datasets/catalog/UK_EA_ENGLAND_1M_TERRAIN_2022',
     'DEM France 1m': 'https://developers.google.com/earth-engine/datasets/catalog/IGN_RGE_ALTI_1M_2_0',
     'DEM France 5m': 'https://gee-community-catalog.org/projects/france5m/',
     'AUSTRALIA 5M DEM': 'https://developers.google.com/earth-engine/datasets/catalog/AU_GA_AUSTRALIA_5M_DEM',
     'Netherlands 0.5m DTM': 'https://developers.google.com/earth-engine/datasets/catalog/AHN_AHN4',
-    'FABDEM': 'https://gee-community-catalog.org/projects/fabdem/',
+    'FABDEM': 'https://doi.org/10.5523/bris.s5hqmjcdj8yo2ibzi9b4ew3sn',
+    'COPERNICUS': 'https://registry.opendata.aws/copernicus-dem/',
     'DeltaDTM': 'https://gee-community-catalog.org/projects/delta_dtm/',
 }
 
@@ -197,6 +200,7 @@ _LAND_COVER_COVERAGE = {
 
 _DEM_COVERAGE = {
     'USGS 3DEP 1m': lambda f: f['is_usa'],
+    'USGS 3DEP 10m': lambda f: f['is_usa'],
     'England 1m DTM': lambda f: f['is_england'],
     'DEM France 1m': lambda f: f['is_france'],
     'DEM France 5m': lambda f: f['is_france'],
@@ -258,10 +262,13 @@ def auto_select_data_sources(rectangle_vertices):
         * Otherwise -> 'None'
     - Land cover: USA -> 'Urbanwatch'; Japan -> 'OpenEarthMapJapan'; otherwise 'OpenStreetMap'.
       (If OSM is insufficient, consider 'ESA WorldCover' manually.)
-    - Canopy height: 'High Resolution 1m Global Canopy Height Maps'.
+    - Canopy height: 'High Resolution 1m Global Canopy Height Maps'
+      (when Earth Engine is unavailable: 'High Resolution 1m Global Canopy Height Maps v2',
+      read from AWS Open Data without an account).
     - DEM: High-resolution where available (USA, England, Australia, France, Netherlands, Japan), else 'FABDEM'.
       Japan -> 'GSI DEM Japan' (bare-earth GSI DEM; 5 m where the area is fully
       covered, otherwise the whole area at 10 m).
+      When Earth Engine is unavailable: Japan -> 'GSI DEM Japan', USA -> 'USGS 3DEP 10m', elsewhere -> 'FABDEM' (all read without an account).
 
     Returns a dict with keys: building_source, building_complementary_source,
     land_cover_source, canopy_height_source, dem_source.
@@ -420,8 +427,14 @@ def get_voxcity(rectangle_vertices, meshsize, building_source=None, land_cover_s
         meshsize: Grid resolution in meters (required)
         building_source: Building base source (default: auto-selected based on location)
         land_cover_source: Land cover source (default: auto-selected based on location)
+            'ESA WorldCover' is read from AWS Open Data without Earth Engine or any account.
         canopy_height_source: Canopy height source (default: auto-selected based on location)
+            Use 'High Resolution 1m Global Canopy Height Maps v2' for Meta/WRI CHMv2 read
+            from AWS Open Data over anonymous HTTPS (no Earth Engine or account needed;
+            this is also the automatic choice when Earth Engine is unavailable).
         dem_source: Digital elevation model source (default: auto-selected based on location)
+            'COPERNICUS', 'FABDEM' and 'USGS 3DEP 10m' are read without Earth Engine or
+            any account (AWS Open Data / University of Bristol); FABDEM is CC BY-NC-SA 4.0.
         building_complementary_source: Building complementary source (default: auto-selected based on location)
         building_gdf: Optional pre-loaded building GeoDataFrame
         terrain_gdf: Optional pre-loaded terrain GeoDataFrame
@@ -435,6 +448,12 @@ def get_voxcity(rectangle_vertices, meshsize, building_source=None, land_cover_s
                     Set False to always download fresh.
                   - force_refresh: bool, if True bypasses any existing cache entry and
                     re-downloads, refreshing the cache (default: False)
+                  - canopy_resample_res: float, for the CHMv2 source only: resample the ~1.2 m
+                    tiles to this ground pixel size (m, approximate) before sampling at cell
+                    centres (default: None,
+                    i.e. nearest native pixel, matching the Earth Engine sources).
+                  - canopy_resampling: 'nearest' (default) | 'average' | 'max'; aggregation
+                    used when canopy_resample_res is set.
                   I/O options include:
                   - output_dir: Directory for intermediate/downloaded data (default: "output")
                   - save_path: Full file path to save the VoxCity object (overrides output_dir default)
@@ -501,24 +520,26 @@ def get_voxcity(rectangle_vertices, meshsize, building_source=None, land_cover_s
         if not ee_available:
             # Downgrade EE-dependent sources to non-GEE alternatives
             # Land cover: fallback to OpenStreetMap (unless already non-GEE)
-            if auto_sources['land_cover_source'] not in ('OpenStreetMap', 'OpenEarthMapJapan'):
+            if auto_sources['land_cover_source'] not in ('OpenStreetMap', 'OpenEarthMapJapan', 'ESA WorldCover'):
                 auto_sources['land_cover_source'] = 'OpenStreetMap'
             
-            # Canopy height: region-dependent fallback
-            # - Japan: 'Static' (OpenEarthMapJapan land cover provides good tree coverage)
-            # - Other regions: 'OpenStreetMap' (provides actual tree locations and forest polygons)
-            is_japan_area = (auto_sources['land_cover_source'] == 'OpenEarthMapJapan')
-            if is_japan_area:
-                auto_sources['canopy_height_source'] = 'Static'
-            else:
-                auto_sources['canopy_height_source'] = 'OpenStreetMap'
+            # Canopy height: Meta/WRI CHMv2 is read from the AWS Open Data
+            # bucket over anonymous HTTPS, so it needs neither Earth Engine
+            # nor an account. get_canopy_height_grid falls back to 'Static'
+            # by itself if the area has no tiles or the bucket is unreachable.
+            auto_sources['canopy_height_source'] = 'High Resolution 1m Global Canopy Height Maps v2'
             
-            # DEM: fallback to Flat (no elevation data without GEE), except
-            # for sources that don't require Earth Engine. 'GSI DEM Japan'
-            # downloads bare-earth DEM tiles directly over HTTP from GSI, so
-            # it stays usable even when GEE is unavailable.
-            if auto_sources['dem_source'] != 'GSI DEM Japan':
-                auto_sources['dem_source'] = 'Flat'
+            # DEM: sources read without Earth Engine or any account.
+            # Japan keeps 'GSI DEM Japan' (GSI tiles over HTTP); the US gets
+            # the USGS 3DEP 1/3 arc-second bare-earth DEM from AWS; everywhere
+            # else gets FABDEM (Bristol archives) - the same DEM Earth Engine
+            # users get by default there.
+            if auto_sources['dem_source'] == 'GSI DEM Japan':
+                pass
+            elif auto_sources['dem_source'] == 'USGS 3DEP 1m':
+                auto_sources['dem_source'] = 'USGS 3DEP 10m'
+            else:
+                auto_sources['dem_source'] = 'FABDEM'
             
             # Building complementary sources that require GEE
             ee_dependent_comp = {

@@ -97,7 +97,6 @@ def test_japan_keeps_gsi_when_earth_engine_unavailable():
     assert _resolved_dem_source_when_ee_unavailable(JAPAN_VERTS) == "GSI DEM Japan"
 
 
-def test_usa_downgrades_to_flat_when_earth_engine_unavailable():
-    """USA's auto-selected USGS 3DEP DEM *does* require Earth Engine, so it
-    must still fall back to 'Flat' when EE is unavailable."""
-    assert _resolved_dem_source_when_ee_unavailable(USA_VERTS) == "Flat"
+def test_usa_uses_usgs_10m_when_earth_engine_unavailable():
+    """Outside Japan the US DEM is read from AWS (USGS 3DEP 10m) when EE is unavailable."""
+    assert _resolved_dem_source_when_ee_unavailable(USA_VERTS) == "USGS 3DEP 10m"
