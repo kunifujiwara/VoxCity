@@ -22,6 +22,7 @@ Usage:
 
 from __future__ import annotations
 
+import logging
 import math
 import os
 from typing import List, Optional, Sequence, Tuple
@@ -190,7 +191,7 @@ def fetch_cog_crop(
         timeout: Per-request HTTP timeout in seconds (GDAL_HTTP_TIMEOUT).
 
     Returns:
-        ``out_path``, or None if no source could be opened.
+        ``out_path``, or None if no source could be opened or the read failed.
     """
     if resampling not in _RESAMPLING:
         raise ValueError(f"resampling must be one of {sorted(_RESAMPLING)}, got {resampling!r}")
@@ -203,9 +204,20 @@ def fetch_cog_crop(
         try:
             for url in urls:
                 try:
-                    sources.append(rasterio.open(_gdal_path(url)))
+                    src = rasterio.open(_gdal_path(url))
                 except RasterioIOError as exc:
-                    _logger.info("Skipping %s: %s", url, exc)
+                    # Remote URLs were probed as existing, so failing to open
+                    # one is unexpected; local paths are the caller's business.
+                    level = logging.WARNING if url.startswith(("http://", "https://")) else logging.INFO
+                    _logger.log(level, "Skipping %s: %s", url, exc)
+                    continue
+                if sources and src.crs != sources[0].crs:
+                    _logger.warning(
+                        "Skipping %s: CRS %s differs from %s", url, src.crs, sources[0].crs
+                    )
+                    src.close()
+                    continue
+                sources.append(src)
             if not sources:
                 return None
 
@@ -217,7 +229,14 @@ def fetch_cog_crop(
             # One source pixel of padding so cell-centre sampling at the edge
             # never falls just outside the crop.
             bounds = (left - px, bottom - py, right + px, top + py)
-            data, transform = merge(sources, bounds=bounds)
+            try:
+                data, transform = merge(sources, bounds=bounds)
+            except Exception as exc:  # noqa: BLE001
+                # Broad on purpose: GDAL read-time errors (e.g. HTTP 503 mid-range-
+                # request) surface as CPLE_* classes that are not public
+                # RasterioError subclasses, so they can't be caught by type.
+                _logger.warning("Reading COG window failed (%s); no raster written", exc)
+                return None
         finally:
             for src in sources:
                 src.close()

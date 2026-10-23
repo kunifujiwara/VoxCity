@@ -91,41 +91,31 @@ class TestChmv2TileUrls:
         assert urls == ["https://example.org/mirror/chm/1202120103.tif"]
 
 
-@pytest.fixture
-def module_caplog(caplog):
-    """voxcity loggers don't propagate to root, so attach caplog's handler directly."""
-    from voxcity.downloader import aws_opendata
-
-    aws_opendata._logger.addHandler(caplog.handler)
-    caplog.set_level(logging.DEBUG, logger=aws_opendata._logger.name)
-    yield caplog
-    aws_opendata._logger.removeHandler(caplog.handler)
-
-
 class TestRemoteExists:
     URL = "https://example.org/chm/x.tif"
 
-    def test_200_true_and_404_false_silently(self, module_caplog):
-        with patch("voxcity.downloader.aws_opendata.requests.head", return_value=_Resp(200)):
-            assert _remote_exists(self.URL, 5) is True
-        with patch("voxcity.downloader.aws_opendata.requests.head", return_value=_Resp(404)):
-            assert _remote_exists(self.URL, 5) is False
-        assert not [r for r in module_caplog.records if r.levelno >= logging.WARNING]
+    def test_200_true_and_404_false_silently(self, caplog, propagate_voxcity_logs):
+        with caplog.at_level(logging.WARNING, logger="voxcity"):
+            with patch("voxcity.downloader.aws_opendata.requests.head", return_value=_Resp(200)):
+                assert _remote_exists(self.URL, 5) is True
+            with patch("voxcity.downloader.aws_opendata.requests.head", return_value=_Resp(404)):
+                assert _remote_exists(self.URL, 5) is False
+        assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
 
-    def test_503_warns(self, module_caplog):
-        with patch("voxcity.downloader.aws_opendata.requests.head", return_value=_Resp(503)):
+    def test_503_warns(self, caplog, propagate_voxcity_logs):
+        with caplog.at_level(logging.WARNING, logger="voxcity"),                 patch("voxcity.downloader.aws_opendata.requests.head", return_value=_Resp(503)):
             assert _remote_exists(self.URL, 5) is False
-        warnings = [r for r in module_caplog.records if r.levelno == logging.WARNING]
+        warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
         assert len(warnings) == 1
         assert self.URL in warnings[0].getMessage() and "503" in warnings[0].getMessage()
 
-    def test_request_exception_warns(self, module_caplog):
-        with patch(
+    def test_request_exception_warns(self, caplog, propagate_voxcity_logs):
+        with caplog.at_level(logging.WARNING, logger="voxcity"), patch(
             "voxcity.downloader.aws_opendata.requests.head",
             side_effect=_requests.ConnectionError("offline"),
         ):
             assert _remote_exists(self.URL, 5) is False
-        assert any(r.levelno == logging.WARNING and self.URL in r.getMessage() for r in module_caplog.records)
+        assert any(r.levelno == logging.WARNING and self.URL in r.getMessage() for r in caplog.records)
 
 
 _TO_LONLAT = Transformer.from_crs("EPSG:3857", "EPSG:4326", always_xy=True)
@@ -305,3 +295,37 @@ class TestFetchChmv2CanopyHeight:
         with patch("voxcity.downloader.aws_opendata.chmv2_tile_urls", return_value=["u"]), \
              patch("voxcity.downloader.aws_opendata.fetch_cog_crop", return_value=None):
             assert fetch_chmv2_canopy_height(self.VERTS, str(tmp_path)) is None
+
+
+class TestFetchCogCropRobustness:
+    def test_mid_read_failure_returns_none_and_warns(
+        self, tile_a, tmp_path, monkeypatch, caplog, propagate_voxcity_logs
+    ):
+        def boom(*a, **k):
+            raise RuntimeError("HTTP 503")
+
+        monkeypatch.setattr("voxcity.downloader.aws_opendata.merge", boom)
+        rect = _merc_rect(_X0 + 5, _Y0 - 15, _X0 + 15, _Y0 - 5)
+        out_path = tmp_path / "out.tif"
+        with caplog.at_level(logging.WARNING, logger="voxcity"):
+            assert fetch_cog_crop([tile_a], rect, str(out_path)) is None
+        assert not out_path.exists()
+        assert any(r.levelno == logging.WARNING and "HTTP 503" in r.getMessage() for r in caplog.records)
+
+    def test_source_with_different_crs_is_skipped(
+        self, tile_a, tmp_path, caplog, propagate_voxcity_logs
+    ):
+        other = tmp_path / "wgs84.tif"
+        with rasterio.open(
+            other, "w", driver="GTiff", width=4, height=4, count=1, dtype="uint8",
+            crs="EPSG:4326", transform=from_origin(13.0, 52.0, 0.001, 0.001),
+        ) as ds:
+            ds.write(np.ones((4, 4), dtype="uint8"), 1)
+        rect = _merc_rect(_X0 + 5, _Y0 - 15, _X0 + 15, _Y0 - 5)
+        out_path = tmp_path / "out.tif"
+        with caplog.at_level(logging.WARNING, logger="voxcity"):
+            out = fetch_cog_crop([tile_a, str(other)], rect, str(out_path))
+        assert out == str(out_path)
+        with rasterio.open(out) as ds:
+            assert ds.crs.to_epsg() == 3857
+        assert any(r.levelno == logging.WARNING and "differs" in r.getMessage() for r in caplog.records)
