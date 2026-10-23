@@ -709,7 +709,7 @@ VoxCity integrates many open datasets. Expand for full provenance (coverage, res
 
 | Dataset | Coverage | Resolution | Source/Data Acquisition |
 |---------|-----------|------------|------------------------|
-| [FABDEM](https://doi.org/10.5523/bris.25wfy0f9ukoge2gs7a5mqpq2j7) | Worldwide | 30 m | Correction of Copernicus DEM using canopy height and building footprints data / 2011-2015 (Copernicus DEM) · read without an account · CC BY-NC-SA 4.0 |
+| [FABDEM](https://doi.org/10.5523/bris.s5hqmjcdj8yo2ibzi9b4ew3sn) | Worldwide | 30 m | Correction of Copernicus DEM using canopy height and building footprints data / 2011-2015 (Copernicus DEM) · read without an account · CC BY-NC-SA 4.0 |
 | [Copernicus DEM GLO-30](https://registry.opendata.aws/copernicus-dem/) | Worldwide | 30 m | Surface model (includes buildings and trees) / 2011-2015 · read from AWS Open Data without an account |
 | [DeltaDTM](https://gee-community-catalog.org/projects/delta_dtm/) | Worldwide (Only for coastal areas below 10m + mean sea level) | 30 m | Copernicus DEM, spaceborne LiDAR / 2011-2015 (Copernicus DEM) |
 | [USGS 3DEP 1/3 arc-second](https://www.usgs.gov/3d-elevation-program/about-3dep-products-services) | United States | ~10 m | Bare-earth DEM from lidar and other sources, read from AWS Open Data without an account |
