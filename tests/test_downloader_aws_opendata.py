@@ -6,6 +6,8 @@ import numpy as np
 import pytest
 import rasterio
 import requests as _requests
+from pyproj import Transformer
+from rasterio.errors import RasterioIOError
 from rasterio.transform import from_origin
 
 from voxcity.downloader.aws_opendata import (
@@ -13,6 +15,7 @@ from voxcity.downloader.aws_opendata import (
     _quadkey,
     _quadkeys_for_bbox,
     chmv2_tile_urls,
+    fetch_cog_crop,
 )
 
 
@@ -80,3 +83,111 @@ class TestChmv2TileUrls:
         with patch("voxcity.downloader.aws_opendata.requests.head", return_value=_Resp(200)):
             urls = chmv2_tile_urls([(13.3, 52.1)], base_url="https://example.org/mirror/")
         assert urls == ["https://example.org/mirror/chm/1202120103.tif"]
+
+
+_TO_LONLAT = Transformer.from_crs("EPSG:3857", "EPSG:4326", always_xy=True)
+
+
+def _merc_rect(x0, y0, x1, y1):
+    """Rectangle vertices (lon, lat) for an EPSG:3857 box."""
+    corners = [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
+    return [tuple(_TO_LONLAT.transform(x, y)) for x, y in corners]
+
+
+def _write_tile(path, left, top, values, res=1.0):
+    """Write a uint8 EPSG:3857 GeoTIFF with its top-left corner at (left, top)."""
+    values = np.asarray(values, dtype="uint8")
+    transform = from_origin(left, top, res, res)
+    with rasterio.open(
+        path, "w", driver="GTiff", width=values.shape[1], height=values.shape[0],
+        count=1, dtype="uint8", crs="EPSG:3857", transform=transform,
+    ) as ds:
+        ds.write(values, 1)
+    return str(path)
+
+
+# Tiles live near Berlin in EPSG:3857 so lat/lon <-> metres stays well-conditioned.
+_X0, _Y0 = 1_480_000.0, 6_860_000.0   # top-left of tile A (metres)
+
+
+@pytest.fixture
+def tile_a(tmp_path):
+    # 20x20 px, value = row index (0..19), 1 m/px, top-left (_X0, _Y0)
+    vals = np.repeat(np.arange(20, dtype="uint8")[:, None], 20, axis=1)
+    return _write_tile(tmp_path / "a.tif", _X0, _Y0, vals)
+
+
+@pytest.fixture
+def tile_b(tmp_path):
+    # Same rows, immediately east of tile A, constant 200
+    vals = np.full((20, 20), 200, dtype="uint8")
+    return _write_tile(tmp_path / "b.tif", _X0 + 20, _Y0, vals)
+
+
+class TestFetchCogCrop:
+    def test_single_tile_crop_has_expected_extent_and_values(self, tile_a, tmp_path):
+        # Box 5..15 m east, 5..15 m south of the tile origin -> rows 5..14
+        rect = _merc_rect(_X0 + 5, _Y0 - 15, _X0 + 15, _Y0 - 5)
+        out = fetch_cog_crop([tile_a], rect, str(tmp_path / "out.tif"))
+        assert out == str(tmp_path / "out.tif")
+        with rasterio.open(out) as ds:
+            assert ds.crs.to_epsg() == 3857
+            assert ds.dtypes[0] == "uint8"
+            assert ds.res == (1.0, 1.0)
+            # One-pixel padding on every side: rows 4..15 -> 12 px tall
+            assert ds.height == 12 and ds.width == 12
+            arr = ds.read(1)
+        assert arr[0, 0] == 4 and arr[-1, 0] == 15
+
+    def test_two_tiles_mosaic_seamlessly(self, tile_a, tile_b, tmp_path):
+        # Box straddling the A|B boundary at x = _X0 + 20
+        rect = _merc_rect(_X0 + 15, _Y0 - 10, _X0 + 25, _Y0 - 5)
+        out = fetch_cog_crop([tile_a, tile_b], rect, str(tmp_path / "out.tif"))
+        with rasterio.open(out) as ds:
+            arr = ds.read(1)
+            left = ds.transform.c
+        col_of_boundary = int(round((_X0 + 20) - left))
+        assert arr[0, col_of_boundary - 1] < 200   # from A (row value)
+        assert arr[0, col_of_boundary] == 200       # from B
+
+    def test_bbox_outside_tile_is_zero_filled(self, tile_a, tmp_path):
+        # Box extends 10 m north of tile A (nothing there)
+        rect = _merc_rect(_X0 + 2, _Y0 - 5, _X0 + 8, _Y0 + 10)
+        out = fetch_cog_crop([tile_a], rect, str(tmp_path / "out.tif"))
+        with rasterio.open(out) as ds:
+            arr = ds.read(1)
+        assert arr[0, :].max() == 0          # north rim: padding
+        assert arr[-2, :].max() > 0          # inside tile A (row ~4)
+
+    def test_unopenable_source_is_skipped(self, tile_a, tmp_path):
+        rect = _merc_rect(_X0 + 5, _Y0 - 15, _X0 + 15, _Y0 - 5)
+        out = fetch_cog_crop(
+            [str(tmp_path / "missing.tif"), tile_a], rect, str(tmp_path / "out.tif")
+        )
+        assert out is not None and os.path.exists(out)
+
+    def test_all_sources_unopenable_returns_none(self, tmp_path):
+        rect = _merc_rect(_X0 + 5, _Y0 - 15, _X0 + 15, _Y0 - 5)
+        out = fetch_cog_crop([str(tmp_path / "missing.tif")], rect, str(tmp_path / "out.tif"))
+        assert out is None
+        assert not os.path.exists(tmp_path / "out.tif")
+
+    def test_creates_output_directory(self, tile_a, tmp_path):
+        rect = _merc_rect(_X0 + 5, _Y0 - 15, _X0 + 15, _Y0 - 5)
+        out = fetch_cog_crop([tile_a], rect, str(tmp_path / "nested" / "dir" / "out.tif"))
+        assert os.path.exists(out)
+
+    def test_http_url_gets_vsicurl_prefix(self, tile_a, tmp_path, monkeypatch):
+        opened = []
+        real_open = rasterio.open
+
+        def spy_open(path, *a, **k):
+            opened.append(path)
+            if isinstance(path, str) and path.startswith("/vsicurl/"):
+                raise RasterioIOError("no network in tests")
+            return real_open(path, *a, **k)
+
+        monkeypatch.setattr("voxcity.downloader.aws_opendata.rasterio.open", spy_open)
+        rect = _merc_rect(_X0 + 5, _Y0 - 15, _X0 + 15, _Y0 - 5)
+        fetch_cog_crop(["https://example.org/t.tif", tile_a], rect, str(tmp_path / "out.tif"))
+        assert opened[0] == "/vsicurl/https://example.org/t.tif"
