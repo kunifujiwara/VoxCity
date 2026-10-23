@@ -53,7 +53,7 @@ _SOURCE_URLS = {
     # Land cover
     'OpenEarthMapJapan': 'https://www.open-earth-map.org/demo/Japan/leaflet.html',
     'Urbanwatch': 'https://gee-community-catalog.org/projects/urban-watch/',
-    'ESA WorldCover': 'https://developers.google.com/earth-engine/datasets/catalog/ESA_WorldCover_v200',
+    'ESA WorldCover': 'https://registry.opendata.aws/esa-worldcover-vito/',
     'ESRI 10m Annual Land Cover': 'https://gee-community-catalog.org/projects/S2TSLULC/',
     'Dynamic World V1': 'https://developers.google.com/earth-engine/datasets/catalog/GOOGLE_DYNAMICWORLD_V1',
     # Canopy height
@@ -70,7 +70,8 @@ _SOURCE_URLS = {
     'DEM France 5m': 'https://gee-community-catalog.org/projects/france5m/',
     'AUSTRALIA 5M DEM': 'https://developers.google.com/earth-engine/datasets/catalog/AU_GA_AUSTRALIA_5M_DEM',
     'Netherlands 0.5m DTM': 'https://developers.google.com/earth-engine/datasets/catalog/AHN_AHN4',
-    'FABDEM': 'https://gee-community-catalog.org/projects/fabdem/',
+    'FABDEM': 'https://doi.org/10.5523/bris.s5hqmjcdj8yo2ibzi9b4ew3sn',
+    'COPERNICUS': 'https://registry.opendata.aws/copernicus-dem/',
     'DeltaDTM': 'https://gee-community-catalog.org/projects/delta_dtm/',
 }
 

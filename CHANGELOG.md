@@ -45,7 +45,10 @@
   native resolution instead of through an Earth Engine export, so values can
   differ slightly at cell edges. FABDEM remains CC BY-NC-SA 4.0
   (non-commercial). No global DEM removes buildings in high-rise cores; in
-  such areas prefer national lidar or `'Flat'`.
+  such areas prefer national lidar or `'Flat'`. Networks with an allow-list
+  now need to permit copernicus-dem-30m.s3.amazonaws.com,
+  esa-worldcover.s3.eu-central-1.amazonaws.com, prd-tnm.s3.amazonaws.com,
+  dataforgood-fb-data.s3.amazonaws.com and data.bris.ac.uk.
 
 ## 1.7.0 (2026-10-05)
 
