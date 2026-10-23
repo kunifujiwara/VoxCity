@@ -92,3 +92,47 @@ def test_chmv2_no_tiles_falls_back_to_static(tmp_path):
     fetch.assert_called_once()
     assert top.shape == shape
     assert np.all(top == 0) and np.all(bottom == 0)
+
+
+class _StopBeforeBuild(Exception):
+    """Sentinel to abort get_voxcity right after source resolution."""
+
+
+def _resolved_canopy_source_when_ee_unavailable(rectangle_vertices):
+    """Run get_voxcity's auto-selection with Earth Engine unavailable and
+    capture the canopy source it resolves to, short-circuiting before the
+    heavy model build via a patched _warn_source_coverage (same pattern as
+    tests/test_generator_gsi_dem.py)."""
+    from voxcity.generator import api
+
+    captured = {}
+
+    def _capture(_verts, _b, _bc, _lc, canopy_height_source, _dem):
+        captured["canopy"] = canopy_height_source
+        raise _StopBeforeBuild
+
+    with patch("voxcity.downloader.gee.initialize_earth_engine",
+               side_effect=Exception("EE unavailable")), \
+         patch.object(api, "_warn_source_coverage", side_effect=_capture):
+        try:
+            api.get_voxcity(rectangle_vertices, meshsize=10)
+        except _StopBeforeBuild:
+            pass
+    return captured.get("canopy")
+
+
+JAPAN_VERTS = [(139.75, 35.68), (139.76, 35.68), (139.76, 35.69), (139.75, 35.69)]
+USA_VERTS = [(-122.42, 37.77), (-122.41, 37.77), (-122.41, 37.78), (-122.42, 37.78)]
+
+
+def test_no_ee_auto_selects_chmv2_outside_japan():
+    assert _resolved_canopy_source_when_ee_unavailable(USA_VERTS) == CHMV2
+
+
+def test_no_ee_auto_selects_chmv2_in_japan():
+    assert _resolved_canopy_source_when_ee_unavailable(JAPAN_VERTS) == CHMV2
+
+
+def test_chmv2_has_a_source_url():
+    from voxcity.generator.api import _SOURCE_URLS
+    assert _SOURCE_URLS[CHMV2] == "https://registry.opendata.aws/dataforgood-fb-forestsv2/"
