@@ -73,7 +73,7 @@ class TestChmv2TileUrls:
         def fake_head(url, timeout):
             return _Resp(200 if url.endswith("/chm/1202120103.tif") else 404)
 
-        with patch("voxcity.downloader.aws_opendata.requests.head", side_effect=fake_head) as head:
+        with patch("voxcity.downloader.cog.requests.head", side_effect=fake_head) as head:
             urls = chmv2_tile_urls(self.BBOX_VERTS)
 
         assert urls == [f"{CHMV2_BASE_URL}/chm/1202120103.tif"]
@@ -81,13 +81,13 @@ class TestChmv2TileUrls:
 
     def test_request_exception_counts_as_missing(self):
         with patch(
-            "voxcity.downloader.aws_opendata.requests.head",
+            "voxcity.downloader.cog.requests.head",
             side_effect=_requests.ConnectionError("offline"),
         ):
             assert chmv2_tile_urls(self.BBOX_VERTS) == []
 
     def test_custom_base_url_trailing_slash_is_normalised(self):
-        with patch("voxcity.downloader.aws_opendata.requests.head", return_value=_Resp(200)):
+        with patch("voxcity.downloader.cog.requests.head", return_value=_Resp(200)):
             urls = chmv2_tile_urls([(13.3, 52.1)], base_url="https://example.org/mirror/")
         assert urls == ["https://example.org/mirror/chm/1202120103.tif"]
 
@@ -97,14 +97,14 @@ class TestRemoteExists:
 
     def test_200_true_and_404_false_silently(self, caplog, propagate_voxcity_logs):
         with caplog.at_level(logging.WARNING, logger="voxcity"):
-            with patch("voxcity.downloader.aws_opendata.requests.head", return_value=_Resp(200)):
+            with patch("voxcity.downloader.cog.requests.head", return_value=_Resp(200)):
                 assert _remote_exists(self.URL, 5) is True
-            with patch("voxcity.downloader.aws_opendata.requests.head", return_value=_Resp(404)):
+            with patch("voxcity.downloader.cog.requests.head", return_value=_Resp(404)):
                 assert _remote_exists(self.URL, 5) is False
         assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
 
     def test_503_warns(self, caplog, propagate_voxcity_logs):
-        with caplog.at_level(logging.WARNING, logger="voxcity"),                 patch("voxcity.downloader.aws_opendata.requests.head", return_value=_Resp(503)):
+        with caplog.at_level(logging.WARNING, logger="voxcity"),                 patch("voxcity.downloader.cog.requests.head", return_value=_Resp(503)):
             assert _remote_exists(self.URL, 5) is False
         warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
         assert len(warnings) == 1
@@ -112,7 +112,7 @@ class TestRemoteExists:
 
     def test_request_exception_warns(self, caplog, propagate_voxcity_logs):
         with caplog.at_level(logging.WARNING, logger="voxcity"), patch(
-            "voxcity.downloader.aws_opendata.requests.head",
+            "voxcity.downloader.cog.requests.head",
             side_effect=_requests.ConnectionError("offline"),
         ):
             assert _remote_exists(self.URL, 5) is False
@@ -221,7 +221,7 @@ class TestFetchCogCrop:
                 raise RasterioIOError("no network in tests")
             return real_open(path, *a, **k)
 
-        monkeypatch.setattr("voxcity.downloader.aws_opendata.rasterio.open", spy_open)
+        monkeypatch.setattr("voxcity.downloader.cog.rasterio.open", spy_open)
         rect = _merc_rect(_X0 + 5, _Y0 - 15, _X0 + 15, _Y0 - 5)
         fetch_cog_crop(["https://example.org/t.tif", tile_a], rect, str(tmp_path / "out.tif"))
         assert opened[0] == "/vsicurl/https://example.org/t.tif"
@@ -306,7 +306,7 @@ class TestFetchCogCropRobustness:
         def boom(*a, **k):
             raise RuntimeError("HTTP 503")
 
-        monkeypatch.setattr("voxcity.downloader.aws_opendata.merge", boom)
+        monkeypatch.setattr("voxcity.downloader.cog.merge", boom)
         rect = _merc_rect(_X0 + 5, _Y0 - 15, _X0 + 15, _Y0 - 5)
         out_path = tmp_path / "out.tif"
         with caplog.at_level(logging.WARNING, logger="voxcity"):
@@ -337,7 +337,7 @@ class TestChmv2Guards:
     def test_antimeridian_span_returns_empty_without_probes(self, caplog, propagate_voxcity_logs):
         verts = [(-179.9, 10.0), (179.9, 10.0), (179.9, 10.1), (-179.9, 10.1)]
         with caplog.at_level(logging.WARNING, logger="voxcity"), patch(
-            "voxcity.downloader.aws_opendata.requests.head"
+            "voxcity.downloader.cog.requests.head"
         ) as head:
             assert chmv2_tile_urls(verts) == []
         head.assert_not_called()
@@ -346,14 +346,14 @@ class TestChmv2Guards:
     def test_too_many_tiles_returns_empty_without_probes(self, caplog, propagate_voxcity_logs):
         verts = [(10.0, 40.0), (15.0, 40.0), (15.0, 45.0), (10.0, 45.0)]
         with caplog.at_level(logging.WARNING, logger="voxcity"), patch(
-            "voxcity.downloader.aws_opendata.requests.head"
+            "voxcity.downloader.cog.requests.head"
         ) as head:
             assert chmv2_tile_urls(verts) == []
         head.assert_not_called()
         assert any(r.levelno == logging.WARNING for r in caplog.records)
 
     def test_default_probe_timeout_is_10s(self):
-        with patch("voxcity.downloader.aws_opendata.requests.head", return_value=_Resp(404)) as head:
+        with patch("voxcity.downloader.cog.requests.head", return_value=_Resp(404)) as head:
             chmv2_tile_urls([(13.3, 52.1)])
         assert head.call_args.kwargs["timeout"] == 10
 
