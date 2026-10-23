@@ -191,3 +191,37 @@ class TestFetchCogCrop:
         rect = _merc_rect(_X0 + 5, _Y0 - 15, _X0 + 15, _Y0 - 5)
         fetch_cog_crop(["https://example.org/t.tif", tile_a], rect, str(tmp_path / "out.tif"))
         assert opened[0] == "/vsicurl/https://example.org/t.tif"
+
+
+class TestFetchCogCropResample:
+    def test_res_max_coarsens_and_takes_block_maximum(self, tile_a, tmp_path):
+        # Rows 0..19 have value = row. Crop rows 0..9 (+1 px pad -> 0..10 with
+        # row -1 zero-filled), then 5 m blocks with 'max'.
+        rect = _merc_rect(_X0 + 0, _Y0 - 10, _X0 + 10, _Y0 - 0)
+        out = fetch_cog_crop([tile_a], rect, str(tmp_path / "out.tif"), res=5.0, resampling="max")
+        with rasterio.open(out) as ds:
+            assert ds.res == (5.0, 5.0)
+            arr = ds.read(1)
+        # First 5 m block covers padded row -1 (0) and rows 0..3 -> max 3
+        assert arr[0, 0] == 3
+        # Second block covers rows 4..8 -> max 8
+        assert arr[1, 0] == 8
+
+    def test_res_average_is_between_min_and_max(self, tile_a, tmp_path):
+        rect = _merc_rect(_X0 + 0, _Y0 - 10, _X0 + 10, _Y0 - 0)
+        out = fetch_cog_crop([tile_a], rect, str(tmp_path / "out.tif"), res=5.0, resampling="average")
+        with rasterio.open(out) as ds:
+            arr = ds.read(1)
+        assert 4 <= arr[1, 0] <= 8
+
+    def test_res_nearest_keeps_integer_values(self, tile_a, tmp_path):
+        rect = _merc_rect(_X0 + 0, _Y0 - 10, _X0 + 10, _Y0 - 0)
+        out = fetch_cog_crop([tile_a], rect, str(tmp_path / "out.tif"), res=2.0, resampling="nearest")
+        with rasterio.open(out) as ds:
+            arr = ds.read(1)
+        assert set(np.unique(arr)) <= set(range(0, 20))
+
+    def test_invalid_resampling_name_raises(self, tile_a, tmp_path):
+        rect = _merc_rect(_X0 + 0, _Y0 - 10, _X0 + 10, _Y0 - 0)
+        with pytest.raises(ValueError, match="resampling"):
+            fetch_cog_crop([tile_a], rect, str(tmp_path / "out.tif"), res=5.0, resampling="cubic")
