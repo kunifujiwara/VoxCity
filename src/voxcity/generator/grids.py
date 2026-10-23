@@ -479,6 +479,21 @@ def get_canopy_height_grid(rectangle_vertices, meshsize, source, output_dir, **k
     return _finish_canopy_grid(canopy_height_grid, meshsize, **kwargs)
 
 
+# DEM sources read without Earth Engine or any account.
+_NOLOGIN_DEM_SOURCES = ("COPERNICUS", "FABDEM", "USGS 3DEP 10m")
+
+
+def _fetch_nologin_dem(source, rectangle_vertices, output_dir):
+    """Write output_dir/dem.tif for a login-free DEM source; the path or None."""
+    if source == "FABDEM":
+        from ..downloader.fabdem import fetch_fabdem
+        return fetch_fabdem(rectangle_vertices, output_dir)
+    from ..downloader import aws_opendata
+    if source == "COPERNICUS":
+        return aws_opendata.fetch_copernicus_dem(rectangle_vertices, output_dir)
+    return aws_opendata.fetch_usgs_3dep_10m(rectangle_vertices, output_dir)
+
+
 def get_dem_grid(rectangle_vertices, meshsize, source, output_dir, **kwargs):
     from ..downloader.gee import (
         initialize_earth_engine,
@@ -503,6 +518,14 @@ def get_dem_grid(rectangle_vertices, meshsize, source, output_dir, **kwargs):
         save_gsi_dem_as_geotiff(
             rectangle_vertices, geotiff_path, dem_type=kwargs.get("gsi_dem_type")
         )
+    elif source in _NOLOGIN_DEM_SOURCES:
+        geotiff_path = _fetch_nologin_dem(source, rectangle_vertices, output_dir)
+        if geotiff_path is None:
+            _logger.warning(
+                "%s could not be read for this area — falling back to flat DEM.", source
+            )
+            from ..geoprocessor.raster.core import compute_grid_shape
+            return np.zeros(compute_grid_shape(rectangle_vertices, meshsize), dtype=float)
     else:
         try:
             initialize_earth_engine()
