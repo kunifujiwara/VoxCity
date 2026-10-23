@@ -262,9 +262,8 @@ def auto_select_data_sources(rectangle_vertices):
         * Otherwise -> 'None'
     - Land cover: USA -> 'Urbanwatch'; Japan -> 'OpenEarthMapJapan'; otherwise 'OpenStreetMap'.
       (If OSM is insufficient, consider 'ESA WorldCover' manually.)
-    - Canopy height: 'High Resolution 1m Global Canopy Height Maps'
-      (when Earth Engine is unavailable: 'High Resolution 1m Global Canopy Height Maps v2',
-      read from AWS Open Data without an account).
+    - Canopy height: 'High Resolution 1m Global Canopy Height Maps v2' everywhere,
+      read from AWS Open Data without Earth Engine or an account.
     - DEM: High-resolution where available (USA, England, Australia, France, Netherlands, Japan), else 'FABDEM'.
       Japan -> 'GSI DEM Japan' (bare-earth GSI DEM; 5 m where the area is fully
       covered, otherwise the whole area at 10 m).
@@ -386,7 +385,11 @@ def auto_select_data_sources(rectangle_vertices):
         land_cover_source = 'OpenStreetMap'
 
     # Canopy height source
-    canopy_height_source = 'High Resolution 1m Global Canopy Height Maps'
+    # Meta/WRI CHMv2, read from AWS Open Data without Earth Engine or any
+    # account. More accurate than v1 on independent lidar (MAE 4.3 -> 3.0 m);
+    # its tendency to read roofs as trees is handled by masking canopy under
+    # buildings in the pipeline.
+    canopy_height_source = 'High Resolution 1m Global Canopy Height Maps v2'
 
     # DEM source
     if is_usa:
@@ -430,8 +433,9 @@ def get_voxcity(rectangle_vertices, meshsize, building_source=None, land_cover_s
             'ESA WorldCover' is read from AWS Open Data without Earth Engine or any account.
         canopy_height_source: Canopy height source (default: auto-selected based on location)
             Use 'High Resolution 1m Global Canopy Height Maps v2' for Meta/WRI CHMv2 read
-            from AWS Open Data over anonymous HTTPS (no Earth Engine or account needed;
-            this is also the automatic choice when Earth Engine is unavailable).
+            from AWS Open Data over anonymous HTTPS (no Earth Engine or account needed).
+            This is the automatic choice everywhere; pass
+            'High Resolution 1m Global Canopy Height Maps' for v1 via Earth Engine.
         dem_source: Digital elevation model source (default: auto-selected based on location)
             'COPERNICUS', 'FABDEM' and 'USGS 3DEP 10m' are read without Earth Engine or
             any account (AWS Open Data / University of Bristol); FABDEM is CC BY-NC-SA 4.0.
@@ -454,6 +458,10 @@ def get_voxcity(rectangle_vertices, meshsize, building_source=None, land_cover_s
                     i.e. nearest native pixel, matching the Earth Engine sources).
                   - canopy_resampling: 'nearest' (default) | 'average' | 'max'; aggregation
                     used when canopy_resample_res is set.
+                  - mask_canopy_under_buildings: bool (default True). Zero canopy on cells
+                    that hold a building, for every canopy source, so trees misread on
+                    roofs don't float above low buildings. Set False to keep overhanging
+                    crowns.
                   I/O options include:
                   - output_dir: Directory for intermediate/downloaded data (default: "output")
                   - save_path: Full file path to save the VoxCity object (overrides output_dir default)
@@ -523,12 +531,9 @@ def get_voxcity(rectangle_vertices, meshsize, building_source=None, land_cover_s
             if auto_sources['land_cover_source'] not in ('OpenStreetMap', 'OpenEarthMapJapan', 'ESA WorldCover'):
                 auto_sources['land_cover_source'] = 'OpenStreetMap'
             
-            # Canopy height: Meta/WRI CHMv2 is read from the AWS Open Data
-            # bucket over anonymous HTTPS, so it needs neither Earth Engine
-            # nor an account. get_canopy_height_grid falls back to 'Static'
-            # by itself if the area has no tiles or the bucket is unreachable.
-            auto_sources['canopy_height_source'] = 'High Resolution 1m Global Canopy Height Maps v2'
-            
+            # Canopy height: the auto-selected CHMv2 needs no Earth Engine,
+            # so nothing to downgrade.
+
             # DEM: sources read without Earth Engine or any account.
             # Japan keeps 'GSI DEM Japan' (GSI tiles over HTTP); the US gets
             # the USGS 3DEP 1/3 arc-second bare-earth DEM from AWS; everywhere
