@@ -25,7 +25,7 @@ import os
 from typing import List, Optional, Sequence, Tuple
 
 from ..utils.logging import get_logger
-from .cog import _bbox_from_rectangle_vertices, _remote_exists, fetch_cog_crop
+from .cog import _bbox_from_rectangle_vertices, fetch_cog_crop, probe_existing
 from .gsi import latlon_to_tile
 
 __all__ = ["fetch_cog_crop", "chmv2_tile_urls", "fetch_chmv2_canopy_height", "CHMV2_BASE_URL"]
@@ -105,14 +105,7 @@ def chmv2_tile_urls(
         )
         return []
     base = base_url.rstrip("/")
-    urls = []
-    for qk in quadkeys:
-        url = f"{base}/chm/{qk}.tif"
-        if _remote_exists(url, timeout):
-            urls.append(url)
-        else:
-            _logger.debug("CHMv2 tile %s not available", qk)
-    return urls
+    return probe_existing([f"{base}/chm/{qk}.tif" for qk in quadkeys], timeout)
 
 
 def fetch_chmv2_canopy_height(

@@ -29,7 +29,7 @@ from rasterio.warp import reproject, transform_bounds
 
 from ..utils.logging import get_logger
 
-__all__ = ["fetch_cog_crop"]
+__all__ = ["fetch_cog_crop", "probe_existing", "tile_origins_for"]
 
 _logger = get_logger(__name__)
 
@@ -41,6 +41,57 @@ def _bbox_from_rectangle_vertices(vertices: Sequence[Tuple[float, float]]) -> Tu
     lons = [v[0] for v in vertices]
     lats = [v[1] for v in vertices]
     return (min(lons), min(lats), max(lons), max(lats))
+
+
+# Tiles are 1 or 3 degrees; more than this many means an area far beyond any
+# city-scale model (or vertices straddling the antimeridian).
+_MAX_TILES = 16
+
+
+def _lat_tag(lat: int) -> str:
+    """'N52' / 'S05' for an integer latitude."""
+    return f"{'N' if lat >= 0 else 'S'}{abs(lat):02d}"
+
+
+def _lon_tag(lon: int) -> str:
+    """'E013' / 'W074' for an integer longitude."""
+    return f"{'E' if lon >= 0 else 'W'}{abs(lon):03d}"
+
+
+def _tile_origins(
+    min_lon: float, min_lat: float, max_lon: float, max_lat: float, step: int
+) -> List[Tuple[int, int]]:
+    """Sorted (lat0, lon0) south-west corners of every ``step``-degree tile touching the bbox."""
+    lat_lo = math.floor(min_lat / step) * step
+    lat_hi = math.floor(max_lat / step) * step
+    lon_lo = math.floor(min_lon / step) * step
+    lon_hi = math.floor(max_lon / step) * step
+    return sorted(
+        (lat, lon)
+        for lat in range(lat_lo, lat_hi + 1, step)
+        for lon in range(lon_lo, lon_hi + 1, step)
+    )
+
+
+def tile_origins_for(
+    rectangle_vertices: Sequence[Tuple[float, float]], step: int, label: str
+) -> List[Tuple[int, int]]:
+    """
+    Tile origins for ``rectangle_vertices``, or [] (with a warning) when the
+    area spans more than 180 degrees of longitude or needs more than
+    ``_MAX_TILES`` tiles.
+    """
+    min_lon, min_lat, max_lon, max_lat = _bbox_from_rectangle_vertices(rectangle_vertices)
+    origins = _tile_origins(min_lon, min_lat, max_lon, max_lat, step)
+    if max_lon - min_lon > 180 or len(origins) > _MAX_TILES:
+        _logger.warning(
+            "%s: area is too large or crosses the antimeridian (%d tiles, longitude "
+            "span %.1f deg; limit %d tiles); skipping this source",
+            label, len(origins), max_lon - min_lon, _MAX_TILES,
+        )
+        return []
+    return origins
+
 
 def _remote_exists(url: str, timeout: int) -> bool:
     """
@@ -62,11 +113,16 @@ def _remote_exists(url: str, timeout: int) -> bool:
     return False
 
 
+def probe_existing(urls: Sequence[str], timeout: int = 10) -> List[str]:
+    """The subset of ``urls`` that answer an anonymous HEAD with 200, in order."""
+    return [url for url in urls if _remote_exists(url, timeout)]
+
+
 # GDAL options for reading COGs over HTTP: skip directory listings (one HEAD
-# instead of a bucket LIST), only treat .tif as rasters, retry transient errors.
+# instead of a bucket LIST), only treat .tif rasters and .zip archives (FABDEM) as files, retry transient errors.
 _GDAL_HTTP_ENV = {
     "GDAL_DISABLE_READDIR_ON_OPEN": "EMPTY_DIR",
-    "CPL_VSIL_CURL_ALLOWED_EXTENSIONS": ".tif",
+    "CPL_VSIL_CURL_ALLOWED_EXTENSIONS": ".tif,.zip",
     "GDAL_HTTP_MAX_RETRY": "3",
     "GDAL_HTTP_RETRY_DELAY": "1",
 }
@@ -93,6 +149,8 @@ def fetch_cog_crop(
     res: Optional[float] = None,
     resampling: str = "nearest",
     timeout: int = 60,
+    pad_pixels: int = 1,
+    fill_nodata: bool = False,
 ) -> Optional[str]:
     """
     Crop one or more Cloud-Optimized GeoTIFFs to a rectangle and write a local GeoTIFF.
@@ -111,6 +169,13 @@ def fetch_cog_crop(
              units, metres for EPSG:3857) using ``resampling``.
         resampling: 'nearest' (default), 'average' or 'max'. Only used with ``res``.
         timeout: Per-request HTTP timeout in seconds (GDAL_HTTP_TIMEOUT).
+        pad_pixels: Source pixels of padding added on every side of the
+             rectangle (default 1, so cell-centre sampling at the edge never
+             falls outside the crop; DEM adapters use more for interpolation).
+        fill_nodata: Merge as float32 with NaN for source nodata and for area
+             no source covers, then fill those cells from the nearest valid
+             pixel. Returns None if no pixel is valid. Real zero values are
+             kept.
 
     Returns:
         ``out_path``, or None if no source could be opened or the read failed.
@@ -148,11 +213,15 @@ def fetch_cog_crop(
             left, bottom, right, top = transform_bounds(
                 "EPSG:4326", crs, min_lon, min_lat, max_lon, max_lat
             )
-            # One source pixel of padding so cell-centre sampling at the edge
-            # never falls just outside the crop.
-            bounds = (left - px, bottom - py, right + px, top + py)
+            # Padding so cell-centre sampling (and DEM interpolation) at the
+            # edge never falls just outside the crop.
+            bounds = (
+                left - pad_pixels * px, bottom - pad_pixels * py,
+                right + pad_pixels * px, top + pad_pixels * py,
+            )
+            merge_kwargs = {"nodata": np.nan, "dtype": "float32"} if fill_nodata else {}
             try:
-                data, transform = merge(sources, bounds=bounds)
+                data, transform = merge(sources, bounds=bounds, **merge_kwargs)
             except Exception as exc:  # noqa: BLE001
                 # Broad on purpose: GDAL read-time errors (e.g. HTTP 503 mid-range-
                 # request) surface as CPLE_* classes that are not public
@@ -162,6 +231,13 @@ def fetch_cog_crop(
         finally:
             for src in sources:
                 src.close()
+
+    if fill_nodata:
+        filled = _fill_nearest(data[0])
+        if filled is None:
+            _logger.warning("No valid pixels in the requested window; no raster written")
+            return None
+        data = filled[np.newaxis, ...]
 
     if res is not None:
         data, transform = _resample(data, transform, crs, res, _RESAMPLING[resampling])
@@ -182,6 +258,19 @@ def fetch_cog_crop(
     with rasterio.open(out_path, "w", **profile) as dst:
         dst.write(data[0], 1)
     return out_path
+
+
+def _fill_nearest(a: np.ndarray) -> Optional[np.ndarray]:
+    """Replace non-finite cells with the nearest finite cell; None if none are finite."""
+    from scipy import ndimage
+
+    invalid = ~np.isfinite(a)
+    if invalid.all():
+        return None
+    if not invalid.any():
+        return a
+    idx = ndimage.distance_transform_edt(invalid, return_distances=False, return_indices=True)
+    return a[tuple(idx)]
 
 
 def _resample(data, transform, crs, res: float, resampling: Resampling):

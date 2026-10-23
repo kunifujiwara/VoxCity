@@ -12,11 +12,11 @@ from pyproj import Transformer
 from rasterio.errors import RasterioIOError
 from rasterio.transform import from_origin
 
+from voxcity.downloader.cog import _remote_exists
 from voxcity.downloader.aws_opendata import (
     CHMV2_BASE_URL,
     _quadkey,
     _quadkeys_for_bbox,
-    _remote_exists,
     chmv2_tile_urls,
     fetch_chmv2_canopy_height,
     fetch_cog_crop,
