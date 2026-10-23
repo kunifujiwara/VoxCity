@@ -25,6 +25,25 @@
   `canopy_height_source='OpenStreetMap'` explicitly to get OSM point trees
   without Earth Engine. If only some tiles are reachable, the unreachable
   ones are logged and treated as no canopy.
+- **Terrain and land cover without Earth Engine or any account.**
+  `'COPERNICUS'` (Copernicus GLO-30 on AWS), `'ESA WorldCover'` (2021 v200 on
+  AWS) and `'FABDEM'` (University of Bristol archives) are now read directly,
+  with only the window around the area transferred. New source
+  `'USGS 3DEP 10m'` reads the US 1/3 arc-second bare-earth DEM from AWS.
+  When Earth Engine is unavailable, the auto-selected DEM is now
+  `'USGS 3DEP 10m'` in the US and `'FABDEM'` elsewhere (Japan keeps
+  `'GSI DEM Japan'`) instead of `'Flat'`. If a DEM cannot be read the grid
+  falls back to flat; if WorldCover cannot be read land cover falls back to
+  OpenStreetMap.
+
+### Changed
+
+- `'ESA WorldCover'`, `'COPERNICUS'` and `'FABDEM'` no longer use Earth
+  Engine even when it is available. The data is the same; it is read at
+  native resolution instead of through an Earth Engine export, so values can
+  differ slightly at cell edges. FABDEM remains CC BY-NC-SA 4.0
+  (non-commercial). No global DEM removes buildings in high-rise cores; in
+  such areas prefer national lidar or `'Flat'`.
 
 ## 1.7.0 (2026-10-05)
 
