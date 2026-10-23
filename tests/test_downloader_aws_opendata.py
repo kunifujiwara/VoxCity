@@ -15,6 +15,7 @@ from voxcity.downloader.aws_opendata import (
     _quadkey,
     _quadkeys_for_bbox,
     chmv2_tile_urls,
+    fetch_chmv2_canopy_height,
     fetch_cog_crop,
 )
 
@@ -225,3 +226,40 @@ class TestFetchCogCropResample:
         rect = _merc_rect(_X0 + 0, _Y0 - 10, _X0 + 10, _Y0 - 0)
         with pytest.raises(ValueError, match="resampling"):
             fetch_cog_crop([tile_a], rect, str(tmp_path / "out.tif"), res=5.0, resampling="cubic")
+
+
+class TestFetchChmv2CanopyHeight:
+    VERTS = [(13.3, 52.1), (13.31, 52.1), (13.31, 52.11), (13.3, 52.11)]
+
+    def test_writes_canopy_height_tif_in_output_dir(self, tmp_path):
+        calls = {}
+
+        def fake_tile_urls(verts, base_url=CHMV2_BASE_URL, timeout=30):
+            return ["https://example.org/chm/1202120103.tif"]
+
+        def fake_fetch(urls, verts, out_path, *, res=None, resampling="nearest", timeout=60):
+            calls.update(urls=urls, out_path=out_path, res=res, resampling=resampling)
+            open(out_path, "wb").close()
+            return out_path
+
+        with patch("voxcity.downloader.aws_opendata.chmv2_tile_urls", side_effect=fake_tile_urls), \
+             patch("voxcity.downloader.aws_opendata.fetch_cog_crop", side_effect=fake_fetch):
+            out = fetch_chmv2_canopy_height(
+                self.VERTS, str(tmp_path / "out"), res=5.0, resampling="max"
+            )
+
+        assert out == str(tmp_path / "out" / "canopy_height.tif")
+        assert os.path.exists(out)
+        assert calls["urls"] == ["https://example.org/chm/1202120103.tif"]
+        assert calls["res"] == 5.0 and calls["resampling"] == "max"
+
+    def test_no_tiles_returns_none_without_fetching(self, tmp_path):
+        with patch("voxcity.downloader.aws_opendata.chmv2_tile_urls", return_value=[]), \
+             patch("voxcity.downloader.aws_opendata.fetch_cog_crop") as fetch:
+            assert fetch_chmv2_canopy_height(self.VERTS, str(tmp_path)) is None
+        fetch.assert_not_called()
+
+    def test_fetch_failure_propagates_none(self, tmp_path):
+        with patch("voxcity.downloader.aws_opendata.chmv2_tile_urls", return_value=["u"]), \
+             patch("voxcity.downloader.aws_opendata.fetch_cog_crop", return_value=None):
+            assert fetch_chmv2_canopy_height(self.VERTS, str(tmp_path)) is None

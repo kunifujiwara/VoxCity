@@ -236,3 +236,26 @@ def _resample(data, transform, crs, res: float, resampling: Resampling):
         resampling=resampling,
     )
     return dst[np.newaxis, ...], dst_transform
+
+
+def fetch_chmv2_canopy_height(
+    rectangle_vertices: Sequence[Tuple[float, float]],
+    output_dir: str,
+    *,
+    res: Optional[float] = None,
+    resampling: str = "nearest",
+    base_url: str = CHMV2_BASE_URL,
+) -> Optional[str]:
+    """
+    Write ``output_dir/canopy_height.tif`` cropped from Meta/WRI CHMv2 tiles.
+
+    Anonymous HTTPS only; nothing to sign in to. Returns the GeoTIFF path, or
+    None when no tile covers the area or none could be read (offline).
+    """
+    urls = chmv2_tile_urls(rectangle_vertices, base_url=base_url)
+    if not urls:
+        _logger.info("CHMv2: no tiles cover this area (or the bucket is unreachable)")
+        return None
+    os.makedirs(output_dir, exist_ok=True)
+    out_path = os.path.join(output_dir, "canopy_height.tif")
+    return fetch_cog_crop(urls, rectangle_vertices, out_path, res=res, resampling=resampling)
