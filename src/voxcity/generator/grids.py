@@ -323,6 +323,29 @@ def get_building_height_grid(rectangle_vertices, meshsize, source, output_dir, b
     return building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings
 
 
+def _finish_canopy_grid(canopy_height_grid, meshsize, **kwargs):
+    """Shared tail for raster canopy sources: sentinel cleanup, trunk ratio, viz.
+
+    The Meta and ETH datasets store canopy height as uint8 and use 255 as
+    their nodata / "no canopy" sentinel.  Replace with 0 so downstream code
+    treats those cells as bare ground instead of 255-metre-tall trees.
+    """
+    canopy_height_grid = np.where(canopy_height_grid >= 255, 0, canopy_height_grid)
+
+    trunk_height_ratio = kwargs.get("trunk_height_ratio")
+    if trunk_height_ratio is None:
+        trunk_height_ratio = 11.76 / 19.98
+    canopy_bottom_grid = canopy_height_grid * float(trunk_height_ratio)
+
+    grid_vis = kwargs.get("gridvis", True)
+    if grid_vis:
+        canopy_height_grid_nan = canopy_height_grid.copy()
+        canopy_height_grid_nan[canopy_height_grid_nan == 0] = np.nan
+        from ..visualizer.grids import visualize_numerical_grid
+        visualize_numerical_grid(canopy_height_grid_nan, meshsize, "Tree canopy height", cmap='Greens', label='Tree canopy height (m)')
+    return canopy_height_grid, canopy_bottom_grid
+
+
 def get_canopy_height_grid(rectangle_vertices, meshsize, source, output_dir, **kwargs):
     from ..downloader.gee import (
         initialize_earth_engine,
@@ -434,23 +457,7 @@ def get_canopy_height_grid(rectangle_vertices, meshsize, source, output_dir, **k
     save_geotiff(image, geotiff_path, scale=meshsize, region=roi, crs='EPSG:4326')
     canopy_height_grid = create_height_grid_from_geotiff_polygon(geotiff_path, meshsize, rectangle_vertices)
 
-    # The ETH dataset stores canopy height as uint8 and uses 255 as its
-    # nodata / "no canopy" sentinel.  Replace with 0 so downstream code
-    # treats those cells as bare ground instead of 255-metre-tall trees.
-    canopy_height_grid = np.where(canopy_height_grid >= 255, 0, canopy_height_grid)
-
-    trunk_height_ratio = kwargs.get("trunk_height_ratio")
-    if trunk_height_ratio is None:
-        trunk_height_ratio = 11.76 / 19.98
-    canopy_bottom_grid = canopy_height_grid * float(trunk_height_ratio)
-
-    grid_vis = kwargs.get("gridvis", True)
-    if grid_vis:
-        canopy_height_grid_nan = canopy_height_grid.copy()
-        canopy_height_grid_nan[canopy_height_grid_nan == 0] = np.nan
-        from ..visualizer.grids import visualize_numerical_grid
-        visualize_numerical_grid(canopy_height_grid_nan, meshsize, "Tree canopy height", cmap='Greens', label='Tree canopy height (m)')
-    return canopy_height_grid, canopy_bottom_grid
+    return _finish_canopy_grid(canopy_height_grid, meshsize, **kwargs)
 
 
 def get_dem_grid(rectangle_vertices, meshsize, source, output_dir, **kwargs):
