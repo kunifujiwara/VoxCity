@@ -9,6 +9,8 @@ Two layers:
 
 - The generic Cloud-Optimized-GeoTIFF reader (``fetch_cog_crop``) now lives
   in ``cog.py`` and is re-exported here.
+- Copernicus DEM GLO-30 and USGS 3DEP 1/3 arc-second DEM adapters (DEM sources).
+- ESA WorldCover 10 m adapter (land cover, written in VoxCity's class colours).
 - CHMv2 adapter: Meta / WRI High Resolution Canopy Height Maps v2
   (https://registry.opendata.aws/dataforgood-fb-forestsv2/, CC BY 4.0).
   Tiles are zoom-10 Web Mercator tiles named by their 10-digit Bing quadkey,
@@ -25,10 +27,20 @@ import os
 from typing import List, Optional, Sequence, Tuple
 
 from ..utils.logging import get_logger
-from .cog import _bbox_from_rectangle_vertices, fetch_cog_crop, probe_existing
+from .cog import (
+    _bbox_from_rectangle_vertices,
+    _lat_tag,
+    _lon_tag,
+    fetch_cog_crop,
+    probe_existing,
+    tile_origins_for,
+)
 from .gsi import latlon_to_tile
 
-__all__ = ["fetch_cog_crop", "chmv2_tile_urls", "fetch_chmv2_canopy_height", "CHMV2_BASE_URL"]
+__all__ = [
+    "fetch_cog_crop", "chmv2_tile_urls", "fetch_chmv2_canopy_height", "CHMV2_BASE_URL",
+    "copernicus_tile_urls", "fetch_copernicus_dem", "usgs_3dep_10m_tile_urls", "fetch_usgs_3dep_10m",
+]
 
 _logger = get_logger(__name__)
 
@@ -137,3 +149,90 @@ def fetch_chmv2_canopy_height(
     os.makedirs(output_dir, exist_ok=True)
     out_path = os.path.join(output_dir, "canopy_height.tif")
     return fetch_cog_crop(urls, rectangle_vertices, out_path, res=res, resampling=resampling)
+
+
+# --- Copernicus DEM GLO-30 (surface model; buildings and trees included) ---
+
+COPERNICUS_BASE_URL = "https://copernicus-dem-30m.s3.amazonaws.com"
+
+
+def _copernicus_tile_name(lat0: int, lon0: int) -> str:
+    """Tile (and folder) name for the 1-degree tile with south-west corner (lat0, lon0)."""
+    return f"Copernicus_DSM_COG_10_{_lat_tag(lat0)}_00_{_lon_tag(lon0)}_00_DEM"
+
+
+def copernicus_tile_urls(
+    rectangle_vertices: Sequence[Tuple[float, float]],
+    base_url: str = COPERNICUS_BASE_URL,
+    timeout: int = 10,
+) -> List[str]:
+    """URLs of the Copernicus GLO-30 tiles that cover the area and exist (open ocean has none)."""
+    base = base_url.rstrip("/")
+    names = [_copernicus_tile_name(lat, lon) for lat, lon in tile_origins_for(rectangle_vertices, 1, "Copernicus DEM")]
+    return probe_existing([f"{base}/{n}/{n}.tif" for n in names], timeout)
+
+
+def fetch_copernicus_dem(
+    rectangle_vertices: Sequence[Tuple[float, float]],
+    output_dir: str,
+    *,
+    base_url: str = COPERNICUS_BASE_URL,
+) -> Optional[str]:
+    """
+    Write ``output_dir/dem.tif`` from Copernicus DEM GLO-30 on AWS (no login).
+
+    Missing tiles (open ocean) are zero-filled by the mosaic, i.e. sea level.
+    Returns None when no tile exists or none could be read.
+    """
+    urls = copernicus_tile_urls(rectangle_vertices, base_url=base_url)
+    if not urls:
+        _logger.info("Copernicus DEM: no tiles cover this area (or the bucket is unreachable)")
+        return None
+    os.makedirs(output_dir, exist_ok=True)
+    out_path = os.path.join(output_dir, "dem.tif")
+    # ~120 m of padding at 1 arc-second, matching the 100 m buffer of the
+    # Earth Engine DEM path, so interpolation at the edge has neighbours.
+    return fetch_cog_crop(urls, rectangle_vertices, out_path, pad_pixels=4)
+
+
+# --- USGS 3DEP 1/3 arc-second seamless DEM (bare earth, US) ---
+
+USGS_3DEP_10M_BASE_URL = "https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/13/TIFF/current"
+
+
+def _usgs_3dep_tile_tag(lat0: int, lon0: int) -> str:
+    """USGS tiles are named by their NORTH-west corner, e.g. 'n41w074' for lat 40..41, lon -74..-73."""
+    return f"{_lat_tag(lat0 + 1)}{_lon_tag(lon0)}".lower()
+
+
+def usgs_3dep_10m_tile_urls(
+    rectangle_vertices: Sequence[Tuple[float, float]],
+    base_url: str = USGS_3DEP_10M_BASE_URL,
+    timeout: int = 10,
+) -> List[str]:
+    """URLs of the USGS 3DEP 1/3 arc-second tiles that cover the area and exist."""
+    base = base_url.rstrip("/")
+    tags = [_usgs_3dep_tile_tag(lat, lon) for lat, lon in tile_origins_for(rectangle_vertices, 1, "USGS 3DEP 10m")]
+    return probe_existing([f"{base}/{t}/USGS_13_{t}.tif" for t in tags], timeout)
+
+
+def fetch_usgs_3dep_10m(
+    rectangle_vertices: Sequence[Tuple[float, float]],
+    output_dir: str,
+    *,
+    base_url: str = USGS_3DEP_10M_BASE_URL,
+) -> Optional[str]:
+    """
+    Write ``output_dir/dem.tif`` from the USGS 3DEP 1/3 arc-second DEM on AWS (no login).
+
+    Cells with the dataset's nodata (-999999) are filled from the nearest valid
+    pixel. Returns None when no tile exists or nothing valid could be read.
+    """
+    urls = usgs_3dep_10m_tile_urls(rectangle_vertices, base_url=base_url)
+    if not urls:
+        _logger.info("USGS 3DEP 10m: no tiles cover this area (or the bucket is unreachable)")
+        return None
+    os.makedirs(output_dir, exist_ok=True)
+    out_path = os.path.join(output_dir, "dem.tif")
+    # ~100 m of padding at 1/3 arc-second.
+    return fetch_cog_crop(urls, rectangle_vertices, out_path, pad_pixels=10, fill_nodata=True)
