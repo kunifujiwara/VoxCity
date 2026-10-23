@@ -1,4 +1,5 @@
 """Tests for voxcity.downloader.aws_opendata (offline)."""
+import logging
 import os
 from unittest.mock import patch
 
@@ -14,6 +15,7 @@ from voxcity.downloader.aws_opendata import (
     CHMV2_BASE_URL,
     _quadkey,
     _quadkeys_for_bbox,
+    _remote_exists,
     chmv2_tile_urls,
     fetch_chmv2_canopy_height,
     fetch_cog_crop,
@@ -48,6 +50,9 @@ class TestQuadkeysForBbox:
         assert keys == ["1202120101", "1202120103", "1202120110", "1202120112"]
         assert keys == sorted(set(keys))
         assert all(len(k) == 10 for k in keys)
+
+    def test_global_bbox_is_clamped_to_web_mercator(self):
+        assert _quadkeys_for_bbox(-180.0, -90.0, 180.0, 90.0, zoom=1) == ["0", "1", "2", "3"]
 
 
 def test_base_url_has_no_trailing_slash():
@@ -84,6 +89,43 @@ class TestChmv2TileUrls:
         with patch("voxcity.downloader.aws_opendata.requests.head", return_value=_Resp(200)):
             urls = chmv2_tile_urls([(13.3, 52.1)], base_url="https://example.org/mirror/")
         assert urls == ["https://example.org/mirror/chm/1202120103.tif"]
+
+
+@pytest.fixture
+def module_caplog(caplog):
+    """voxcity loggers don't propagate to root, so attach caplog's handler directly."""
+    from voxcity.downloader import aws_opendata
+
+    aws_opendata._logger.addHandler(caplog.handler)
+    caplog.set_level(logging.DEBUG, logger=aws_opendata._logger.name)
+    yield caplog
+    aws_opendata._logger.removeHandler(caplog.handler)
+
+
+class TestRemoteExists:
+    URL = "https://example.org/chm/x.tif"
+
+    def test_200_true_and_404_false_silently(self, module_caplog):
+        with patch("voxcity.downloader.aws_opendata.requests.head", return_value=_Resp(200)):
+            assert _remote_exists(self.URL, 5) is True
+        with patch("voxcity.downloader.aws_opendata.requests.head", return_value=_Resp(404)):
+            assert _remote_exists(self.URL, 5) is False
+        assert not [r for r in module_caplog.records if r.levelno >= logging.WARNING]
+
+    def test_503_warns(self, module_caplog):
+        with patch("voxcity.downloader.aws_opendata.requests.head", return_value=_Resp(503)):
+            assert _remote_exists(self.URL, 5) is False
+        warnings = [r for r in module_caplog.records if r.levelno == logging.WARNING]
+        assert len(warnings) == 1
+        assert self.URL in warnings[0].getMessage() and "503" in warnings[0].getMessage()
+
+    def test_request_exception_warns(self, module_caplog):
+        with patch(
+            "voxcity.downloader.aws_opendata.requests.head",
+            side_effect=_requests.ConnectionError("offline"),
+        ):
+            assert _remote_exists(self.URL, 5) is False
+        assert any(r.levelno == logging.WARNING and self.URL in r.getMessage() for r in module_caplog.records)
 
 
 _TO_LONLAT = Transformer.from_crs("EPSG:3857", "EPSG:4326", always_xy=True)

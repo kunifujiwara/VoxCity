@@ -46,6 +46,7 @@ CHMV2_BASE_URL = (
     "https://dataforgood-fb-data.s3.amazonaws.com/forests/v2/global/dinov3_global_chm_v2_ml3"
 )
 CHMV2_ZOOM = 10
+_MERCATOR_MAX_LAT = 85.05112878
 
 
 def _bbox_from_rectangle_vertices(vertices: Sequence[Tuple[float, float]]) -> Tuple[float, float, float, float]:
@@ -75,8 +76,18 @@ def _quadkeys_for_bbox(
     min_lon: float, min_lat: float, max_lon: float, max_lat: float, zoom: int = CHMV2_ZOOM
 ) -> List[str]:
     """Sorted, de-duplicated quadkeys of every ``zoom`` tile touching the bbox."""
+    # Web Mercator is undefined beyond ~85.05 degrees; clamp so polar or
+    # global boxes neither crash nor produce out-of-range tile indices.
+    max_lat = max(-_MERCATOR_MAX_LAT, min(_MERCATOR_MAX_LAT, max_lat))
+    min_lat = max(-_MERCATOR_MAX_LAT, min(_MERCATOR_MAX_LAT, min_lat))
+    last = 2**zoom - 1
+
+    def _clamp(v: int) -> int:
+        return max(0, min(last, v))
+
     x0, y0 = latlon_to_tile(max_lat, min_lon, zoom)  # top-left
     x1, y1 = latlon_to_tile(min_lat, max_lon, zoom)  # bottom-right
+    x0, y0, x1, y1 = _clamp(x0), _clamp(y0), _clamp(x1), _clamp(y1)
     keys = {
         _quadkey(x, y, zoom)
         for x in range(min(x0, x1), max(x0, x1) + 1)
@@ -86,11 +97,23 @@ def _quadkeys_for_bbox(
 
 
 def _remote_exists(url: str, timeout: int) -> bool:
-    """True if an anonymous HEAD returns 200. Network errors count as missing."""
+    """
+    True if an anonymous HEAD returns 200.
+
+    404 is the normal "no tile here" answer and is silent. Any other status
+    or a network error also returns False but is logged as a warning, since
+    it silently shrinks coverage.
+    """
     try:
-        return requests.head(url, timeout=timeout).status_code == 200
-    except requests.RequestException:
+        status = requests.head(url, timeout=timeout).status_code
+    except requests.RequestException as exc:
+        _logger.warning("CHMv2 tile probe failed for %s: %s", url, exc)
         return False
+    if status == 200:
+        return True
+    if status != 404:
+        _logger.warning("CHMv2 tile probe for %s returned HTTP %s", url, status)
+    return False
 
 
 def chmv2_tile_urls(
