@@ -166,7 +166,7 @@ earthengine authenticate
   Supports various building and terrain data sources including:
   - Building Footprints: OpenStreetMap, Overture, EUBUCCO, Microsoft Building Footprints, Open Building 2.5D
   - Land Cover: UrbanWatch, OpenEarthMap Japan, ESA WorldCover, ESRI Land Cover, Dynamic World, OpenStreetMap
-  - Canopy Height: High Resolution 1m Global Canopy Height Maps (v1 via Earth Engine; v2 via AWS Open Data, no account needed), ETH Global Sentinel-2 10m
+  - Canopy Height: High Resolution 1m Global Canopy Height Maps (v2 via AWS Open Data, no account needed, is the default; v1 via Earth Engine), ETH Global Sentinel-2 10m
   - DEM: DeltaDTM, FABDEM, NASA, COPERNICUS, and more
   - No account needed: CHMv2 canopy, ESA WorldCover, Copernicus DEM, FABDEM and USGS 3DEP 10m are read directly without Earth Engine.
 

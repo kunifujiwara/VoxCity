@@ -40,6 +40,20 @@
 
 ### Changed
 
+- **CHMv2 is the default canopy everywhere**, with or without Earth Engine.
+  `auto_select_data_sources` now picks `'High Resolution 1m Global Canopy
+  Height Maps v2'` instead of v1, so the same area gives the same trees for
+  every user. On independent lidar CHMv2 is more accurate than v1 (MAE
+  4.3 -> 3.0 m, R² 0.53 -> 0.86, bias +2.6 -> 0.0 m; Meta/WRI CHMv2 paper).
+  Results change for Earth Engine users who relied on the v1 default; pass
+  `canopy_height_source='High Resolution 1m Global Canopy Height Maps'` to
+  keep v1.
+- **Canopy is masked under buildings by default** (all canopy sources).
+  Cells that hold a building get zero canopy, so trees a model misreads on
+  roofs no longer float above low buildings. Measured against Dutch AHN lidar
+  in Amsterdam, CHMv2 marked 15-18% of roof interiors as canopy (v1: about
+  1%). Pass `mask_canopy_under_buildings=False` to keep crowns that overhang
+  buildings.
 - `'ESA WorldCover'`, `'COPERNICUS'` and `'FABDEM'` no longer use Earth
   Engine even when it is available. The data is the same; it is read at
   native resolution instead of through an Earth Engine export, so values can
