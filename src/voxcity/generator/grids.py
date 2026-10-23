@@ -434,6 +434,25 @@ def get_canopy_height_grid(rectangle_vertices, meshsize, source, output_dir, **k
 
         return canopy_top, canopy_bottom
 
+    # AWS Open Data path (no Earth Engine, no account): Meta/WRI CHMv2 tiles
+    # are read over anonymous HTTPS. Must run before initialize_earth_engine()
+    # so an EE failure never masks this source.
+    if source == 'High Resolution 1m Global Canopy Height Maps v2':
+        from ..downloader.aws_opendata import fetch_chmv2_canopy_height
+        geotiff_path = fetch_chmv2_canopy_height(
+            rectangle_vertices, output_dir,
+            res=kwargs.get('canopy_resample_res'),
+            resampling=kwargs.get('canopy_resampling', 'nearest'),
+        )
+        if geotiff_path is None:
+            _logger.warning(
+                "CHMv2 (AWS) has no tiles for this area or could not be reached "
+                "— falling back to Static canopy heights."
+            )
+            return get_canopy_height_grid(rectangle_vertices, meshsize, 'Static', output_dir, **kwargs)
+        canopy_height_grid = create_height_grid_from_geotiff_polygon(geotiff_path, meshsize, rectangle_vertices)
+        return _finish_canopy_grid(canopy_height_grid, meshsize, **kwargs)
+
     try:
         initialize_earth_engine()
     except Exception as e:
