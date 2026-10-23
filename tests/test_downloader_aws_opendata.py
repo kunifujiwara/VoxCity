@@ -1,5 +1,6 @@
 """Tests for voxcity.downloader.aws_opendata (offline)."""
 import logging
+import math
 import os
 from unittest.mock import patch
 
@@ -283,7 +284,8 @@ class TestFetchChmv2CanopyHeight:
         assert out == str(tmp_path / "out" / "canopy_height.tif")
         assert os.path.exists(out)
         assert calls["urls"] == ["https://example.org/chm/1202120103.tif"]
-        assert calls["res"] == 5.0 and calls["resampling"] == "max"
+        assert calls["res"] == pytest.approx(5.0 / math.cos(math.radians(52.1)), rel=1e-3)
+        assert calls["resampling"] == "max"
 
     def test_no_tiles_returns_none_without_fetching(self, tmp_path):
         with patch("voxcity.downloader.aws_opendata.chmv2_tile_urls", return_value=[]), \
@@ -329,3 +331,53 @@ class TestFetchCogCropRobustness:
         with rasterio.open(out) as ds:
             assert ds.crs.to_epsg() == 3857
         assert any(r.levelno == logging.WARNING and "differs" in r.getMessage() for r in caplog.records)
+
+
+class TestChmv2Guards:
+    def test_antimeridian_span_returns_empty_without_probes(self, caplog, propagate_voxcity_logs):
+        verts = [(-179.9, 10.0), (179.9, 10.0), (179.9, 10.1), (-179.9, 10.1)]
+        with caplog.at_level(logging.WARNING, logger="voxcity"), patch(
+            "voxcity.downloader.aws_opendata.requests.head"
+        ) as head:
+            assert chmv2_tile_urls(verts) == []
+        head.assert_not_called()
+        assert any(r.levelno == logging.WARNING for r in caplog.records)
+
+    def test_too_many_tiles_returns_empty_without_probes(self, caplog, propagate_voxcity_logs):
+        verts = [(10.0, 40.0), (15.0, 40.0), (15.0, 45.0), (10.0, 45.0)]
+        with caplog.at_level(logging.WARNING, logger="voxcity"), patch(
+            "voxcity.downloader.aws_opendata.requests.head"
+        ) as head:
+            assert chmv2_tile_urls(verts) == []
+        head.assert_not_called()
+        assert any(r.levelno == logging.WARNING for r in caplog.records)
+
+    def test_default_probe_timeout_is_10s(self):
+        with patch("voxcity.downloader.aws_opendata.requests.head", return_value=_Resp(404)) as head:
+            chmv2_tile_urls([(13.3, 52.1)])
+        assert head.call_args.kwargs["timeout"] == 10
+
+
+class TestChmv2ResolutionUnits:
+    def _captured_res(self, lat, res, tmp_path):
+        verts = [(10.0, lat - 0.01), (10.02, lat - 0.01), (10.02, lat + 0.01), (10.0, lat + 0.01)]
+        captured = {}
+
+        def fake_crop(urls, v, out_path, **kw):
+            captured.update(kw)
+            return out_path
+
+        with patch("voxcity.downloader.aws_opendata.chmv2_tile_urls", return_value=["u"]), patch(
+            "voxcity.downloader.aws_opendata.fetch_cog_crop", side_effect=fake_crop
+        ):
+            fetch_chmv2_canopy_height(verts, str(tmp_path), res=res)
+        return captured["res"]
+
+    def test_res_converted_from_ground_metres_at_lat_60(self, tmp_path):
+        assert self._captured_res(60.0, 10.0, tmp_path) == pytest.approx(20.0, rel=1e-3)
+
+    def test_res_unchanged_at_equator(self, tmp_path):
+        assert self._captured_res(0.0, 10.0, tmp_path) == pytest.approx(10.0, rel=1e-3)
+
+    def test_res_none_stays_none(self, tmp_path):
+        assert self._captured_res(60.0, None, tmp_path) is None

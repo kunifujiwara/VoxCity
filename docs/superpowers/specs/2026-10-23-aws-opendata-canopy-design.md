@@ -90,7 +90,7 @@ CHMV2_BASE_URL = "https://dataforgood-fb-data.s3.amazonaws.com/forests/v2/global
 CHMV2_ZOOM = 10
 
 def _quadkeys_for_bbox(min_lon, min_lat, max_lon, max_lat, zoom=CHMV2_ZOOM) -> List[str]
-def chmv2_tile_urls(rectangle_vertices, base_url=CHMV2_BASE_URL, timeout=30) -> List[str]
+def chmv2_tile_urls(rectangle_vertices, base_url=CHMV2_BASE_URL, timeout=10) -> List[str]
 def fetch_chmv2_canopy_height(
     rectangle_vertices, output_dir, *, res=None, resampling="nearest",
     base_url=CHMV2_BASE_URL,
@@ -106,10 +106,18 @@ def fetch_chmv2_canopy_height(
   keeps those for which `requests.head(url, timeout=timeout).status_code == 200`
   (helper `_remote_exists`). A 404 is silent; any other non-200 status and any
   `requests.RequestException` on a probe is treated as "missing" but logged at
-  WARNING, since it silently shrinks coverage.
+  WARNING, since it silently shrinks coverage. The default probe timeout is
+  10 s. The quadkey list is computed first; if the longitude span exceeds
+  180 degrees (likely antimeridian-crossing vertices) or more than
+  `_MAX_CHMV2_TILES = 64` tiles are needed, a WARNING is logged and `[]` is
+  returned with no HEAD probes (falls back to Static).
 - `fetch_chmv2_canopy_height` calls the two above and `fetch_cog_crop` with
   `out_path = os.path.join(output_dir, "canopy_height.tif")`. Returns `None`
-  when no tiles exist or none could be read.
+  when no tiles exist or none could be read. `res` is in ground metres and
+  is converted to Web Mercator units as `res / cos(centre latitude)` here
+  (`fetch_cog_crop` itself stays in source-CRS units). Aggregation windows
+  are aligned to the crop, not the voxel grid, so 'max'/'average' are
+  approximate per cell.
 
 ### 3. Dispatch in `get_canopy_height_grid` (`src/voxcity/generator/grids.py`)
 
@@ -170,6 +178,7 @@ through `get_voxcity(**kwargs)`; this is not the default.
 |---|---|
 | Tile HEAD returns 404 | Tile skipped silently (expected over ocean / outside coverage) |
 | Tile HEAD returns other non-200 status, or raises | Tile skipped, `WARNING` logged |
+| Area spans >180 deg longitude or needs >64 tiles | `WARNING`, no probes, `[]` (-> Static fallback) |
 | Remote tile fails to open | `WARNING`, tile skipped (local paths: INFO) |
 | Source CRS differs from the first source | `WARNING`, source skipped |
 | Exception during the merge read (e.g. GDAL `CPLE_*` HTTP error) | `WARNING`, `fetch_cog_crop` returns `None` (→ Static fallback) |

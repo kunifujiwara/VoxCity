@@ -24,6 +24,7 @@ For guidance on choosing between these sources, see the
 | Dataset | Coverage | Resolution | Source/Data Acquisition |
 |---------|-----------|------------|------------------------|
 | [High Resolution 1m Global Canopy Height Maps](https://sustainability.atmeta.com/blog/2024/04/22/using-artificial-intelligence-to-map-the-earths-forests/) | Worldwide | 1 m | Prediction from satellite imagery / 2009 and 2020 (80% are 2018-2020) |
+| [High Resolution 1m Global Canopy Height Maps v2](https://registry.opendata.aws/dataforgood-fb-forestsv2/) | Worldwide (land) | ~1.2 m | Meta/WRI CHMv2 via AWS Open Data; anonymous HTTPS, no Earth Engine or account needed |
 | [ETH Global Sentinel-2 10m Canopy Height (2020)](https://langnico.github.io/globalcanopyheight/) | Worldwide | 10 m | Prediction from satellite imagery / 2020 |
 
 ## Land cover

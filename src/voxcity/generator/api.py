@@ -442,7 +442,8 @@ def get_voxcity(rectangle_vertices, meshsize, building_source=None, land_cover_s
                   - force_refresh: bool, if True bypasses any existing cache entry and
                     re-downloads, refreshing the cache (default: False)
                   - canopy_resample_res: float, for the CHMv2 source only: resample the ~1.2 m
-                    tiles to this pixel size (m) before sampling at cell centres (default: None,
+                    tiles to this ground pixel size (m, approximate) before sampling at cell
+                    centres (default: None,
                     i.e. nearest native pixel, matching the Earth Engine sources).
                   - canopy_resampling: 'nearest' (default) | 'average' | 'max'; aggregation
                     used when canopy_resample_res is set.

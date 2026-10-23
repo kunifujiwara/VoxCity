@@ -48,6 +48,9 @@ CHMV2_BASE_URL = (
 )
 CHMV2_ZOOM = 10
 _MERCATOR_MAX_LAT = 85.05112878
+# Zoom-10 tiles are ~39 km wide; more than this many means an area far beyond
+# any city-scale model (or antimeridian-crossing vertices), so skip the probes.
+_MAX_CHMV2_TILES = 64
 
 
 def _bbox_from_rectangle_vertices(vertices: Sequence[Tuple[float, float]]) -> Tuple[float, float, float, float]:
@@ -120,18 +123,30 @@ def _remote_exists(url: str, timeout: int) -> bool:
 def chmv2_tile_urls(
     rectangle_vertices: Sequence[Tuple[float, float]],
     base_url: str = CHMV2_BASE_URL,
-    timeout: int = 30,
+    timeout: int = 10,
 ) -> List[str]:
     """
     URLs of the CHMv2 tiles that cover ``rectangle_vertices`` and exist.
 
     The dataset covers land only, so a missing tile key simply means no
     coverage; it is dropped rather than treated as an error.
+
+    Returns [] without any network probe when the area spans more than 180
+    degrees of longitude (likely vertices straddling the antimeridian) or
+    needs more than ``_MAX_CHMV2_TILES`` tiles.
     """
     min_lon, min_lat, max_lon, max_lat = _bbox_from_rectangle_vertices(rectangle_vertices)
+    quadkeys = _quadkeys_for_bbox(min_lon, min_lat, max_lon, max_lat)
+    if max_lon - min_lon > 180 or len(quadkeys) > _MAX_CHMV2_TILES:
+        _logger.warning(
+            "CHMv2: area is too large or crosses the antimeridian (%d tiles, "
+            "longitude span %.1f deg; limit %d tiles); skipping the CHMv2 source",
+            len(quadkeys), max_lon - min_lon, _MAX_CHMV2_TILES,
+        )
+        return []
     base = base_url.rstrip("/")
     urls = []
-    for qk in _quadkeys_for_bbox(min_lon, min_lat, max_lon, max_lat):
+    for qk in quadkeys:
         url = f"{base}/chm/{qk}.tif"
         if _remote_exists(url, timeout):
             urls.append(url)
@@ -293,7 +308,15 @@ def fetch_chmv2_canopy_height(
 
     Anonymous HTTPS only; nothing to sign in to. Returns the GeoTIFF path, or
     None when no tile covers the area or none could be read (offline).
+
+    ``res`` is in ground metres. It is converted to Web Mercator units at the
+    latitude of the area's centre (EPSG:3857 metres are 1/cos(lat) ground
+    metres). Aggregation windows ('max'/'average') are aligned to the crop,
+    not to the voxel grid, so results are approximate per cell.
     """
+    if res is not None:
+        _, min_lat, _, max_lat = _bbox_from_rectangle_vertices(rectangle_vertices)
+        res = res / math.cos(math.radians((min_lat + max_lat) / 2))
     urls = chmv2_tile_urls(rectangle_vertices, base_url=base_url)
     if not urls:
         _logger.info("CHMv2: no tiles cover this area (or the bucket is unreachable)")

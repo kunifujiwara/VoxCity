@@ -18,7 +18,13 @@
   `voxcity.downloader.aws_opendata.fetch_cog_crop` is the reusable core for
   adding further AWS-hosted rasters. Optional kwargs `canopy_resample_res`
   and `canopy_resampling` ('nearest' | 'average' | 'max') control
-  aggregation for coarse meshes.
+  aggregation for coarse meshes. `canopy_resample_res` is in ground metres
+  (converted to Web Mercator units at the area's centre latitude).
+  The no-Earth-Engine fallback when CHMv2 has no tiles is the land-cover-based
+  `'Static'` source, not OpenStreetMap trees; pass
+  `canopy_height_source='OpenStreetMap'` explicitly to get OSM point trees
+  without Earth Engine. If only some tiles are reachable, the unreachable
+  ones are logged and treated as no canopy.
 
 ## 1.7.0 (2026-10-05)
 
