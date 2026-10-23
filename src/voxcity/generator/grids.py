@@ -45,7 +45,6 @@ def get_land_cover_grid(rectangle_vertices, meshsize, source, output_dir, print_
         get_roi,
         get_ee_image_collection,
         save_geotiff,
-        save_geotiff_esa_land_cover,
         save_geotiff_esri_landcover,
         save_geotiff_dynamic_world_v1,
     )
@@ -67,7 +66,7 @@ def get_land_cover_grid(rectangle_vertices, meshsize, source, output_dir, print_
         "force_refresh": kwargs.get("force_refresh", False),
     }
 
-    if source not in ["OpenStreetMap", "OpenEarthMapJapan"]:
+    if source not in ["OpenStreetMap", "OpenEarthMapJapan", "ESA WorldCover"]:
         try:
             initialize_earth_engine()
         except Exception as e:
@@ -96,13 +95,14 @@ def get_land_cover_grid(rectangle_vertices, meshsize, source, output_dir, print_
             effective_source = 'OpenStreetMap'
             land_cover_gdf = load_land_cover_gdf_from_osm(rectangle_vertices, **_cache_kwargs)
     elif source == 'ESA WorldCover':
-        roi = get_roi(rectangle_vertices)
-        save_geotiff_esa_land_cover(roi, geotiff_path)
-        if (not os.path.exists(geotiff_path)) or (os.path.getsize(geotiff_path) == 0):
-            raise ProcessingError(
-                f"{source} export produced no file at {geotiff_path}. The AOI may "
-                f"lack coverage for this dataset, or the Earth Engine export failed."
+        # Read from AWS Open Data without Earth Engine or any account.
+        from ..downloader.aws_opendata import fetch_esa_worldcover
+        if fetch_esa_worldcover(rectangle_vertices, output_dir) is None:
+            _logger.warning(
+                "ESA WorldCover could not be read for this area — falling back to OpenStreetMap."
             )
+            effective_source = 'OpenStreetMap'
+            land_cover_gdf = load_land_cover_gdf_from_osm(rectangle_vertices, **_cache_kwargs)
     elif source == 'ESRI 10m Annual Land Cover':
         esri_landcover_year = kwargs.get("esri_landcover_year")
         roi = get_roi(rectangle_vertices)
