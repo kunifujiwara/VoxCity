@@ -138,9 +138,12 @@ class TestFillNodata:
             a = ds.read(1)
             assert ds.dtypes[0] == "float32"
             r0, c0 = ds.index(13.0005, 52.9995)      # the real-zero pixel
+            hr, hc = ds.index(13.05, 52.95)          # centre of the nodata hole
         assert np.isfinite(a).all()
         assert a.min() >= 0.0 and a.max() <= 30.0
         assert a[r0, c0] == 0.0
+        assert a[hr, hc] == 30.0          # hole filled from neighbours
+        assert a[:, 0].max() == 30.0      # uncovered strip filled, not left at 0
         assert not np.any(a == -999999.0)
 
     def test_all_nodata_returns_none_and_writes_nothing(self, tmp_path):

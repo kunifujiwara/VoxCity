@@ -119,7 +119,8 @@ def probe_existing(urls: Sequence[str], timeout: int = 10) -> List[str]:
 
 
 # GDAL options for reading COGs over HTTP: skip directory listings (one HEAD
-# instead of a bucket LIST), only treat .tif rasters and .zip archives (FABDEM) as files, retry transient errors.
+# instead of a bucket LIST), only treat .tif rasters and .zip archives (FABDEM) as
+# files, retry transient errors.
 _GDAL_HTTP_ENV = {
     "GDAL_DISABLE_READDIR_ON_OPEN": "EMPTY_DIR",
     "CPL_VSIL_CURL_ALLOWED_EXTENSIONS": ".tif,.zip",
@@ -158,7 +159,7 @@ def fetch_cog_crop(
     Only the window covering the rectangle is read from each source (HTTP
     range requests for remote COGs), then the pieces are mosaicked. The output
     is in the CRS of the first openable source. Area not covered by any source
-    is filled with 0.
+    is filled with 0 (or, with ``fill_nodata=True``, from the nearest valid pixel).
 
     Args:
         urls: http(s) URLs or local paths of GeoTIFFs. Sources that fail to
