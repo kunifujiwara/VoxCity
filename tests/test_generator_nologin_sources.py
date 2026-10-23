@@ -49,11 +49,37 @@ def test_dem_source_reads_without_earth_engine(tmp_path, source):
 
 @pytest.mark.parametrize("source", list(DEM_FETCHERS))
 def test_dem_source_failure_falls_back_to_flat(tmp_path, source):
-    with patch(DEM_FETCHERS[source], return_value=None), patch(EE) as init_ee:
+    with patch(DEM_FETCHERS["COPERNICUS"], return_value=None) as cop,          patch(DEM_FETCHERS["USGS 3DEP 10m"], return_value=None) as usgs,          patch(DEM_FETCHERS["FABDEM"], return_value=None) as fab,          patch(EE) as init_ee:
         grid = get_dem_grid(VERTS, MESH, source, str(tmp_path), gridvis=False)
     init_ee.assert_not_called()
     assert grid.shape == compute_grid_shape(VERTS, MESH)
     assert np.all(grid == 0)
+    # the requested source is tried once; the chain never calls it again
+    assert {"COPERNICUS": cop, "USGS 3DEP 10m": usgs, "FABDEM": fab}[source].call_count == 1
+
+
+def test_usgs_failure_tries_fabdem_before_copernicus(tmp_path):
+    with patch(DEM_FETCHERS["USGS 3DEP 10m"], return_value=None),          patch(DEM_FETCHERS["FABDEM"], side_effect=_fake_dem(42.0)) as fab,          patch(DEM_FETCHERS["COPERNICUS"]) as cop, patch(EE) as init_ee:
+        grid = get_dem_grid(VERTS, MESH, "USGS 3DEP 10m", str(tmp_path), gridvis=False)
+    fab.assert_called_once()
+    cop.assert_not_called()
+    init_ee.assert_not_called()
+    np.testing.assert_allclose(grid, 42.0)
+
+
+def test_fabdem_failure_tries_copernicus(tmp_path):
+    with patch(DEM_FETCHERS["FABDEM"], return_value=None),          patch(DEM_FETCHERS["COPERNICUS"], side_effect=_fake_dem(7.0)), patch(EE):
+        grid = get_dem_grid(VERTS, MESH, "FABDEM", str(tmp_path), gridvis=False)
+    np.testing.assert_allclose(grid, 7.0)
+
+
+def test_all_dems_failing_gives_flat_each_called_once(tmp_path):
+    with patch(DEM_FETCHERS["USGS 3DEP 10m"], return_value=None) as usgs,          patch(DEM_FETCHERS["FABDEM"], return_value=None) as fab,          patch(DEM_FETCHERS["COPERNICUS"], return_value=None) as cop, patch(EE):
+        grid = get_dem_grid(VERTS, MESH, "USGS 3DEP 10m", str(tmp_path), gridvis=False)
+    assert np.all(grid == 0)
+    usgs.assert_called_once()
+    fab.assert_called_once()
+    cop.assert_called_once()
 
 
 

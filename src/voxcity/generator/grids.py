@@ -482,6 +482,13 @@ def get_canopy_height_grid(rectangle_vertices, meshsize, source, output_dir, **k
 # DEM sources read without Earth Engine or any account.
 _NOLOGIN_DEM_SOURCES = ("COPERNICUS", "FABDEM", "USGS 3DEP 10m")
 
+# Other login-free DEMs to try, in order, when the requested one cannot be read.
+_NOLOGIN_DEM_FALLBACKS = {
+    "USGS 3DEP 10m": ("FABDEM", "COPERNICUS"),
+    "FABDEM": ("COPERNICUS",),
+    "COPERNICUS": ("FABDEM",),
+}
+
 
 def _fetch_nologin_dem(source, rectangle_vertices, output_dir):
     """Write output_dir/dem.tif for a login-free DEM source; the path or None."""
@@ -520,6 +527,13 @@ def get_dem_grid(rectangle_vertices, meshsize, source, output_dir, **kwargs):
         )
     elif source in _NOLOGIN_DEM_SOURCES:
         geotiff_path = _fetch_nologin_dem(source, rectangle_vertices, output_dir)
+        for alt in (_NOLOGIN_DEM_FALLBACKS.get(source, ()) if geotiff_path is None else ()):
+            geotiff_path = _fetch_nologin_dem(alt, rectangle_vertices, output_dir)
+            if geotiff_path is not None:
+                _logger.warning(
+                    "%s could not be read for this area — using %s instead.", source, alt
+                )
+                break
         if geotiff_path is None:
             _logger.warning(
                 "%s could not be read for this area — falling back to flat DEM.", source

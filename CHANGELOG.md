@@ -32,8 +32,10 @@
   `'USGS 3DEP 10m'` reads the US 1/3 arc-second bare-earth DEM from AWS.
   When Earth Engine is unavailable, the auto-selected DEM is now
   `'USGS 3DEP 10m'` in the US and `'FABDEM'` elsewhere (Japan keeps
-  `'GSI DEM Japan'`) instead of `'Flat'`. If a DEM cannot be read the grid
-  falls back to flat; if WorldCover cannot be read land cover falls back to
+  `'GSI DEM Japan'`) instead of `'Flat'`. If a DEM cannot be read the other
+  login-free DEMs are tried first (`'USGS 3DEP 10m'` -> `'FABDEM'` ->
+  `'COPERNICUS'`; `'FABDEM'` -> `'COPERNICUS'`; `'COPERNICUS'` -> `'FABDEM'`),
+  then the grid falls back to flat; if WorldCover cannot be read land cover falls back to
   OpenStreetMap.
 
 ### Changed
