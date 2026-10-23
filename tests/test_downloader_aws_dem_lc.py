@@ -144,3 +144,25 @@ class TestWorldCoverRoundTrip:
     def test_no_tiles_returns_none(self, tmp_path):
         with patch("voxcity.downloader.aws_opendata.worldcover_tile_urls", return_value=[]):
             assert aod.fetch_esa_worldcover(BERLIN, str(tmp_path)) is None
+
+    def test_temp_codes_file_removed_even_if_read_fails(self, tmp_path):
+        codes_tif = tmp_path / "codes.tif"
+        with rasterio.open(
+            codes_tif, "w", driver="GTiff", width=200, height=200, count=1, dtype="uint8",
+            crs="EPSG:4326", transform=from_origin(13.36, 52.52, 0.0001, 0.0001), nodata=0,
+        ) as ds:
+            ds.write(np.full((200, 200), 10, dtype="uint8"), 1)
+
+        real_open = rasterio.open
+
+        def spy(path, mode="r", *args, **kwargs):
+            if mode == "r" and str(path).endswith("_esa_worldcover_codes.tif"):
+                raise RuntimeError("read failed")
+            return real_open(path, mode, *args, **kwargs)
+
+        out_dir = tmp_path / "o"
+        with patch("voxcity.downloader.aws_opendata.worldcover_tile_urls", return_value=[str(codes_tif)]), \
+             patch("voxcity.downloader.aws_opendata.rasterio.open", side_effect=spy):
+            with pytest.raises(RuntimeError):
+                aod.fetch_esa_worldcover(BERLIN, str(out_dir))
+        assert not os.path.exists(out_dir / "_esa_worldcover_codes.tif")

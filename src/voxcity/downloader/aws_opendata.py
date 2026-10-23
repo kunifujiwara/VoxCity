@@ -303,10 +303,13 @@ def fetch_esa_worldcover(
     codes_path = os.path.join(output_dir, "_esa_worldcover_codes.tif")
     if fetch_cog_crop(urls, rectangle_vertices, codes_path) is None:
         return None
-    with rasterio.open(codes_path) as src:
-        codes = src.read(1)
-        crs, transform = src.crs, src.transform
-    os.remove(codes_path)
+    try:
+        with rasterio.open(codes_path) as src:
+            codes = src.read(1)
+            crs, transform = src.crs, src.transform
+    finally:
+        if os.path.exists(codes_path):
+            os.remove(codes_path)
     rgb = _worldcover_rgb_lut()[codes]
     out_path = os.path.join(output_dir, "land_cover.tif")
     with rasterio.open(
