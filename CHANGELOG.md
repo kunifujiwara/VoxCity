@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.8.1 (2026-10-24)
+
+### Fixed
+
+- **Interactive map basemaps showed "API KEY REQUIRED" tiles.** CARTO now
+  requires an API key for its raster basemap tiles, so `create_rectangle_map`
+  rendered placeholder tiles instead of a map. The rectangle tool now uses
+  OpenStreetMap, and the "CartoDB Positron" option in the building, tree and
+  land-cover editors is replaced by "Esri Light Gray" (no key needed; native
+  tiles to zoom 16, upscaled beyond).
+
 ## 1.8.0 (2026-10-23)
 
 ### Added
