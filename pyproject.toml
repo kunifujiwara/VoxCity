@@ -46,7 +46,7 @@ pycountry = "*"
 seaborn = "*"
 overturemaps = "*"
 protobuf = "*"
-timezonefinder = "*"
+timezonefinder = "<9.1"  # 9.1+ needs numpy>=2.2; keeps Colab (numpy 2.1.3) from replacing a loaded numpy
 astral = "*"
 osmnx = "*"
 joblib = "*"
