@@ -644,12 +644,15 @@ def rectangle_map(center=(40, -100), zoom=15, width=500, height=500, cityname=""
     from ipyleaflet import WidgetControl, TileLayer
     from ._common import generate_editor_css, make_status_setter
 
-    _carto = TileLayer(
-        url="https://cartodb-basemaps-a.global.ssl.fastly.net/light_all/{z}/{x}/{y}.png",
-        attribution='&copy; <a href="https://carto.com/">CARTO</a>',
-        name="CartoDB Positron",
+    # CARTO raster tiles now require an API key (they serve an "API KEY
+    # REQUIRED" placeholder otherwise), so use OpenStreetMap instead.
+    _osm = TileLayer(
+        url="https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+        name="OpenStreetMap",
+        max_zoom=19,
     )
-    m = Map(center=center, zoom=zoom, scroll_wheel_zoom=True, basemap=_carto)
+    m = Map(center=center, zoom=zoom, scroll_wheel_zoom=True, basemap=_osm)
     m.layout.height = "600px"
     rectangle_vertices = []
 

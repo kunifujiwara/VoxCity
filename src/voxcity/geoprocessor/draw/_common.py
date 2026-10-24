@@ -42,18 +42,22 @@ _LC_COLORS_BY_NAME = LC_COLORS_BY_NAME
 # Basemap tile layers
 # ─────────────────────────────────────────────────────────────
 def create_basemap_tiles() -> dict[str, TileLayer]:
-    """Return a fresh dict of basemap TileLayers (Google Sat, CartoDB, OSM)."""
+    """Return a fresh dict of basemap TileLayers (Google Sat, Esri gray, OSM)."""
     return {
         "Google Satellite": TileLayer(
             url="https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
             name="Google Satellite",
             attribution="Google Satellite",
         ),
-        "CartoDB Positron": TileLayer(
-            url="https://cartodb-basemaps-a.global.ssl.fastly.net/light_all/{z}/{x}/{y}@2x.png",
-            attribution='&copy; <a href="https://carto.com/">CARTO</a>',
-            name="CartoDB Positron",
+        # CARTO raster tiles now require an API key, so Esri's key-free
+        # light-gray canvas stands in as the muted basemap. Its native
+        # tiles stop at zoom 16; Leaflet upscales them beyond that.
+        "Esri Light Gray": TileLayer(
+            url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}",
+            attribution="Tiles &copy; Esri &mdash; Esri, HERE, Garmin, OpenStreetMap contributors",
+            name="Esri Light Gray",
             max_zoom=20,
+            max_native_zoom=16,
         ),
         "OpenStreetMap": TileLayer(
             url="https://tile.openstreetmap.org/{z}/{x}/{y}.png",
