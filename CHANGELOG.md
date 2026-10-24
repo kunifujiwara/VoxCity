@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.8.2 (2026-10-24)
+
+### Fixed
+
+- **`import voxcity` failed on Google Colab after `pip install voxcity`** with
+  `AttributeError: 'numpy.ufunc' object has no attribute '__module__'`.
+  timezonefinder 9.1.0 (2026-10-20) requires `numpy>=2.2`, so installing
+  VoxCity upgraded numpy underneath Colab's already-loaded numpy 2.1.3.
+  timezonefinder is now capped at `<9.1`; every other dependency accepts
+  Colab's numpy, so the install no longer replaces it. If you already hit
+  this, restart the session once (Runtime -> Restart session) and re-import.
+- **Interactive map basemap showed 403 "Access blocked" tiles on Google Colab.**
+  openstreetmap.org blocks Colab under its tile usage policy, so the
+  OpenStreetMap basemap introduced in 1.8.1 did not render there.
+  `create_rectangle_map` now uses Esri World Street Map (no key needed, tiles
+  to zoom 19), and the "OpenStreetMap" option in the building, tree and
+  land-cover editors is replaced by "Esri Street Map".
+
 ## 1.8.1 (2026-10-24)
 
 ### Fixed
