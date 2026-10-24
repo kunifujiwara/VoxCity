@@ -42,7 +42,7 @@ _LC_COLORS_BY_NAME = LC_COLORS_BY_NAME
 # Basemap tile layers
 # ─────────────────────────────────────────────────────────────
 def create_basemap_tiles() -> dict[str, TileLayer]:
-    """Return a fresh dict of basemap TileLayers (Google Sat, Esri gray, OSM)."""
+    """Return a fresh dict of basemap TileLayers (Google Sat, Esri gray, Esri street)."""
     return {
         "Google Satellite": TileLayer(
             url="https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
@@ -59,10 +59,12 @@ def create_basemap_tiles() -> dict[str, TileLayer]:
             max_zoom=20,
             max_native_zoom=16,
         ),
-        "OpenStreetMap": TileLayer(
-            url="https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-            name="OpenStreetMap",
+        # openstreetmap.org tiles return 403 "Access blocked" in Google
+        # Colab, so Esri's street map takes that slot.
+        "Esri Street Map": TileLayer(
+            url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
+            attribution="Tiles &copy; Esri &mdash; Esri, HERE, Garmin, OpenStreetMap contributors",
+            name="Esri Street Map",
             max_zoom=19,
         ),
     }

@@ -645,14 +645,16 @@ def rectangle_map(center=(40, -100), zoom=15, width=500, height=500, cityname=""
     from ._common import generate_editor_css, make_status_setter
 
     # CARTO raster tiles now require an API key (they serve an "API KEY
-    # REQUIRED" placeholder otherwise), so use OpenStreetMap instead.
-    _osm = TileLayer(
-        url="https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-        name="OpenStreetMap",
+    # REQUIRED" placeholder otherwise) and openstreetmap.org returns 403
+    # "Access blocked" tiles to Google Colab, so use Esri's key-free
+    # street basemap.
+    _esri = TileLayer(
+        url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
+        attribution="Tiles &copy; Esri &mdash; Esri, HERE, Garmin, OpenStreetMap contributors",
+        name="Esri Street Map",
         max_zoom=19,
     )
-    m = Map(center=center, zoom=zoom, scroll_wheel_zoom=True, basemap=_osm)
+    m = Map(center=center, zoom=zoom, scroll_wheel_zoom=True, basemap=_esri)
     m.layout.height = "600px"
     rectangle_vertices = []
 
