@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.8.3 (2026-10-25)
+
+### Fixed
+
+- **Static basemap plots showed "API KEY REQUIRED" tiles.** CARTO basemap
+  tiles now require an API key. `plot_grid`, the `visualize_*_on_map` and
+  `visualize_*_on_basemap` functions, and the street-network plots in
+  `voxcity.geoprocessor.network` now default to `basemap='Esri light gray'`
+  (no key needed). Other choices: `'Esri dark gray'`, `'Esri street'`,
+  `'Esri topo'`, `'Esri satellite'`, or any contextily provider / XYZ URL.
+  The old `'CartoDB ...'` names still work: they map to the closest Esri
+  style and emit a `FutureWarning`. Zoom is capped at the provider's real
+  tiles, so small areas no longer fetch "Map data not yet available" tiles.
+- **Remaining interactive maps showed 403 "Access blocked" tiles on Google
+  Colab.** `draw_rectangle_map`, `center_location_map_cityname`,
+  `rectangle_map`, `display_buildings_and_draw_polygon` and the GPU solar
+  mask drawer fell back to ipyleaflet's default OpenStreetMap basemap; they
+  now use Esri World Street Map.
+
+### Added
+
+- `voxcity.utils.basemaps`: shared basemap definitions and the helpers
+  `resolve_static_basemap`, `clamp_zoom` and `add_static_basemap`.
+
 ## 1.8.2 (2026-10-24)
 
 ### Fixed
