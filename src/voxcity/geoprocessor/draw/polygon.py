@@ -15,6 +15,8 @@ from ipyleaflet import (
     Polygon as LeafletPolygon,
 )
 
+from ._common import default_basemap_layer
+
 # Import VoxCity for type checking (avoid circular import with TYPE_CHECKING)
 try:
     from typing import TYPE_CHECKING
@@ -63,7 +65,8 @@ def display_buildings_and_draw_polygon(
     else:
         center_lon, center_lat = -100.0, 40.0
 
-    m = Map(center=(center_lat, center_lon), zoom=zoom, scroll_wheel_zoom=True)
+    m = Map(center=(center_lat, center_lon), zoom=zoom, scroll_wheel_zoom=True,
+            basemap=default_basemap_layer())
 
     # Add building footprints
     if building_gdf is not None:

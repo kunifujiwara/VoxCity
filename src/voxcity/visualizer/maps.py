@@ -4,7 +4,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import seaborn as sns
-import contextily as ctx
 from shapely.geometry import Polygon
 from pyproj import CRS
 
@@ -21,9 +20,10 @@ from ..geoprocessor.utils import (
     transform_coords,
 )
 from ..utils.lc import get_land_cover_classes
+from ..utils.basemaps import DEFAULT_STATIC_BASEMAP, add_static_basemap
 
 
-def plot_grid(grid, origin, adjusted_meshsize, u_vec, v_vec, transformer, vertices, data_type, vmin=None, vmax=None, color_map=None, alpha=0.5, buf=0.2, edge=True, basemap='CartoDB light', **kwargs):
+def plot_grid(grid, origin, adjusted_meshsize, u_vec, v_vec, transformer, vertices, data_type, vmin=None, vmax=None, color_map=None, alpha=0.5, buf=0.2, edge=True, basemap=DEFAULT_STATIC_BASEMAP, **kwargs):
     fig, ax = plt.subplots(figsize=(12, 12))
 
     if data_type == 'land_cover':
@@ -105,14 +105,7 @@ def plot_grid(grid, origin, adjusted_meshsize, u_vec, v_vec, transformer, vertic
                 ax.fill(x, y, alpha=alpha, fc=color, ec='black' if edge else None, linewidth=0.1)
 
     crs_epsg_3857 = CRS.from_epsg(3857)
-    basemaps = {
-      'CartoDB dark': ctx.providers.CartoDB.DarkMatter,
-      'CartoDB light': ctx.providers.CartoDB.Positron,
-      'CartoDB voyager': ctx.providers.CartoDB.Voyager,
-      'CartoDB light no labels': ctx.providers.CartoDB.PositronNoLabels,
-      'CartoDB dark no labels': ctx.providers.CartoDB.DarkMatterNoLabels,
-    }
-    ctx.add_basemap(ax, crs=crs_epsg_3857, source=basemaps[basemap])
+    add_static_basemap(ax, basemap, crs=crs_epsg_3857)
 
     all_coords = np.array(vertices)
     x, y = zip(*[transformer.transform(lon, lat) for lat, lon in all_coords])
@@ -132,7 +125,7 @@ def plot_grid(grid, origin, adjusted_meshsize, u_vec, v_vec, transformer, vertic
     plt.show()
 
 
-def visualize_land_cover_grid_on_map(grid, rectangle_vertices, meshsize, source='Urbanwatch', vmin=None, vmax=None, alpha=0.5, buf=0.2, edge=True, basemap='CartoDB light'):
+def visualize_land_cover_grid_on_map(grid, rectangle_vertices, meshsize, source='Urbanwatch', vmin=None, vmax=None, alpha=0.5, buf=0.2, edge=True, basemap=DEFAULT_STATIC_BASEMAP):
     land_cover_classes = get_land_cover_classes(source)
     geom = compute_grid_geometry(rectangle_vertices, meshsize)
     origin, u_vec, v_vec = geom['origin'], geom['u_vec'], geom['v_vec']
@@ -141,7 +134,7 @@ def visualize_land_cover_grid_on_map(grid, rectangle_vertices, meshsize, source=
     plot_grid(grid, origin, adjusted_meshsize, u_vec, v_vec, transformer, rectangle_vertices, 'land_cover', alpha=alpha, buf=buf, edge=edge, basemap=basemap, land_cover_classes=land_cover_classes)
 
 
-def visualize_building_height_grid_on_map(building_height_grid, filtered_buildings, rectangle_vertices, meshsize, vmin=None, vmax=None, color_map=None, alpha=0.5, buf=0.2, edge=True, basemap='CartoDB light'):
+def visualize_building_height_grid_on_map(building_height_grid, filtered_buildings, rectangle_vertices, meshsize, vmin=None, vmax=None, color_map=None, alpha=0.5, buf=0.2, edge=True, basemap=DEFAULT_STATIC_BASEMAP):
     geom = compute_grid_geometry(rectangle_vertices, meshsize)
     origin, u_vec, v_vec = geom['origin'], geom['u_vec'], geom['v_vec']
     adjusted_meshsize = geom['adj_mesh']
@@ -150,7 +143,7 @@ def visualize_building_height_grid_on_map(building_height_grid, filtered_buildin
               rectangle_vertices, 'building_height', vmin=vmin, vmax=vmax, color_map=color_map, alpha=alpha, buf=buf, edge=edge, basemap=basemap, buildings=filtered_buildings)
 
 
-def visualize_numerical_grid_on_map(canopy_height_grid, rectangle_vertices, meshsize, type, vmin=None, vmax=None, color_map=None, alpha=0.5, buf=0.2, edge=True, basemap='CartoDB light'):
+def visualize_numerical_grid_on_map(canopy_height_grid, rectangle_vertices, meshsize, type, vmin=None, vmax=None, color_map=None, alpha=0.5, buf=0.2, edge=True, basemap=DEFAULT_STATIC_BASEMAP):
     geom = compute_grid_geometry(rectangle_vertices, meshsize)
     origin, u_vec, v_vec = geom['origin'], geom['u_vec'], geom['v_vec']
     adjusted_meshsize = geom['adj_mesh']

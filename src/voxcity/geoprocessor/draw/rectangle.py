@@ -24,6 +24,7 @@ from ipyleaflet import (
 from geopy import distance
 
 from ..utils import get_coordinates_from_cityname, normalize_rectangle_vertices
+from ._common import default_basemap_layer
 
 
 def rotate_rectangle(m, rectangle_vertices, angle):
@@ -139,7 +140,7 @@ def draw_rectangle_map(center=(40, -100), zoom=4):
     import time as _time
     import ipywidgets as widgets
 
-    m = Map(center=center, zoom=zoom, scroll_wheel_zoom=True)
+    m = Map(center=center, zoom=zoom, scroll_wheel_zoom=True, basemap=default_basemap_layer())
     rectangle_vertices = []
 
     to_merc = Transformer.from_crs("EPSG:4326", "EPSG:3857", always_xy=True)
@@ -500,7 +501,7 @@ def center_location_map_cityname(cityname, east_west_length, north_south_length,
     import ipywidgets as widgets
 
     center = get_coordinates_from_cityname(cityname)
-    m = Map(center=center, zoom=zoom)
+    m = Map(center=center, zoom=zoom, basemap=default_basemap_layer())
     rectangle_vertices = []
     # Internal state: axis-aligned base vertices (before rotation)
     _state = {"base_vertices": None, "polygon_layer": None, "aux_lines": []}
@@ -641,20 +642,10 @@ def rectangle_map(center=(40, -100), zoom=15, width=500, height=500, cityname=""
         VBox, HBox, Layout, HTML, ToggleButton, FloatText, FloatSlider,
         Button, Text,
     )
-    from ipyleaflet import WidgetControl, TileLayer
+    from ipyleaflet import WidgetControl
     from ._common import generate_editor_css, make_status_setter
 
-    # CARTO raster tiles now require an API key (they serve an "API KEY
-    # REQUIRED" placeholder otherwise) and openstreetmap.org returns 403
-    # "Access blocked" tiles to Google Colab, so use Esri's key-free
-    # street basemap.
-    _esri = TileLayer(
-        url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
-        attribution="Tiles &copy; Esri &mdash; Esri, HERE, Garmin, OpenStreetMap contributors",
-        name="Esri Street Map",
-        max_zoom=19,
-    )
-    m = Map(center=center, zoom=zoom, scroll_wheel_zoom=True, basemap=_esri)
+    m = Map(center=center, zoom=zoom, scroll_wheel_zoom=True, basemap=default_basemap_layer())
     m.layout.height = "600px"
     rectangle_vertices = []
 

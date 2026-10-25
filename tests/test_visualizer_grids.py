@@ -74,7 +74,7 @@ class TestVisualizeLandcoverGridOnBasemap:
         """Test land cover visualization with different basemap styles."""
         from voxcity.visualizer.grids import visualize_landcover_grid_on_basemap
         
-        basemap_styles = ['CartoDB dark', 'CartoDB light', 'CartoDB voyager']
+        basemap_styles = ['Esri dark gray', 'Esri light gray', 'Esri street']
         
         for style in basemap_styles:
             visualize_landcover_grid_on_basemap(

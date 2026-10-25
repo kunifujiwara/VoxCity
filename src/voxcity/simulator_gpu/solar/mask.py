@@ -288,6 +288,7 @@ def draw_computation_mask(
     except ImportError:
         raise ImportError("ipyleaflet is required for interactive mask drawing. "
                          "Install with: pip install ipyleaflet")
+    from ...geoprocessor.draw._common import default_basemap_layer
     
     # Get rectangle vertices for map center
     rectangle_vertices = None
@@ -303,7 +304,8 @@ def draw_computation_mask(
         center_lon, center_lat = -100.0, 40.0
     
     # Create map
-    m = Map(center=(center_lat, center_lon), zoom=zoom, scroll_wheel_zoom=True)
+    m = Map(center=(center_lat, center_lon), zoom=zoom, scroll_wheel_zoom=True,
+            basemap=default_basemap_layer())
     
     # Store drawn polygons
     drawn_polygons = []

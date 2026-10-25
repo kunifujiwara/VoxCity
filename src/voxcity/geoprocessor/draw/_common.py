@@ -23,6 +23,8 @@ from ipyleaflet import (
     TileLayer,
 )
 
+from ...utils.basemaps import ESRI_BASEMAPS, ESRI_HTML_ATTRIBUTION, esri_tile_url
+
 # Re-imports for backward compatibility: these helpers moved to the public
 # ``voxcity.geoprocessor.geojson`` module (pure numpy/shapely, no ipyleaflet).
 from ..geojson import (  # noqa: F401
@@ -41,6 +43,31 @@ _LC_COLORS_BY_NAME = LC_COLORS_BY_NAME
 # ─────────────────────────────────────────────────────────────
 # Basemap tile layers
 # ─────────────────────────────────────────────────────────────
+def esri_tile_layer(key: str, name: str | None = None) -> TileLayer:
+    """Return a TileLayer for the Esri basemap *key* in ``ESRI_BASEMAPS``.
+
+    Leaflet upscales the last real zoom level up to zoom 20, so the gray
+    canvases (real tiles to 16) never show "Map data not yet available".
+    """
+    _, native_zoom = ESRI_BASEMAPS[key]
+    return TileLayer(
+        url=esri_tile_url(key),
+        attribution=ESRI_HTML_ATTRIBUTION,
+        name=name or key,
+        max_zoom=20,
+        max_native_zoom=native_zoom,
+    )
+
+
+def default_basemap_layer() -> TileLayer:
+    """Basemap for ``ipyleaflet.Map(basemap=...)``.
+
+    ipyleaflet's own default is tile.openstreetmap.org, which returns 403
+    "Access blocked" tiles in Google Colab.
+    """
+    return esri_tile_layer("Esri street", "Esri Street Map")
+
+
 def create_basemap_tiles() -> dict[str, TileLayer]:
     """Return a fresh dict of basemap TileLayers (Google Sat, Esri gray, Esri street)."""
     return {
@@ -49,24 +76,10 @@ def create_basemap_tiles() -> dict[str, TileLayer]:
             name="Google Satellite",
             attribution="Google Satellite",
         ),
-        # CARTO raster tiles now require an API key, so Esri's key-free
-        # light-gray canvas stands in as the muted basemap. Its native
-        # tiles stop at zoom 16; Leaflet upscales them beyond that.
-        "Esri Light Gray": TileLayer(
-            url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}",
-            attribution="Tiles &copy; Esri &mdash; Esri, HERE, Garmin, OpenStreetMap contributors",
-            name="Esri Light Gray",
-            max_zoom=20,
-            max_native_zoom=16,
-        ),
-        # openstreetmap.org tiles return 403 "Access blocked" in Google
-        # Colab, so Esri's street map takes that slot.
-        "Esri Street Map": TileLayer(
-            url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
-            attribution="Tiles &copy; Esri &mdash; Esri, HERE, Garmin, OpenStreetMap contributors",
-            name="Esri Street Map",
-            max_zoom=19,
-        ),
+        # CARTO and openstreetmap.org tiles are unusable keyless / in Colab
+        # (see voxcity.utils.basemaps), so the light and street options are Esri.
+        "Esri Light Gray": esri_tile_layer("Esri light gray", "Esri Light Gray"),
+        "Esri Street Map": esri_tile_layer("Esri street", "Esri Street Map"),
     }
 
 

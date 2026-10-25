@@ -16,6 +16,7 @@ from pyproj import Transformer
 from joblib import Parallel, delayed
 
 from .raster import grid_to_geodataframe
+from ..utils.basemaps import DEFAULT_STATIC_BASEMAP, clamp_zoom, resolve_static_basemap
 
 def vectorized_edge_values(G, polygons_gdf, value_col='value'):
     """
@@ -153,8 +154,8 @@ def get_network_values(
             Figure size in inches
         - zoom : int, default=16
             Zoom level for basemap
-        - basemap_style : ctx.providers, default=CartoDB.Positron
-            Contextily basemap provider
+        - basemap_style : str or contextily source, default='Esri light gray'
+            VoxCity basemap name (see voxcity.utils.basemaps) or contextily provider
         - save_path : str, optional
             Path to save the edge GeoDataFrame as a GeoPackage
 
@@ -173,7 +174,7 @@ def get_network_values(
         'edge_width': 1,
         'fig_size': (15,15),
         'zoom': 16,
-        'basemap_style': ctx.providers.CartoDB.Positron,
+        'basemap_style': DEFAULT_STATIC_BASEMAP,
         'save_path': None
     }
     settings = {**defaults, **kwargs}
@@ -262,7 +263,8 @@ def get_network_values(
             linewidth=settings['edge_width'],
             legend_kwds={'label': value_name, 'shrink': 0.5}
         )
-        ctx.add_basemap(ax, source=settings['basemap_style'], zoom=settings['zoom'])
+        source = resolve_static_basemap(settings['basemap_style'])
+        ctx.add_basemap(ax, source=source, zoom=clamp_zoom(source, settings['zoom']))
         ax.set_axis_off()
         plt.show()
 
@@ -559,8 +561,8 @@ def analyze_network_slopes(
             Figure size in inches
         - zoom : int, default=16
             Zoom level for basemap
-        - basemap_style : ctx.providers, default=CartoDB.Positron
-            Contextily basemap provider
+        - basemap_style : str or contextily source, default='Esri light gray'
+            VoxCity basemap name (see voxcity.utils.basemaps) or contextily provider
         - output_directory : str, optional
             Directory to save results
         - output_file_name : str, default='network_slopes'
@@ -592,7 +594,7 @@ def analyze_network_slopes(
         'edge_width': 1,
         'fig_size': (15, 15),
         'zoom': 16,
-        'basemap_style': ctx.providers.CartoDB.Positron,
+        'basemap_style': DEFAULT_STATIC_BASEMAP,
         'output_directory': None,
         'output_file_name': 'network_slopes',
         'alpha': 1.0
@@ -698,10 +700,11 @@ def analyze_network_slopes(
         )
 
         # Add basemap with the same extent as the rectangle
+        source = resolve_static_basemap(settings['basemap_style'])
         ctx.add_basemap(
             ax,
-            source=settings['basemap_style'],
-            zoom=settings['zoom'],
+            source=source,
+            zoom=clamp_zoom(source, settings['zoom']),
             bounds=(minx, miny, maxx, maxy)  # Explicitly set the bounds of the basemap
         )
 
