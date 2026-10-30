@@ -17,6 +17,7 @@ Welcome to the VoxCity tutorials! These notebooks will guide you through generat
 | [demo_solar](demo_solar.ipynb) · [Colab](https://colab.research.google.com/github/kunifujiwara/VoxCity/blob/main/docs/examples/demo_solar.ipynb) | Solar irradiance analysis (ground & building surfaces) | Energy, comfort, shading |
 | [demo_view](demo_view.ipynb) · [Colab](https://colab.research.google.com/github/kunifujiwara/VoxCity/blob/main/docs/examples/demo_view.ipynb) | Green View Index & Sky View Index | Walkability, urban greening |
 | [demo_landmark](demo_landmark.ipynb) · [Colab](https://colab.research.google.com/github/kunifujiwara/VoxCity/blob/main/docs/examples/demo_landmark.ipynb) | Landmark visibility analysis | Planning, tourism, heritage |
+| [demo_shade_the_walk](demo_shade_the_walk.ipynb) · [Colab](https://colab.research.google.com/github/kunifujiwara/VoxCity/blob/main/docs/examples/demo_shade_the_walk.ipynb) | Year-round sunlight on a walking route, then trees placed to shade it | Walkability, heat, street greening |
 
 ## 🎨 Visualization & Export
 
@@ -37,7 +38,8 @@ Welcome to the VoxCity tutorials! These notebooks will guide you through generat
 1. Read **demo_data_sources** to understand all options
 2. Follow **demo_basic** for full control
 3. Use **demo_solar** for detailed irradiance analysis
-4. Export with **demo_envi-met** for CFD workflows
+4. Combine simulations with **demo_shade_the_walk**
+5. Export with **demo_export** or **demo_envi-met** for simulators
 
 ## 🌐 Data Requirements
 
@@ -64,6 +66,7 @@ demo_data_sources
 demo_view
 demo_solar
 demo_landmark
+demo_shade_the_walk
 demo_3d_visualization
 demo_export
 demo_envi-met

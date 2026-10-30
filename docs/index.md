@@ -5,6 +5,13 @@ data — then simulate solar, view, and microclimate.**
 
 VoxCity turns open building, land cover, canopy, and terrain data into a
 semantic 3D voxel model you can visualize, export, and run urban simulations on.
+No account is needed: the default sources are open and free to download.
+
+```{button-link} https://colab.research.google.com/github/kunifujiwara/VoxCity/blob/main/docs/examples/demo_quickstart.ipynb
+:color: primary
+
+Try it in Google Colab, nothing to install
+```
 
 ::::{grid} 1 2 2 3
 :gutter: 3
@@ -13,7 +20,7 @@ semantic 3D voxel model you can visualize, export, and run urban simulations on.
 :link: installation
 :link-type: doc
 
-Set up VoxCity with conda + pip and authenticate Google Earth Engine.
+Install with pip or conda. Google Earth Engine is optional.
 :::
 
 :::{grid-item-card} 📚 Tutorials
@@ -27,7 +34,7 @@ Hands-on notebooks: generate your first model, then visualize and export it.
 :link: guides/index
 :link-type: doc
 
-Task-focused recipes for Earth Engine, data sources, and Rhino import.
+Task-focused recipes for data sources, ENVI-met, Rhino and the optional Earth Engine.
 :::
 
 :::{grid-item-card} 💡 Concepts
@@ -55,10 +62,20 @@ How to cite VoxCity and credit the datasets you use.
 
 ## Quick start
 
+```bash
+pip install voxcity
+```
+
 ```python
 from voxcity.generator import get_voxcity
 
-# A small area in Seattle; sources auto-selected by location
+# A ~450 m box in Seattle (lon, lat corners)
+rectangle_vertices = [
+    (-122.3359, 47.5983), (-122.3359, 47.6028),
+    (-122.3292, 47.6028), (-122.3292, 47.5983),
+]
+
+# Sources are auto-selected by location; no account needed
 voxcity = get_voxcity(rectangle_vertices, meshsize=5)
 ```
 

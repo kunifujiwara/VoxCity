@@ -7,8 +7,10 @@ install through conda; everything else is available from PyPI.
 
 - Python 3.10-3.13
 - GDAL (install via conda-forge, see below)
-- A Google Earth Engine account for the cloud-served data sources
-  (see {doc}`guides/earth_engine`)
+
+No account is required. The default data sources (OpenStreetMap, Overture,
+Global Building Atlas, ESA WorldCover, CHMv2 canopy, Copernicus DEM, FABDEM and
+others) download freely. Google Earth Engine is optional and adds more sources.
 
 ## Install with conda + pip (recommended)
 
@@ -27,6 +29,15 @@ VoxCity installs directly with pip on Colab:
 !pip install voxcity
 ```
 
+Or skip installing and open the
+[quickstart notebook in Colab](https://colab.research.google.com/github/kunifujiwara/VoxCity/blob/main/docs/examples/demo_quickstart.ipynb).
+
+## Optional: GPU acceleration
+
+```bash
+pip install "voxcity[gpu]"   # adds Taichi; enables voxcity.simulator_gpu
+```
+
 ## Verify the installation
 
 ```python
@@ -34,9 +45,11 @@ import voxcity
 print(voxcity.__version__)
 ```
 
-## Set up Google Earth Engine
+## Optional: set up Google Earth Engine
 
-Many VoxCity data sources are served through Google Earth Engine. Create an
+Skip this unless you want the Earth Engine sources (Open Buildings 2.5D,
+Dynamic World, ESRI land cover, and several high-resolution national DEMs).
+Create an
 Earth Engine–enabled Cloud Project by following the
 [official setup guide](https://developers.google.com/earth-engine/cloud/earthengine_cloud_project_setup),
 then authenticate:
@@ -56,5 +69,5 @@ For a full walkthrough of authentication and project configuration, see the
 
 ## Next steps
 
-- Follow the {doc}`tutorial notebooks <examples/index>` to generate your first model.
+- Run the {doc}`quickstart tutorial <examples/demo_quickstart>`, then the other {doc}`tutorial notebooks <examples/index>`.
 - Browse the {doc}`how-to guides <guides/index>` for task-focused recipes.

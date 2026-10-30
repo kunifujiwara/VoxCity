@@ -1,24 +1,24 @@
 # How-to guides
 
 Task-focused recipes for getting specific things done with VoxCity. Each guide
-assumes you already have VoxCity {doc}`installed <../installation>` and, where
-noted, Google Earth Engine authenticated.
+assumes you already have VoxCity {doc}`installed <../installation>`. Only the
+Earth Engine guide needs an account.
 
 ```{toctree}
 :maxdepth: 1
 
-earth_engine
 data_sources
-rhino_obj_import
 envimet_export
+rhino_obj_import
+earth_engine
 ```
 
 ## Guides at a glance
 
-- {doc}`earth_engine` — authenticate and configure Google Earth Engine so the
-  cloud-served data sources work.
 - {doc}`data_sources` — choose and mix building, land cover, canopy height, and
   terrain sources for your area.
-- {doc}`rhino_obj_import` — import an exported OBJ model into Rhino.
 - {doc}`envimet_export` — export to ENVI-met and register the plant database
   so tree IDs resolve.
+- {doc}`rhino_obj_import` — import an exported OBJ model into Rhino.
+- {doc}`earth_engine` — optional: authenticate Google Earth Engine to unlock
+  extra data sources.

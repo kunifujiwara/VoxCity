@@ -1,12 +1,19 @@
 [tool.poetry]
 name = "voxcity"
 version = "1.8.3"
-description = "voxcity is an easy and one-stop tool to output 3d city models for microclimate simulation by integrating multiple geospatial open-data"
+description = "Generate 3D voxel city models anywhere from open geospatial data, with no account needed, then simulate solar, view and visibility and export to ENVI-met, PALM, OBJ and more"
+keywords = ["3d-city-model", "voxel", "urban-climate", "microclimate", "solar-irradiance", "sky-view-factor", "envi-met", "palm", "openstreetmap", "geospatial"]
 readme = "README.md"
 license = "MIT"
 authors = ["Kunihiko Fujiwara <fujiwara.kunihiko@takenaka.co.jp>"]
 maintainers = ["Kunihiko Fujiwara <fujiwara.kunihiko@takenaka.co.jp>"]
 classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: GIS",
+    "Topic :: Scientific/Engineering :: Atmospheric Science",
+    "Topic :: Scientific/Engineering :: Visualization",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -82,9 +89,11 @@ optional = true
 taichi = "*"
 
 [tool.poetry.urls]
-bugs = "https://github.com/kunifujiwara/voxcity/issues"
-changelog = "https://github.com/kunifujiwara/voxcity/blob/master/changelog.md"
-homepage = "https://github.com/kunifujiwara/voxcity"
+bugs = "https://github.com/kunifujiwara/VoxCity/issues"
+changelog = "https://github.com/kunifujiwara/VoxCity/blob/main/CHANGELOG.md"
+homepage = "https://github.com/kunifujiwara/VoxCity"
+documentation = "https://voxcity.readthedocs.io/en/latest"
+quickstart = "https://colab.research.google.com/github/kunifujiwara/VoxCity/blob/main/docs/examples/demo_quickstart.ipynb"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

@@ -1,4 +1,4 @@
-# Set up Google Earth Engine
+# Set up Google Earth Engine (optional)
 
 Many of VoxCity's data sources (land cover, canopy height, and several DEMs) are
 served through [Google Earth Engine](https://earthengine.google.com/). This
