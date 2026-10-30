@@ -1,30 +1,30 @@
 # VoxCity Tutorial Notebooks
 
-Welcome to the VoxCity tutorials! These notebooks will guide you through generating 3D voxel-based urban models and running various urban simulations.
+Welcome to the VoxCity tutorials! These notebooks will guide you through generating 3D voxel-based urban models and running various urban simulations. Each one opens in Google Colab from the **Colab** link, and none needs an account.
 
 ## 🚀 Getting Started
 
 | Notebook | Description | Difficulty |
 |----------|-------------|------------|
-| [demo_quickstart](demo_quickstart.ipynb) | **Start here!** Quick 5-minute introduction with automatic data source selection | ⭐ Beginner |
-| [demo_basic](demo_basic.ipynb) | Complete guide to all features, data sources, and options | ⭐⭐ Intermediate |
-| [demo_data_sources](demo_data_sources.ipynb) | Comprehensive overview of all available data sources | ⭐⭐ Intermediate |
+| [demo_quickstart](demo_quickstart.ipynb) · [Colab](https://colab.research.google.com/github/kunifujiwara/VoxCity/blob/main/docs/examples/demo_quickstart.ipynb) | **Start here!** Quick 5-minute introduction with automatic data source selection | ⭐ Beginner |
+| [demo_basic](demo_basic.ipynb) · [Colab](https://colab.research.google.com/github/kunifujiwara/VoxCity/blob/main/docs/examples/demo_basic.ipynb) | Complete guide to all features, data sources, and options | ⭐⭐ Intermediate |
+| [demo_data_sources](demo_data_sources.ipynb) · [Colab](https://colab.research.google.com/github/kunifujiwara/VoxCity/blob/main/docs/examples/demo_data_sources.ipynb) | Comprehensive overview of all available data sources | ⭐⭐ Intermediate |
 
 ## 🔬 Urban Simulations
 
 | Notebook | Description | Applications |
 |----------|-------------|--------------|
-| [demo_solar](demo_solar.ipynb) | Solar irradiance analysis (ground & building surfaces) | Energy, comfort, shading |
-| [demo_view](demo_view.ipynb) | Green View Index & Sky View Index | Walkability, urban greening |
-| [demo_landmark](demo_landmark.ipynb) | Landmark visibility analysis | Planning, tourism, heritage |
+| [demo_solar](demo_solar.ipynb) · [Colab](https://colab.research.google.com/github/kunifujiwara/VoxCity/blob/main/docs/examples/demo_solar.ipynb) | Solar irradiance analysis (ground & building surfaces) | Energy, comfort, shading |
+| [demo_view](demo_view.ipynb) · [Colab](https://colab.research.google.com/github/kunifujiwara/VoxCity/blob/main/docs/examples/demo_view.ipynb) | Green View Index & Sky View Index | Walkability, urban greening |
+| [demo_landmark](demo_landmark.ipynb) · [Colab](https://colab.research.google.com/github/kunifujiwara/VoxCity/blob/main/docs/examples/demo_landmark.ipynb) | Landmark visibility analysis | Planning, tourism, heritage |
 
 ## 🎨 Visualization & Export
 
 | Notebook | Description | Output Formats |
 |----------|-------------|----------------|
-| [demo_3d_visualization](demo_3d_visualization.ipynb) | 3D rendering options and simulation overlays | Images, interactive views |
-| [demo_obj](demo_obj.ipynb) | Export to OBJ format for 3D software | Blender, Rhino, SketchUp |
-| [demo_envi-met](demo_envi-met.ipynb) | Export to ENVI-met INX format | CFD simulations |
+| [demo_3d_visualization](demo_3d_visualization.ipynb) · [Colab](https://colab.research.google.com/github/kunifujiwara/VoxCity/blob/main/docs/examples/demo_3d_visualization.ipynb) | 3D rendering options and simulation overlays | Images, interactive views |
+| [demo_obj](demo_obj.ipynb) · [Colab](https://colab.research.google.com/github/kunifujiwara/VoxCity/blob/main/docs/examples/demo_obj.ipynb) | Export to OBJ format for 3D software | Blender, Rhino, SketchUp |
+| [demo_envi-met](demo_envi-met.ipynb) · [Colab](https://colab.research.google.com/github/kunifujiwara/VoxCity/blob/main/docs/examples/demo_envi-met.ipynb) | Export to ENVI-met INX format | CFD simulations |
 
 ## 📚 Learning Path
 

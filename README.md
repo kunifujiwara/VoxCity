@@ -141,11 +141,19 @@ earthengine authenticate
 
 ### Google Colab Demos
 
+Every notebook opens straight from this repository in Colab. None needs an account.
+
 | Demo | Description | Link |
 |------|-------------|------|
-| **Quickstart** (no account, no coding) | Build a 3D city, simulate sunlight and sky view, export | <a href="https://colab.research.google.com/github/kunifujiwara/VoxCity/blob/main/docs/examples/demo_quickstart.ipynb">Open in Colab</a> |
-| **Basic** | All options, including Earth Engine sources | <a href="https://colab.research.google.com/drive/1Lofd3RawKMr6QuUsamGaF48u2MN0hfrP?usp=sharing">Open in Colab</a> |
-| **ENVI-met Export** | Export a VoxCity model to ENVI-met INX format | <a href="https://colab.research.google.com/drive/1Yv7hMmfEiygCbuz5gPfGmCZyVQnr-8Qn">Open in Colab</a> |
+| **Quickstart** (no coding) | Build a 3D city, simulate sunlight and sky view, export | <a href="https://colab.research.google.com/github/kunifujiwara/VoxCity/blob/main/docs/examples/demo_quickstart.ipynb">Open in Colab</a> |
+| **Complete demo** | Every main option: areas, data sources, visualization, simulations, exports | <a href="https://colab.research.google.com/github/kunifujiwara/VoxCity/blob/main/docs/examples/demo_basic.ipynb">Open in Colab</a> |
+| **Data sources** | Which sources exist, which need an account, and what is picked automatically | <a href="https://colab.research.google.com/github/kunifujiwara/VoxCity/blob/main/docs/examples/demo_data_sources.ipynb">Open in Colab</a> |
+| **Solar irradiance** | Street level and building surfaces, one moment or a whole year | <a href="https://colab.research.google.com/github/kunifujiwara/VoxCity/blob/main/docs/examples/demo_solar.ipynb">Open in Colab</a> |
+| **View index** | Green view and sky view index | <a href="https://colab.research.google.com/github/kunifujiwara/VoxCity/blob/main/docs/examples/demo_view.ipynb">Open in Colab</a> |
+| **Landmark visibility** | Where a chosen building can be seen from | <a href="https://colab.research.google.com/github/kunifujiwara/VoxCity/blob/main/docs/examples/demo_landmark.ipynb">Open in Colab</a> |
+| **3D visualization** | Interactive views, rendered images, colour schemes, results on the model | <a href="https://colab.research.google.com/github/kunifujiwara/VoxCity/blob/main/docs/examples/demo_3d_visualization.ipynb">Open in Colab</a> |
+| **OBJ export** | The model and coloured results for Blender and Rhino | <a href="https://colab.research.google.com/github/kunifujiwara/VoxCity/blob/main/docs/examples/demo_obj.ipynb">Open in Colab</a> |
+| **ENVI-met export** | INX and plant database, with material and grid options | <a href="https://colab.research.google.com/github/kunifujiwara/VoxCity/blob/main/docs/examples/demo_envi-met.ipynb">Open in Colab</a> |
 
 ### YouTube Video
 
