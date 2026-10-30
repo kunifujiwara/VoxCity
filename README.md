@@ -19,7 +19,7 @@
 </p>
 
 <p align="center">
-  🚀 <a href="https://colab.research.google.com/drive/1Lofd3RawKMr6QuUsamGaF48u2MN0hfrP?usp=sharing">Try in Colab</a> ·
+  🚀 <a href="https://colab.research.google.com/github/kunifujiwara/VoxCity/blob/main/docs/examples/demo_quickstart.ipynb">Try in Colab</a> ·
   📖 <a href="https://voxcity.readthedocs.io/en/latest">Docs</a> ·
   🎬 <a href="https://youtu.be/qHusvKB07qk">Video</a> ·
   📄 <a href="https://doi.org/10.1016/j.compenvurbsys.2025.102366">Paper</a> ·
@@ -59,7 +59,7 @@ VoxCity turns open geospatial data into a single, simulation-ready 3D voxel mode
 - 🔄 **Export anywhere** — ENVI-met (INX/EDB), PALM (NetCDF static driver), OBJ (Blender/Rhino/Twinmotion), and MagicaVoxel (VOX).
 - 🧩 **Reproducible & open** — open data with documented provenance and a peer-reviewed method.
 
-The **generator** module downloads building heights, tree canopy heights, land cover, and terrain elevation for a target area and voxelizes them into an integrated voxel city model. The **simulator** module runs environmental analyses such as solar radiation and view index. Try it in the [Google Colab Demo](https://colab.research.google.com/drive/1Lofd3RawKMr6QuUsamGaF48u2MN0hfrP?usp=sharing) or locally, and see the [documentation](https://voxcity.readthedocs.io/en/latest) for the full API reference and tutorials.
+The **generator** module downloads building heights, tree canopy heights, land cover, and terrain elevation for a target area and voxelizes them into an integrated voxel city model. The **simulator** module runs environmental analyses such as solar radiation and view index. Try it in the [Google Colab Demo](https://colab.research.google.com/github/kunifujiwara/VoxCity/blob/main/docs/examples/demo_quickstart.ipynb) or locally, and see the [documentation](https://voxcity.readthedocs.io/en/latest) for the full API reference and tutorials.
 
 ## Gallery
 
@@ -139,6 +139,7 @@ earthengine authenticate
 
 | Demo | Description | Link |
 |------|-------------|------|
+| **Quickstart** (no account, no coding) | Build a 3D city, simulate sunlight and sky view, export | <a href="https://colab.research.google.com/github/kunifujiwara/VoxCity/blob/main/docs/examples/demo_quickstart.ipynb">Open in Colab</a> |
 | **Basic** | Generate a voxel city model, visualize, and export | <a href="https://colab.research.google.com/drive/1Lofd3RawKMr6QuUsamGaF48u2MN0hfrP?usp=sharing">Open in Colab</a> |
 | **ENVI-met Export** | Export a VoxCity model to ENVI-met INX format | <a href="https://colab.research.google.com/drive/1Yv7hMmfEiygCbuz5gPfGmCZyVQnr-8Qn">Open in Colab</a> |
 
