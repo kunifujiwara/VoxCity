@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Questions and discussion
+    url: https://github.com/kunifujiwara/VoxCity/discussions
+    about: Ask how to do something, share what you built, or discuss ideas.
+  - name: Documentation
+    url: https://voxcity.readthedocs.io/en/latest/
+    about: Installation, tutorials, data sources and the API reference.

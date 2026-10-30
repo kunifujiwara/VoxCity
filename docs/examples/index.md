@@ -41,10 +41,12 @@ Welcome to the VoxCity tutorials! These notebooks will guide you through generat
 
 ## 🌐 Data Requirements
 
-Most tutorials require **Google Earth Engine** access for downloading geospatial data. See the [data sources notebook](demo_data_sources.ipynb) for:
-- Authentication instructions
+**No account is needed to start.** The quickstart runs end to end without Google Earth Engine: buildings come from OpenStreetMap or Overture, canopy height from the Meta/WRI 1 m map, land cover from ESA WorldCover and terrain from USGS 3DEP, FABDEM or Copernicus DEM, all read directly from open repositories.
+
+Some tutorials use sources served through **Google Earth Engine** (Dynamic World, ESRI land cover, Open Buildings 2.5D, several national DEMs). See the [data sources notebook](demo_data_sources.ipynb) for:
+- Which sources need Earth Engine and which do not
 - Available data sources by region
-- Offline alternatives
+- Authentication instructions
 
 ## 💡 Tips
 

@@ -1,0 +1,48 @@
+name: Bug report
+description: Something in VoxCity does not work as documented.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. A short, reproducible example gets fixed fastest.
+  - type: input
+    id: version
+    attributes:
+      label: VoxCity version
+      description: Output of `python -c "import voxcity; print(voxcity.__version__)"`
+      placeholder: "1.8.3"
+    validations:
+      required: true
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Where are you running it?
+      options:
+        - Google Colab
+        - Local (conda)
+        - Local (pip / venv)
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: code
+    attributes:
+      label: Code to reproduce
+      description: The smallest snippet that shows the problem, including `rectangle_vertices`, `meshsize` and the data sources used.
+      render: python
+    validations:
+      required: true
+  - type: textarea
+    id: error
+    attributes:
+      label: Error message or wrong result
+      description: Paste the full traceback or describe what you got instead of what you expected.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: OS, Python version, whether Earth Engine is authenticated, screenshots.

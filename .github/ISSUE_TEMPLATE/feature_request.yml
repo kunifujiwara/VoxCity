@@ -1,0 +1,22 @@
+name: Feature request
+description: Suggest a data source, export format, simulation or API change.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: The workflow or question this would help with, for example "export to X" or "use dataset Y in region Z".
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like VoxCity to do?
+      description: A sketch of the API or output you have in mind is welcome but not required.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Workarounds you have tried
