@@ -23,7 +23,7 @@ Welcome to the VoxCity tutorials! These notebooks will guide you through generat
 | Notebook | Description | Output Formats |
 |----------|-------------|----------------|
 | [demo_3d_visualization](demo_3d_visualization.ipynb) · [Colab](https://colab.research.google.com/github/kunifujiwara/VoxCity/blob/main/docs/examples/demo_3d_visualization.ipynb) | 3D rendering options and simulation overlays | Images, interactive views |
-| [demo_obj](demo_obj.ipynb) · [Colab](https://colab.research.google.com/github/kunifujiwara/VoxCity/blob/main/docs/examples/demo_obj.ipynb) | Export to OBJ format for 3D software | Blender, Rhino, SketchUp |
+| [demo_export](demo_export.ipynb) · [Colab](https://colab.research.google.com/github/kunifujiwara/VoxCity/blob/main/docs/examples/demo_export.ipynb) | Every export format: OBJ, VOX, GeoTIFF, NetCDF, ENVI-met, PALM, CityLES, H5 | Blender, Rhino, QGIS, simulators |
 | [demo_envi-met](demo_envi-met.ipynb) · [Colab](https://colab.research.google.com/github/kunifujiwara/VoxCity/blob/main/docs/examples/demo_envi-met.ipynb) | Export to ENVI-met INX format | CFD simulations |
 
 ## 📚 Learning Path
@@ -65,6 +65,6 @@ demo_view
 demo_solar
 demo_landmark
 demo_3d_visualization
-demo_obj
+demo_export
 demo_envi-met
 ```

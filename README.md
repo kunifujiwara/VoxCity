@@ -152,7 +152,7 @@ Every notebook opens straight from this repository in Colab. None needs an accou
 | **View index** | Green view and sky view index | <a href="https://colab.research.google.com/github/kunifujiwara/VoxCity/blob/main/docs/examples/demo_view.ipynb">Open in Colab</a> |
 | **Landmark visibility** | Where a chosen building can be seen from | <a href="https://colab.research.google.com/github/kunifujiwara/VoxCity/blob/main/docs/examples/demo_landmark.ipynb">Open in Colab</a> |
 | **3D visualization** | Interactive views, rendered images, colour schemes, results on the model | <a href="https://colab.research.google.com/github/kunifujiwara/VoxCity/blob/main/docs/examples/demo_3d_visualization.ipynb">Open in Colab</a> |
-| **OBJ export** | The model and coloured results for Blender and Rhino | <a href="https://colab.research.google.com/github/kunifujiwara/VoxCity/blob/main/docs/examples/demo_obj.ipynb">Open in Colab</a> |
+| **Export** | Every format: OBJ, VOX, GeoTIFF, NetCDF, ENVI-met, PALM, CityLES, H5 | <a href="https://colab.research.google.com/github/kunifujiwara/VoxCity/blob/main/docs/examples/demo_export.ipynb">Open in Colab</a> |
 | **ENVI-met export** | INX and plant database, with material and grid options | <a href="https://colab.research.google.com/github/kunifujiwara/VoxCity/blob/main/docs/examples/demo_envi-met.ipynb">Open in Colab</a> |
 
 ### YouTube Video
