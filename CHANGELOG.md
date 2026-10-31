@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.9.0 (2026-10-31)
 
 ### Added
 
@@ -18,6 +18,18 @@
   The models use only account-free sources and are released under ODbL 1.0;
   those outside Japan and the US use FABDEM terrain and are for non-commercial
   use only (CC BY-NC-SA 4.0). `scripts/build_example_cities.py` rebuilds them (issue #2).
+- **No-account quickstart and tutorials.** `docs/examples/demo_quickstart.ipynb`
+  builds a city, runs the solar and view simulations and exports it with
+  nothing to sign up for; the README "Try in Colab" button opens it. New
+  *Shade the Walk* tutorial (`demo_shade_the_walk.ipynb`): a year of sunlight
+  along a walking route, then trees placed to shade it. The other tutorial
+  notebooks were rebuilt in the same style.
+
+### Changed
+
+- The README, the docs home page and the PyPI description present the
+  no-account path first; Earth Engine is documented as optional, for more
+  sources. PyPI keywords, classifiers and project URLs updated.
 
 ## 1.8.3 (2026-10-25)
 

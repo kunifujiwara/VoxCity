@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "voxcity"
-version = "1.8.3"
+version = "1.9.0"
 description = "Generate 3D voxel city models anywhere from open geospatial data, with no account needed, then simulate solar, view and visibility and export to ENVI-met, PALM, OBJ and more"
 keywords = ["3d-city-model", "voxel", "urban-climate", "microclimate", "solar-irradiance", "sky-view-factor", "envi-met", "palm", "openstreetmap", "geospatial"]
 readme = "README.md"
