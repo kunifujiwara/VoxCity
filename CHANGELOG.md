@@ -4,6 +4,12 @@
 
 ### Added
 
+- **Command line.** `pip install voxcity` now installs a `voxcity` command.
+  `voxcity generate --bbox W S E N --mesh 5 --export obj,envimet` builds a
+  model and exports it; `voxcity export MODEL.h5 --to palm,geotiff` exports a
+  saved one; `voxcity examples list|fetch` downloads a ready-made city; and
+  `voxcity info MODEL.h5` prints its size, sources and extent. Formats: obj,
+  envimet, palm, vox, netcdf, geotiff.
 - **Ready-made example cities.** `voxcity.examples.load_example_city("tokyo")`
   downloads a prebuilt 1 km × 1 km, 5 m model from the
   `kunifujiwara/voxcity-example-cities` dataset on Hugging Face, checks its

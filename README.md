@@ -107,6 +107,13 @@ print([c["name"] for c in list_example_cities()])
 voxcity = load_example_city("tokyo")   # 1 km × 1 km at 5 m, downloaded once and cached
 ```
 
+**Or skip Python altogether.** The `voxcity` command builds a model and exports it for ENVI-met, PALM, Rhino and more:
+
+```bash
+voxcity generate --bbox -122.3359 47.5983 -122.3292 47.6028 --mesh 5 --export obj,envimet
+voxcity examples fetch tokyo --export palm
+```
+
 ## Installation
 
 Make sure you have Python 3.10-3.13 installed. GDAL is the one dependency best installed via conda; everything else comes from pip.

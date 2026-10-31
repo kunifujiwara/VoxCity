@@ -23,6 +23,9 @@ packages = [
     {include = "voxcity", from = "src"}
 ]
 
+[tool.poetry.scripts]
+voxcity = "voxcity.cli:main"
+
 [tool.poetry.dependencies]
 python = ">=3.10,<3.14"
 pandas = ">=1.5,<3"
