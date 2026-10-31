@@ -37,17 +37,19 @@ voxel classes, building heights, IDs and footprints, land cover, terrain and
 tree canopy. Each catalog entry also records the centre, grid shape, building
 count and the data source used for each layer.
 
-All sources need no account and allow redistribution:
+All sources need no account:
 
 | Layer | Source |
 |---|---|
 | Buildings | OpenStreetMap, plus Microsoft Building Footprints in the USA, Europe and Australia |
 | Land cover | OpenStreetMap |
 | Tree canopy | Meta/WRI High Resolution Canopy Height Maps v2 |
-| Terrain | USGS 3DEP 10 m (USA), GSI DEM (Japan), Copernicus DEM GLO-30 elsewhere |
+| Terrain | USGS 3DEP 10 m (USA), GSI DEM (Japan), FABDEM elsewhere |
 
 The dataset is released under the Open Database License (ODbL) 1.0, as a
-derived database of OpenStreetMap. Credit the sources when you publish results.
+derived database of OpenStreetMap. Models outside Japan and the US also use
+FABDEM terrain, licensed CC BY-NC-SA 4.0, so use them for non-commercial work
+only. Credit the sources when you publish results.
 
 ## Cache and mirrors
 

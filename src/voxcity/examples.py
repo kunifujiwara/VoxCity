@@ -2,7 +2,7 @@
 
 Each model is a VoxCity HDF5 file built from open data with no account
 (OpenStreetMap buildings and land cover, Microsoft Building Footprints where
-available, Meta/WRI CHMv2 canopy, and Copernicus, USGS 3DEP or GSI terrain).
+available, Meta/WRI CHMv2 canopy, and FABDEM, USGS 3DEP or GSI terrain).
 Files are cached locally, so a model is downloaded once.
 
 Example

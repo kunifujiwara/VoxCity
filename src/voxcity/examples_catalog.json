@@ -50,12 +50,12 @@
     "building_complementary_source": "None",
     "land_cover_source": "OpenStreetMap",
     "canopy_height_source": "High Resolution 1m Global Canopy Height Maps v2",
-    "dem_source": "COPERNICUS"
+    "dem_source": "FABDEM"
    },
    "file": "cities/singapore.h5",
    "preview": "previews/singapore.png",
-   "sha256": "540868a14e137691fb7715774880f62b5771b030551babc1f14b1b956e9aa499",
-   "bytes": 1258469
+   "sha256": "5986954ce794b6168e0d35f95ee305e5eab7ef255acdeb7d880ffde5c4a251f0",
+   "bytes": 1254647
   },
   {
    "name": "hong_kong",
@@ -70,7 +70,7 @@
    "grid_shape": [
     200,
     200,
-    89
+    88
    ],
    "buildings": 504,
    "sources": {
@@ -78,12 +78,12 @@
     "building_complementary_source": "None",
     "land_cover_source": "OpenStreetMap",
     "canopy_height_source": "High Resolution 1m Global Canopy Height Maps v2",
-    "dem_source": "COPERNICUS"
+    "dem_source": "FABDEM"
    },
    "file": "cities/hong_kong.h5",
    "preview": "previews/hong_kong.png",
-   "sha256": "b81493721cc2a6f47fe4254ca33631e2ba893d8d411eecc526516a4f130dc55d",
-   "bytes": 1349642
+   "sha256": "afd7fd1d684db03fbecd187ca65713a6abf637ee612056531d77425b7b0afd85",
+   "bytes": 1345561
   },
   {
    "name": "seoul",
@@ -98,7 +98,7 @@
    "grid_shape": [
     200,
     200,
-    38
+    35
    ],
    "buildings": 648,
    "sources": {
@@ -106,12 +106,12 @@
     "building_complementary_source": "None",
     "land_cover_source": "OpenStreetMap",
     "canopy_height_source": "High Resolution 1m Global Canopy Height Maps v2",
-    "dem_source": "COPERNICUS"
+    "dem_source": "FABDEM"
    },
    "file": "cities/seoul.h5",
    "preview": "previews/seoul.png",
-   "sha256": "6472290ebf1e2ce3b19effaf608f8adbcf26758a608644ba4b61a9e09582dc47",
-   "bytes": 1117680
+   "sha256": "e054640e9aae57eaef5fccafb51db46a9ab07f6af9697807ff95c7a47f6896e9",
+   "bytes": 1105756
   },
   {
    "name": "mumbai",
@@ -134,12 +134,12 @@
     "building_complementary_source": "None",
     "land_cover_source": "OpenStreetMap",
     "canopy_height_source": "High Resolution 1m Global Canopy Height Maps v2",
-    "dem_source": "COPERNICUS"
+    "dem_source": "FABDEM"
    },
    "file": "cities/mumbai.h5",
    "preview": "previews/mumbai.png",
-   "sha256": "4876dcbcf89ccd1de8d79c6b1da952b0ec01ae57ff48566dd5d6c0e88c437395",
-   "bytes": 1070460
+   "sha256": "1653f720c45ce2c7900f52551b4f8251749a0a18908865ef5702101e4399846e",
+   "bytes": 1062295
   },
   {
    "name": "dubai",
@@ -154,7 +154,7 @@
    "grid_shape": [
     200,
     200,
-    57
+    55
    ],
    "buildings": 84,
    "sources": {
@@ -162,12 +162,12 @@
     "building_complementary_source": "None",
     "land_cover_source": "OpenStreetMap",
     "canopy_height_source": "High Resolution 1m Global Canopy Height Maps v2",
-    "dem_source": "COPERNICUS"
+    "dem_source": "FABDEM"
    },
    "file": "cities/dubai.h5",
    "preview": "previews/dubai.png",
-   "sha256": "234d28ae1b3dffb375702f79bde19def65ae337b2d5bf5af4bf4a1f31f9da938",
-   "bytes": 1009463
+   "sha256": "8ac5fa93dbf639cd781a9bb8ae24eec00384981320531c32a6701693ea0db32e",
+   "bytes": 1004190
   },
   {
    "name": "new_york",
@@ -274,12 +274,12 @@
     "building_complementary_source": "Microsoft Building Footprints",
     "land_cover_source": "OpenStreetMap",
     "canopy_height_source": "High Resolution 1m Global Canopy Height Maps v2",
-    "dem_source": "COPERNICUS"
+    "dem_source": "FABDEM"
    },
    "file": "cities/london.h5",
    "preview": "previews/london.png",
-   "sha256": "cd228d436e5172690ceef577915956ad0aa491af8c1b3748535087d16108a895",
-   "bytes": 1731343
+   "sha256": "ae10dc3e274bfec6818e8cfa707963bd5d3b85184f74eae92bc6b79e83dcafd6",
+   "bytes": 1726581
   },
   {
    "name": "paris",
@@ -294,7 +294,7 @@
    "grid_shape": [
     200,
     200,
-    17
+    15
    ],
    "buildings": 1103,
    "sources": {
@@ -302,12 +302,12 @@
     "building_complementary_source": "Microsoft Building Footprints",
     "land_cover_source": "OpenStreetMap",
     "canopy_height_source": "High Resolution 1m Global Canopy Height Maps v2",
-    "dem_source": "COPERNICUS"
+    "dem_source": "FABDEM"
    },
    "file": "cities/paris.h5",
    "preview": "previews/paris.png",
-   "sha256": "a9c14ec3ced4d068beec0403adc21a0bca8c59963530560bcd2bcd13d0487da0",
-   "bytes": 1649672
+   "sha256": "d3f71c3ed964e79d68c15e5fbb5b9f42a1b8f78a849ba65694bf888df84abb97",
+   "bytes": 1644052
   },
   {
    "name": "barcelona",
@@ -322,7 +322,7 @@
    "grid_shape": [
     200,
     200,
-    17
+    14
    ],
    "buildings": 1141,
    "sources": {
@@ -330,12 +330,12 @@
     "building_complementary_source": "Microsoft Building Footprints",
     "land_cover_source": "OpenStreetMap",
     "canopy_height_source": "High Resolution 1m Global Canopy Height Maps v2",
-    "dem_source": "COPERNICUS"
+    "dem_source": "FABDEM"
    },
    "file": "cities/barcelona.h5",
    "preview": "previews/barcelona.png",
-   "sha256": "b3b6ccfde40a1825c2be207ef447d81e2a89f71313778dfd285fe58df3dee8f3",
-   "bytes": 1938859
+   "sha256": "02d95a6eef222c4a0a2fa9477e1e310f5a1507f3457d8524de98c580698d0f1a",
+   "bytes": 1926951
   },
   {
    "name": "amsterdam",
@@ -350,7 +350,7 @@
    "grid_shape": [
     200,
     200,
-    17
+    16
    ],
    "buildings": 2907,
    "sources": {
@@ -358,12 +358,12 @@
     "building_complementary_source": "Microsoft Building Footprints",
     "land_cover_source": "OpenStreetMap",
     "canopy_height_source": "High Resolution 1m Global Canopy Height Maps v2",
-    "dem_source": "COPERNICUS"
+    "dem_source": "FABDEM"
    },
    "file": "cities/amsterdam.h5",
    "preview": "previews/amsterdam.png",
-   "sha256": "1e9e619ac60ab5d8b1b5401b4cdf2152c103b340dddd31bf14d5b079d658852d",
-   "bytes": 1685984
+   "sha256": "4eb9894286ee397f260d7d14940a7a417541bec208bc4a0e5bc9245cb7fb68b4",
+   "bytes": 1673271
   },
   {
    "name": "berlin",
@@ -378,7 +378,7 @@
    "grid_shape": [
     200,
     200,
-    25
+    23
    ],
    "buildings": 422,
    "sources": {
@@ -386,12 +386,12 @@
     "building_complementary_source": "Microsoft Building Footprints",
     "land_cover_source": "OpenStreetMap",
     "canopy_height_source": "High Resolution 1m Global Canopy Height Maps v2",
-    "dem_source": "COPERNICUS"
+    "dem_source": "FABDEM"
    },
    "file": "cities/berlin.h5",
    "preview": "previews/berlin.png",
-   "sha256": "a1f03a69288af989b8d7475a27dd7044c42b518f5bb8d8c18fc93c323f6eeea5",
-   "bytes": 1348213
+   "sha256": "a6e4604d2208ccb74cfc9d0c783bf06852cdb28e626c8c26a661f96d7fd7ce8b",
+   "bytes": 1334773
   },
   {
    "name": "sydney",
@@ -406,7 +406,7 @@
    "grid_shape": [
     200,
     200,
-    72
+    70
    ],
    "buildings": 551,
    "sources": {
@@ -414,12 +414,12 @@
     "building_complementary_source": "Microsoft Building Footprints",
     "land_cover_source": "OpenStreetMap",
     "canopy_height_source": "High Resolution 1m Global Canopy Height Maps v2",
-    "dem_source": "COPERNICUS"
+    "dem_source": "FABDEM"
    },
    "file": "cities/sydney.h5",
    "preview": "previews/sydney.png",
-   "sha256": "9ea84861c652910c48f156ec6019be1c732ddd9ff75b3af5ee82fca770615649",
-   "bytes": 1390079
+   "sha256": "a3d76a167bcb8ad64e23d07974ca72860ac2a5f2f01fa43fe12f15601127098a",
+   "bytes": 1385246
   },
   {
    "name": "sao_paulo",
@@ -434,7 +434,7 @@
    "grid_shape": [
     200,
     200,
-    37
+    35
    ],
    "buildings": 1374,
    "sources": {
@@ -442,12 +442,12 @@
     "building_complementary_source": "None",
     "land_cover_source": "OpenStreetMap",
     "canopy_height_source": "High Resolution 1m Global Canopy Height Maps v2",
-    "dem_source": "COPERNICUS"
+    "dem_source": "FABDEM"
    },
    "file": "cities/sao_paulo.h5",
    "preview": "previews/sao_paulo.png",
-   "sha256": "8a26242301bd2fe41c749095d68cd1d9938c9bb7e700f9f33fd976cfa7edbf27",
-   "bytes": 1559693
+   "sha256": "251731e01e2124f04caccee8a728ad7b509bdc9db97dac9a50f6abd0a4d19288",
+   "bytes": 1552951
   }
  ]
 }

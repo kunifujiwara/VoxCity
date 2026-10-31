@@ -8,9 +8,9 @@ OUT_DIR/README.md (the dataset card), and refreshes src/voxcity/examples_catalog
 Cities whose .h5 already exists are not rebuilt, so the script can be re-run after a
 failed download (public Overpass servers are sometimes down).
 
-Every source is pinned and needs no account. Sources are chosen so the files can be
-redistributed: FABDEM (CC BY-NC-SA) is never used, and land cover comes from
-OpenStreetMap (ODbL) rather than OpenEarthMap Japan or Earth Engine products.
+Every source is pinned and needs no account. Land cover comes from OpenStreetMap (ODbL)
+rather than OpenEarthMap Japan or Earth Engine products. Terrain is FABDEM outside Japan
+and the US, so those models carry FABDEM's CC BY-NC-SA 4.0 terms (non-commercial use).
 """
 
 import csv
@@ -52,8 +52,8 @@ CITIES = [
 
 
 def sources_for(region):
-    """Redistributable, account-free sources for a region."""
-    dem = {"japan": "GSI DEM Japan", "usa": "USGS 3DEP 10m"}.get(region, "COPERNICUS")
+    """Account-free sources for a region."""
+    dem = {"japan": "GSI DEM Japan", "usa": "USGS 3DEP 10m"}.get(region, "FABDEM")
     comp = "Microsoft Building Footprints" if region in ("usa", "europe", "australia") else "None"
     return {
         "building_source": "OpenStreetMap",
@@ -87,6 +87,12 @@ def build_one(slug, center, region, out):
     from voxcity.io import save_voxcity
 
     rect = square_around(*center, SIZE_M)
+    if sources_for(region)["dem_source"] == "FABDEM":
+        # get_voxcity quietly falls back to Copernicus when FABDEM cannot be read.
+        from voxcity.downloader.fabdem import fetch_fabdem
+        with tempfile.TemporaryDirectory() as work:
+            if fetch_fabdem(rect, work) is None:
+                raise RuntimeError(f"FABDEM could not be read for {slug}")
     with tempfile.TemporaryDirectory() as work:
         city = get_voxcity(rect, MESHSIZE, output_dir=work, **sources_for(region))
     save_voxcity(str(out / "cities" / f"{slug}.h5"), city)
@@ -131,7 +137,9 @@ def entry_for(slug, title, country, center, region, out):
 
 
 CARD = """---
-license: odbl
+license: other
+license_name: odbl-1.0-and-cc-by-nc-sa-4.0
+license_link: LICENSE.md
 pretty_name: VoxCity example cities
 tags:
 - urban
@@ -174,12 +182,19 @@ building heights and IDs with footprints, land cover, terrain and tree canopy.
 ## Sources and licence
 
 The models are derived databases of OpenStreetMap and are released under the
-[Open Database License (ODbL) 1.0](https://opendatacommons.org/licenses/odbl/1-0/). Credit the sources below when you use them.
+[Open Database License (ODbL) 1.0](https://opendatacommons.org/licenses/odbl/1-0/).
+
+**Non-commercial use only outside Japan and the US.** Terrain in those models comes from
+FABDEM, which is licensed [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/),
+so they may not be used commercially. The Japan and US models use public terrain data
+and carry no such restriction. The Terrain column above shows the source of each model.
+
+Credit the sources below when you use them.
 
 - Buildings and land cover: © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors, ODbL 1.0.
 - Building footprints (USA, Europe, Australia): [Microsoft Global ML Building Footprints](https://github.com/microsoft/GlobalMLBuildingFootprints), ODbL 1.0.
 - Tree canopy height: Meta and World Resources Institute, High Resolution Canopy Height Maps v2, CC BY 4.0.
-- Terrain: Copernicus DEM GLO-30 (© DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018, provided under COPERNICUS by the European Union and ESA); USGS 3DEP (public domain); GSI DEM, Geospatial Information Authority of Japan.
+- Terrain: FABDEM v1-2, Hawker et al. (2022), University of Bristol, [doi:10.5523/bris.s5hqmjcdj8yo2ibzi9b4ew3sn](https://doi.org/10.5523/bris.s5hqmjcdj8yo2ibzi9b4ew3sn), CC BY-NC-SA 4.0, derived from Copernicus DEM GLO-30 (© DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018, provided under COPERNICUS by the European Union and ESA); USGS 3DEP (public domain); GSI DEM, Geospatial Information Authority of Japan.
 
 ## Citation
 
@@ -197,6 +212,19 @@ The models are derived databases of OpenStreetMap and are released under the
 """
 
 
+LICENSE = """# Licence
+
+The VoxCity example city models are released under the
+[Open Database License (ODbL) 1.0](https://opendatacommons.org/licenses/odbl/1-0/),
+as derived databases of OpenStreetMap.
+
+Models whose terrain source is FABDEM (every city outside Japan and the United States;
+see `cities.csv`) also contain data derived from FABDEM v1-2, licensed
+[CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/). Those models may
+be used for non-commercial purposes only, and the FABDEM terms apply to their terrain.
+"""
+
+
 def write_outputs(entries, out):
     out.joinpath("cities.csv").parent.mkdir(parents=True, exist_ok=True)
     with open(out / "cities.csv", "w", newline="", encoding="utf-8") as f:
@@ -211,6 +239,7 @@ def write_outputs(entries, out):
     rows = "\n".join(
         f"| `{e['name']}` | {e['title']} | {' × '.join(map(str, e['grid_shape']))} | {e['buildings']:,} | {e['sources']['dem_source']} |"
         for e in entries)
+    (out / "LICENSE.md").write_text(LICENSE, encoding="utf-8")
     (out / "README.md").write_text(CARD.format(n=len(entries), size=SIZE_M, mesh=MESHSIZE, rows=rows), encoding="utf-8")
     CATALOG.write_text(json.dumps({"version": 1, "cities": entries}, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
 

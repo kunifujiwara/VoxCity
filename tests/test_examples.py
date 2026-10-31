@@ -74,7 +74,7 @@ def test_bundled_catalog_lists_cities_with_required_fields():
         for key in ("name", "title", "country", "center", "size_m", "meshsize", "sources", "file", "sha256", "bytes"):
             assert key in c, (c.get("name"), key)
         assert c["file"].startswith("cities/") and c["file"].endswith(".h5")
-        assert c["sources"]["dem_source"] != "FABDEM"   # CC BY-NC-SA: not redistributable
+        assert c["sources"]["dem_source"] in ("FABDEM", "USGS 3DEP 10m", "GSI DEM Japan")
 
 
 def test_list_returns_copies(fake_hub):
