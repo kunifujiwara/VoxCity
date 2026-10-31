@@ -98,6 +98,15 @@ voxcity = get_voxcity(rectangle_vertices, meshsize=5)
 
 That's it — see the [Usage Guide](#usage-guide) to visualize, simulate, and export your model. With Earth Engine initialized, auto-selection also considers Earth Engine sources (higher-resolution DEMs, Open Buildings 2.5D, and more).
 
+**Or start from a ready-made city.** Sixteen city centres, from Tokyo to São Paulo, are prebuilt on [Hugging Face](https://huggingface.co/datasets/kunifujiwara/voxcity-example-cities) and load in seconds:
+
+```python
+from voxcity.examples import list_example_cities, load_example_city
+
+print([c["name"] for c in list_example_cities()])
+voxcity = load_example_city("tokyo")   # 1 km × 1 km at 5 m, downloaded once and cached
+```
+
 ## Installation
 
 Make sure you have Python 3.10-3.13 installed. GDAL is the one dependency best installed via conda; everything else comes from pip.

@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **Ready-made example cities.** `voxcity.examples.load_example_city("tokyo")`
+  downloads a prebuilt 1 km × 1 km, 5 m model from the
+  `kunifujiwara/voxcity-example-cities` dataset on Hugging Face, checks its
+  SHA-256 checksum and caches it. Sixteen city centres are listed by
+  `list_example_cities()`; `example_city_path()` returns the cached HDF5 path.
+  The models use only account-free, redistributable sources and are released
+  under ODbL 1.0. `scripts/build_example_cities.py` rebuilds them (issue #2).
+
 ## 1.8.3 (2026-10-25)
 
 ### Fixed
