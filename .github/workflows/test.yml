@@ -149,7 +149,8 @@ jobs:
         shell: bash -l {0}
         run: |
           python -m pip install --upgrade pip
-          python -m pip install pytest pytest-benchmark fastapi httpx python-multipart manifold3d
+          # pytest 9.2 removed the private Function._nodeid that pytest-benchmark 5.3 still reads
+          python -m pip install "pytest<9.2" pytest-benchmark fastapi httpx python-multipart manifold3d
           python -m pip install .
 
       - name: Run benchmarks
